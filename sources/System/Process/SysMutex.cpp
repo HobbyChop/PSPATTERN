@@ -1,0 +1,66 @@
+/*
+ *  SysMutex.cpp
+ *  lgpt
+ *
+ *  Created by Marc Nostromo on 10/03/12.
+ *  Copyright 2012 __MyCompanyName__. All rights reserved.
+ *
+ */
+
+#include "SysMutex.h"
+
+SysMutex::SysMutex()
+:mutex_(0)
+{
+}
+
+SysMutex::~SysMutex() {
+	if (mutex_) {
+		SDL_DestroyMutex(mutex_) ;
+		mutex_ = NULL ;
+	}
+}
+
+bool SysMutex::Lock() {
+	if (!mutex_) {
+		mutex_ = SDL_CreateMutex() ;
+	}
+	if (mutex_) {
+		SDL_LockMutex(mutex_) ;
+		return true ;
+	} 
+	return false ;
+}
+
+bool SysMutex::TryLock() {
+#ifndef SDL2
+    // SDL 1.2 has no try-lock. Returning true without taking anything
+    // was a lie that cost us real mutual exclusion on PSP, which is
+    // very much not single-threaded -- block instead. Callers get the
+    // lock they were promised; they just may wait for it.
+    return Lock();
+#else
+    if (!mutex_) {
+        mutex_ = SDL_CreateMutex();
+    }
+    if (mutex_) {
+        // Returns 0 on Successs
+        return !SDL_TryLockMutex(mutex_);
+    }
+    return false;
+#endif
+}
+
+void SysMutex::Unlock() {
+	if (mutex_) {
+		SDL_UnlockMutex(mutex_) ;
+	}
+}
+
+SysMutexLocker::SysMutexLocker(SysMutex &mutex)
+:mutex_(&mutex)
+{
+	mutex_->Lock() ;
+}
+
+SysMutexLocker::~SysMutexLocker() { mutex_->Unlock(); }
