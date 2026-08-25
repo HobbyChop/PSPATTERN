@@ -97,6 +97,7 @@ short SynthInstrument::sineTable_[256] ;
 short SynthInstrument::cosTable_[1025] ;
 short SynthInstrument::cutTable_[256] ;
 short SynthInstrument::fmSin_[1024] ;
+short SynthInstrument::fmSinD_[1024] ;
 
 // cosine LUT read, 6-bit linear interpolation
 static inline int cosLookup(const short *table,unsigned int idx,unsigned int frac) {
@@ -351,6 +352,12 @@ bool SynthInstrument::Init() {
 		}
 		for (int i=0;i<1024;i++) {
 			fmSin_[i]=(short)(32000.0*sin(i*2.0*3.14159265358979/1024.0)) ;
+		}
+		// Step to the next entry, so the interpolation below is a
+		// multiply and an add rather than a subtract as well. This is
+		// what msfa does with SIN_DELTA, for the same reason.
+		for (int i=0;i<1024;i++) {
+			fmSinD_[i]=(short)(fmSin_[(i+1)&1023]-fmSin_[i]) ;
 		}
 		for (int i=0;i<1025;i++) {
 			cosTable_[i]=(short)(-32000.0*cos(i*2.0*3.14159265358979/1024.0)) ;
@@ -1274,7 +1281,18 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 			// accumulator wants anyway.
 			p+=((unsigned int)fed[i])<<FM_INDEX_SHIFT ;
 
-			int s=fmSin_[(p>>22)&1023] ;
+			// Interpolated. Reading the nearest of 1024 entries and
+			// throwing away the other 22 bits of phase is a phase
+			// error of up to half a step, which measured as everything
+			// that is not the fundamental sitting at -55 dB on a bare
+			// operator: the engine matched a no-interpolation
+			// reference to a tenth of a decibel. Interpolating the
+			// same table takes that to -96. It matters more here than
+			// anywhere else in the synth, because a modulator's
+			// impurity is multiplied into the carrier's spectrum
+			// rather than just added to the output.
+			unsigned int si=(p>>22)&1023 ;
+			int s=fmSin_[si]+((fmSinD_[si]*(int)((p>>6)&0xFFFF))>>16) ;
 			int o=(s*g)>>15 ;
 
 			if (i==FM_OPS-1) {
@@ -1295,15 +1313,24 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 		int smp=mix/carriers ;
 
 		if (filtered) {
-			low+=(int)(((long long)f*band)>>15) ;
-			int high=smp-low-(int)(((long long)qQ*band)>>15) ;
-			band+=(int)(((long long)f*high)>>15) ;
-			if (band>SVF_CLAMP) band=SVF_CLAMP ;
-			if (band<-SVF_CLAMP) band=-SVF_CLAMP ;
-			if (low>SVF_CLAMP) low=SVF_CLAMP ;
-			if (low<-SVF_CLAMP) low=-SVF_CLAMP ;
-			if (high>SVF_CLAMP) high=SVF_CLAMP ;
-			if (high<-SVF_CLAMP) high=-SVF_CLAMP ;
+			// Two passes, exactly as renderTone and renderVax do.
+			// cutTable_ holds coefficients computed at twice the
+			// sample rate because of that, so a single pass here put
+			// every FM patch's filter an octave below where its
+			// cutoff said it was. The three engines share the table;
+			// they have to share the rate it was built for.
+			int high=0 ;
+			for (int pass=0;pass<2;pass++) {
+				low+=(int)(((long long)f*band)>>15) ;
+				high=smp-low-(int)(((long long)qQ*band)>>15) ;
+				band+=(int)(((long long)f*high)>>15) ;
+				if (band>SVF_CLAMP) band=SVF_CLAMP ;
+				if (band<-SVF_CLAMP) band=-SVF_CLAMP ;
+				if (low>SVF_CLAMP) low=SVF_CLAMP ;
+				if (low<-SVF_CLAMP) low=-SVF_CLAMP ;
+				if (high>SVF_CLAMP) high=SVF_CLAMP ;
+				if (high<-SVF_CLAMP) high=-SVF_CLAMP ;
+			}
 			smp=(fltMode==VFM_LP)?low:((fltMode==VFM_BP)?band:high) ;
 			if (smp>32700) smp=32700 ;
 			if (smp<-32700) smp=-32700 ;

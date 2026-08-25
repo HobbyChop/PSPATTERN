@@ -1,3 +1,30 @@
+PSPATTERN 0.2.3a
+
+    FM: the operator sine is interpolated now.
+    Every operator read the nearest of 1024 table entries and threw
+        away the other 22 bits of phase. Measured on a bare operator
+        with nothing modulating it, everything that was not the
+        fundamental sat at -55 dB, which matched a no-interpolation
+        reference to a tenth of a decibel.
+    It matters more in FM than anywhere else in the synth, because a
+        modulator's impurity is multiplied into the carrier's spectrum
+        rather than just added to the output. Two operator FM had
+        -44 dB of energy sitting between the partials where the Bessel
+        spectrum says there should be none.
+    Now interpolated against a step table, the way msfa does it, so the
+        lookup is a multiply and an add. Bare operator -89 dB, two
+        operator FM -77 dB between the partials: 34 dB and 33 dB
+        better. Costs 4 points at eight voices of four operator FM,
+        47 to 51 per cent of a block.
+
+    FM filter fix, a regression from 0.2.2a.
+    That release made the SVF tick twice per sample in the TONE and VAX
+        engines and rebuilt the shared coefficient table for the
+        doubled rate. The FM engine has the same filter and was missed,
+        so it was reading half rate coefficients into a single pass and
+        every FM patch's filter sat an octave below where its cutoff
+        said it was. All three engines tick twice now.
+
 PSPATTERN 0.2.2a
 
     The oscillators are band limited now.

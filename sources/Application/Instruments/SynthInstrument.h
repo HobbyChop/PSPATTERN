@@ -321,5 +321,6 @@ private:
 	// use: at 8 bits a modulator's own quantisation lands in the
 	// sidebands, which is exactly where it is audible.
 	static short fmSin_[1024] ;
+	static short fmSinD_[1024] ;
 } ;
 #endif
