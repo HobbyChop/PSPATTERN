@@ -1,0 +1,84 @@
+#include "SoundFontManager.h"
+#include "System/System/System.h"
+#include "System/FileSystem/FileSystem.h"
+
+SoundFontManager::SoundFontManager() {
+} ;
+
+SoundFontManager::~SoundFontManager() {
+} ;
+
+void SoundFontManager::Reset() {
+	std::vector<void *>::iterator it=sampleData_.begin() ;
+	while (it!=sampleData_.end()) {
+		SAFE_FREE(*it) ;
+		it=sampleData_.erase(it) ;
+	} ;
+
+        // Unload all SoundFonts
+        sfBankID i;
+        for(i = 0; i < MAX_SOUNDFONTS; i++)
+          sfUnloadSFBank(i);
+} ;
+
+/*
+  Returns a nonnegative short or an element of
+  {-SF_BANK_TABLE_FULL, -SF_LOAD_ERROR, -SF_OPEN_ERROR}.
+ */
+sfBankID SoundFontManager::LoadBank(const char *path) {
+
+	sfBankID id=sfReadSFBFile((char *)path) ; 
+	if (id==-1) {
+        enaErrors err_code = sfGetError();
+        return -(err_code == enaLOADERROR ? SF_LOAD_ERROR : SF_BANK_TABLE_FULL);
+	} 
+	// open the file
+
+	I_File *fin=FileSystem::GetInstance()->Open(path,"r") ;
+	if (!fin) {
+        return -SF_OPEN_ERROR;
+    }
+
+	// Grab the sample offset
+
+	long offset=sfGetSMPLOffset(id) ;
+
+	// Grab the sample headerzz
+
+	WORD headerCount=0 ;
+	SFSAMPLEHDRPTR  &headers=sfGetSampHdrs(id,&headerCount ); 
+
+	// Loop on every sample, load them and adapt the pointers
+
+	for (int i=0;i<headerCount;i++) {
+
+		sfSampleHdr &current=headers[i] ;
+
+		long from=current.dwStart*2+offset ;
+		long to=current.dwEnd*2+offset ;
+		
+		int byteSize=to-from ;
+
+		void *buffer=malloc(byteSize) ;
+
+		if (buffer) {
+			fin->Seek(from,SEEK_SET) ;
+			fin->Read(buffer,byteSize,1) ;
+		}
+
+		// now adapt the headers so the start is the memory point
+		// and all others are sample offset
+
+		current.dwEnd=(current.dwEnd-current.dwStart) ;
+		current.dwStartloop=(current.dwStartloop-current.dwStart) ;
+		current.dwEndloop=(current.dwEndloop-current.dwStart) ;
+        // ADDR is pointer-sized, works on both 32-bit and 64-bit
+        current.dwStart = (ADDR)buffer;
+
+        sampleData_.push_back(buffer);
+    }
+	fin->Close() ;
+	SAFE_DELETE(fin) ;
+
+	return id ;
+} ;
