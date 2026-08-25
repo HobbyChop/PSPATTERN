@@ -1,0 +1,366 @@
+PSPATTERN 0.2.0a
+
+    Engine fixes:
+    A note that followed another note on the same channel was thrown
+        away one audio block after it started. PlayerChannel set its
+        releasing_ flag when stopping the old note and nothing cleared
+        it, so the next Render read it as "the release finished" and
+        dropped the instrument. Every note after the first on any patch
+        with a release, cut about 20ms in.
+    Note-on declick used the wrong correction. It added the previous
+        sample instead of measuring the step, which for a square left
+        nearly a full scale jump. Measured at 18.4% of full scale on a
+        square, 16.6% on a pulse; now 0.00% on both.
+    The declick bound could not cancel the step it measured. Capped at
+        half full scale while a loud square swings 57%.
+    Songs no longer loop by default.
+    The low battery warning inverted once per repaint on a panel that
+        repaints every frame, so it strobed instead of blinking. Now on
+        the wall clock at 2Hz, with hysteresis on the threshold.
+    The project selector listed the program's own samplelib folder.
+
+    Additions:
+    Velocity column in the phrase screen, reading 00..99 rather than
+        hex. Empty means full, so older projects are unchanged.
+    Hard sync and ring modulation on the VAX engine.
+    ARPS: arp speed, in ticks per arpeggio position. Default 1 is the
+        classic every-tick trill; higher values slow the figure until
+        each note in it can be heard as a pitch.
+    MANUAL.txt.
+    Channel faders are written by the song generators, so a demo can
+        carry its own mix balance.
+
+    Interface:
+    Instrument values read as decibels, per cent and L/CTR/R instead of
+        raw hex where the raw number meant nothing.
+    Four strings named buttons the PSP does not have.
+    The boot and browser screens named the upstream project.
+
+
+    Migrate W32 to SDL2, removing need for building in vs2008
+
+1.6.0-bacon17
+    Fix sample list refreshing bug
+
+1.6.0-bacon16
+    Allow SoundFont imports
+
+    Fixes:
+    Clear SoundFonts on SamplePool reset
+
+1.6.0-bacon15
+    Finally solve "Audio randomly dies" issue
+
+    Various additions
+    FX Command Box selector (#238)
+        * In phrase and table views a selection box appears when editing FX commands
+        * Navigate in all directions using D-PAD
+        * Displays help legend and previews FX during playback
+
+    Preview notes by pressing A (#237)
+        * Press A on any step in phrase view to audition the note
+
+    Remove GARLIC build target
+        * Use Portmaster-compatible distro instead
+    
+    Find closest instrument
+        * In PhraseView, select the closest instrument from the top
+        * Less often edit the wrong instrument hopefully
+
+    Fixes:
+    Fixed incorrect interpolation (#248)
+        * Fixed not getting correct interpolation results between row 1 and 16
+    Don't audition note when song is playing (#247)
+    Reset chain offset when switching to SongView (#239)
+        * Prevents accidentally triggering playback with chain offset when returning to song screen
+    Fix audio dying on multithreaded systems (#236)
+        * MIDI queue protected by mutex lock on X64
+        * Fixes "audio suddenly dies" error
+    Fix regression caused in https://github.com/djdiskmachine/LittleGPTracker/pull/245
+        Fix introduced microtonality for single cycle osc, thank you @INFU-AV <3
+    Purge samples actually purges samples [author: maks](https://github.com/xiphonics/picoTracker/pull/313)
+
+1.6.0-bacon11
+    Slices decoupled from loop mode
+        * Slices are no longer a loop mode — they are now an independent parameter
+        * Set slices > 1 to enable slicing; loop mode (none/loop/ping pong/etc.) applies within each slice
+        * Enables looped slices, e.g. for amen breaks and other timed loops
+        * Old projects with "slicer" loop mode load correctly: slices count is preserved, loop mode resets to "none"
+
+1.6.0-bacon10
+    Allow greater granular stretching using LPOF
+    Documentation in tips and tricks
+
+1.6.0-bacon6
+    Delete project from SelectProjectDialog
+        * Press A + B on a project in the project selection screen to delete it
+        * A confirmation dialog will appear asking to confirm deletion
+        * The entire project directory and all contents will be removed
+        * List position is preserved after deletion
+
+1.6.0-bacon5
+    Auto-load last project on startup
+        * Application can now load the last project automatically on startup
+        * Disable by setting AUTO_LOAD_LAST=NO in config.xml
+    
+1.6.0-bacon4
+    QWERTY keyboard name entry for new projects
+    * Press A on the project name field to enter QWERTY keyboard mode
+    * Navigate the on-screen keyboard with D-PAD/arrows
+    * Press A to input the selected character
+    * Press B to backspace
+    * Press L/R to move the text cursor left/right
+    * Press START or select OK to exit keyboard mode
+    * All keyboard navigation logic extracted to reusable KeyboardLayout.h utility
+
+1.6.0-bacon2
+    ProjectView Render item
+        When in project view, it's now possible to initiate rendering
+    Interpolate values in tables and phrases
+        R + B on single-column selection will fill values from lowest to highest
+
+    Contributions:
+    drbscl
+        Add 64 bit soundfont support (#211)
+
+    Fixes:
+    Add 64 bit soundfont support (#211)
+    Skip randomly generated project name if a directory with that name already exists (#175)
+    Save Song As" saves to current as well as new project (#212) 
+
+1.5.0-bacon3
+    Contributions:
+    purelygrey
+        Per-project option for soft clipping the output (#145)
+        * Per-project option for soft clipping the output
+        * Projects with Master Volume over 100 will be capped to 100
+        * Use pregain to saturate
+        * Multiple saturation modes
+        Remove drawing optimization that causes flashing in Song view (#147)
+        * Removed drawing optimization that caused flashing in Song view
+
+    clsource
+        Scales
+        * implementation by @maksmakes
+        * instrumentation by clsource
+
+    simotek
+        Add color options for Border Play and Mute (#143)
+        * Adds different color for the > play and _ mute indicators
+        Fix rg35xx mapping (#139)
+        * rshoulder and lshoulder were the wrong way
+
+    kompadre
+        Enable skipping JUNK section for WAVs
+        * Load more old sample pack CD rips!
+
+    mrtnvgr
+        Hide lgpt_ prefix for songs #165
+        Consistent view title separators #166
+
+    nine-h
+        Reduce nag dialogs (#187)
+        Allow user to save, load, save as and quit while song is playing
+
+
+    Copy columns (#141)
+    * Enables copying fx+params into any column in tables and phrases
+      Pasting fx into notes column etc does nothing
+
+    Nudge functionality (#130)
+    * In Project view, select tempo and hold B+LEFT/RIGHT to nudge slower/faster
+    * In Song view, pressing LT+LEFT/RIGHT will do the same
+
+    Printable fx in InstrumentView (#155)
+    * Uses ffmpeg to print reverb to currently selected sample
+    * New sample with fx is created and assigned to the current instrument
+    * Only available for platforms mentioned in README of this repo
+
+    Other:
+        Add line-by-line clang format (#144)
+        Check uploads artifacts (#138)
+        Globally accessible notifications (#137)
+        Update to github actions checkout@v4.1.7 (#136)
+
+    Fixes:
+    Long sample names causing crashes in InstrumentView (#189)
+    Sample names that start with the same characters get mixed up InstrumentView (#199)
+    Bug in chainview: column warping (#134)
+    Jumping below lowest row would cause infinite loop
+    Jumping from row 0 was not possible in chainview
+    Limit jump to maximum lowest populated row
+    Set songview b jumping length to 16 rows in correspondence with LSDJ and M8
+    Scales no longer affect instrument numbers ([djdiskmachine/LittleGPTracker#172](https://github.com/djdiskmachine/LittleGPTracker/issues/172))
+    Bug in Variable:SetString [djdiskmachine/LittleGPTracker#169](https://github.com/djdiskmachine/LittleGPTracker/issues/169)
+
+    Issue in deep clone (#135)
+    Was possible to accidentally deep clone position into another position
+
+    Fix build error for Raspi (#133)
+    Restore 32bit linux config
+
+    Crash when nudging below 0 BPM (shoutout @merumerutho) https://github.com/djdiskmachine/LittleGPTracker/issues/127
+
+
+1.4.2
+    Contributions:
+    koisignal
+        Config option feature for loading embedded and custom fonts (#107)
+        * Possibility to select font in config.xml
+    clsource
+        MacOS 64 Build (#108)
+    Simotek
+        RG35XX +/H builds + SDL2 + X64 Support (#95)
+        * add support for rg35xx-plus boards, tested on RG35XX-H
+        ---------
+        Co-authored-by: emartinez
+        Co-authored-by: Nine-H
+        Co-authored-by: igavrilov
+
+        Platform Makefile Cleanup (#114)
+
+    Other stuff:
+        PPSSPP install instructions (#124)
+        Added packaging resources for bittboy (#123)
+        Allow warping over empty chains (#99)
+        * Jump over empty neighbors in chain or phrase view instead of forcing you to go back to song screen.
+        Deep clone hint (#98)
+        * Adds a 1 second notification when deep cloning
+        Install instructions for PocketCHIP (#111)
+
+1.4.1
+    Adds:
+        Play chain offset
+        When in chain view, pressing R+Start plays the current song row
+        starting at the offset from current chain row.
+    Fixes:
+        RG35XX no longer segfaults on boot
+        USB MIDI disabled due to missing OS dependencies
+
+1.4.0
+    Adds:
+        Automated build for bittboy, Win32, PSP, Miyoo, Deb32, RG35XX
+        Shoutout to xquader for the initial RG35XX port (https://boosty.to/xquader)
+        License changed from CC-BY-SA-NC to GPL-3
+
+    * MVEL cmd
+        Set step velocity for MIDI instruments
+        https://github.com/democloid/picoTracker/pull/163
+
+        Author: @maks@fluttercommunity.social
+        Co-authored-by: djdiskmachine <djdiskmachine@proton.me>
+
+    * Config option to set major beat color in phrase screen
+
+        Author: koisignal <koitokakitsubata@gmail.com>
+
+    * Deep clone
+        Clones selected chain and the phrases within
+
+        Author: koisignal <koitokakitsubata@gmail.com>
+        Co-authored-by: djdiskmachine <djdiskmachine@proton.me>
+
+    * Font at build time
+        Modify sources/Resources/original.bmp __or__
+        FONT variable in Makefile
+
+    * Add audition (#87)
+        Adds note audition in phrase view
+        Original implementation by democloid: https://github.com/democloid/picoTracker/pull/86
+        Previews notes when entering new and modifying existing notes
+
+1.3o_2
+    Adds:
+        Alt row count colors, shoutout to https://github.com/edne !
+        00 and FE song screen colors, shoutout to https://github.com/koi-ikeno !
+        RG35XX build, thanks to https://github.com/jpma29 for help with testing!
+    Fixes:
+        Root folder detection causing issues with importing samples on some systems (thank you jpma29)
+        Name generator causing issues with importing samples on some systems (thanks Dosly)
+        Actually random names (fixed random seed, thx Eldsvåda:)
+        Save as fixed on MIYOO systems (thx Pret4t)
+    Other:
+        Refactor help legend
+
+1.3o-1
+    First stable release!
+    Fixed errors when random naming projects (shoutouts to 256k!)
+    Start sample navigation behavior adjusted
+    New: When in Phrase or Table view, FX commands have
+         a help legend at the top of the screen
+    Update license to CC BY-NC-SA 4.0
+
+    Official builds for:
+        Miyoo mini
+        Win32
+        CHIP
+        Raspberry Pi
+        PSP
+        Deb32
+
+1.3o-beta-2
+    Random name generator
+        New project or Save As project creates a random name
+        Courtesy of djdiskmachine
+
+    Preview with start in sample browser
+      Browse preview with start + up / down
+      Load sample with start + right
+      Up one level in folder structure with start + left
+
+      B navigation no longer wraps around but stays at end points
+
+    Skip build for bittboy and RG350 for now, no testers
+    Bugs:
+      SCREENMULT no longer applies for PSP issue (47)
+      Disable default mapping for MIYOO to not conflict with mapping.xml issue (53)
+        Shoutouts to fpiesik and Sacaredo for help debugging
+
+1.3o-beta-1
+    Pingpong loop now stable
+        Courtesy of djdiskmachine
+
+    Add ability to change font
+    USAGE: ./mkfont.py FONT_BMP [OUTPUT_FILE]
+    FONT_BMP must be a black/white (#000000, #FFFFFF) 128x64px bmp
+    if OUTPUT_FILE is omitted, will print to stdout
+        Courtesy of subnixr
+
+    Adds Miyoo mini build
+        Courtesy of Nine-H
+
+    Changes filter attenuation to attenuation
+    Adjust volume post scream filter
+    https://github.com/Mdashdotdashn/LittleGPTracker/issues/22
+
+    Missing wiki content dumped to repo
+        Courtesy of Peter Swimm
+
+1.3o-alpha-5
+    Adds native SteamOS build
+    Adds Bittboy/RS97/RG350 builds
+        Merge of Gameblaba, CalebCDE and RafaVicos work
+        Shoutouts!
+1.3o-alpha-4
+    Adds Save As menu item - save a copy of your project with a new name
+        Courtesy of yoyz (https://github.com/yoyz), biggup!
+    Working Win32 build
+        Requires included SDL.dll file in the same location as the binary
+    Including mapping.xml
+        Contains macro button examples
+    Restored ping pong loop mode
+        Know inssue: Starting in reverse is same as regular loop
+    Sample song demoing new functionality
+    Platforms: Added Win32
+1.3o-alpha-3
+    Change default colors
+    Introduce cursor color
+1.3o-alpha-2
+    Add filter attenuation (volume post Scream)
+    Platforms: Added deb and raspberry
+1.3o-alpha-1
+    Experimental ping pong loop mode
+        not done and removed in following builds
+1.3o-alpha-0
+    Add Slice loop mode
+    Platforms: PSP only

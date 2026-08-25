@@ -1,0 +1,340 @@
+PSPATTERN MANUAL
+
+
+1. WHAT IT IS
+
+PSPATTERN is a music tracker for the Sony PSP. You build a song from
+patterns of notes, and the PSP generates the sound. It has a sampler, a
+four engine synthesiser, a built in drum kit, a delay and a reverb, and
+MIDI in and out through the PSP-MIDI adapter.
+
+  Website and guide   https://pspattern.hobbychop.com
+  Source              https://github.com/HobbyChop/PSPATTERN
+  Shop                https://hobbychop.com
+
+It is a fork of LittleGPTracker by Marc Nostromo and is released under
+the GNU General Public License version 3. The complete source is
+included with this build.
+
+
+2. INSTALLING
+
+Copy the PSPATTERN folder to ms0:/PSP/GAME/ on your memory stick. The
+folder must contain at least EBOOT.PBP. Launch it from the PSP game
+menu.
+
+The other files in the folder are:
+
+  usbmidi.prx      the driver for the PSP-MIDI adapter
+  config.xml       startup settings
+  mapping.xml      button assignments
+  custom_font.xml  the screen font
+
+usbmidi.prx is only needed if you have a PSP-MIDI adapter. Without it
+the tracker runs normally and the MIDI instrument type does nothing.
+
+Your PSP needs custom firmware to run homebrew. PSPATTERN has been
+tested on 6.61 PRO-C.
+
+
+3. BUTTONS
+
+The manual refers to the PSP buttons by the names printed on them.
+
+  O          Circle. Select, set, and the edit modifier.
+  X          Cross. The secondary modifier.
+  L and R    The shoulder triggers.
+  START      Start and stop playback.
+  D-pad      Move the cursor.
+
+Most editing is a modifier held with a direction. Holding O and pressing
+left or right changes a value by one. Holding O and pressing up or down
+changes it by sixteen, or by ten on the velocity column.
+
+Holding R and pressing a direction moves between screens. The bottom
+line of every screen lists the moves available from where you are.
+
+
+4. SCREENS
+
+There are seven screens. R plus a direction moves between them.
+
+  SONG        the arrangement grid, one column per channel
+  CHAIN       the list of phrases a song slot plays
+  PHRASE      the notes themselves
+  TABLE       a small automation sequence attached to a step
+  GROOVE      per step timing
+  INSTRUMENT  the sound design page
+  PROJECT     tempo, master level, file operations
+
+The song screen is the top level. From it, R and right opens the chain
+under the cursor. From a chain, R and right opens a phrase. From a
+phrase, R and down opens its table, R and up opens the groove, and R and
+right opens the instrument.
+
+R and left moves back the way you came.
+
+
+5. THE SONG SCREEN
+
+Eight columns, one per channel. Each cell holds a chain number in
+hexadecimal, or two dashes for an empty slot.
+
+Hold O and press up or down to place a chain. The tracker plays down the
+rows. A channel with a blank cell at row zero never starts, so start
+every channel you want to hear at row zero.
+
+The panel on the right shows the DSP load, the tempo, the project name,
+the MIDI device and the battery. The scope above it draws the master
+output.
+
+R and X mutes the channel under the cursor.
+
+
+6. THE CHAIN SCREEN
+
+Sixteen rows. Each row holds a phrase number and a transpose value in
+semitones. The chain plays its rows in order, then returns to the song.
+
+Transpose shifts every note in that phrase. It is signed, so a value of
+FE is two semitones down.
+
+
+7. THE PHRASE SCREEN
+
+Sixteen steps. Seven columns:
+
+  note        the pitch, written as a note name and octave
+  instrument  which instrument plays it
+  velocity    how hard, 00 to 99, or two dashes for full
+  command 1   an effect
+  parameter 1 its value
+  command 2   a second effect
+  parameter 2 its value
+
+The note column takes a note or two dashes for silence. Holding O and
+pressing up or down moves by an octave, left or right by a semitone.
+
+The velocity column reads 00 to 99 in decimal, not hexadecimal. Two
+dashes means nothing is written and the step plays at full level, so a
+phrase written before this column existed sounds the same as it always
+did. Holding O and pressing up or down moves by ten, left or right by
+one. One step below 00 clears it back to two dashes.
+
+The command columns hold four letter effect names. Stand on one and the
+panel at the bottom explains it. Hold O and press up or down to pick a
+command from the list.
+
+
+8. COMMANDS
+
+Each command takes a four digit parameter. The help panel writes the
+parameter as aabb, meaning the first two digits and the last two are
+read separately, or as aaaa when all four are one number.
+
+  ARPG  cycle through pitches relative to the note
+  CRSH  drive and bit crush
+  DLAY  delay the step by bb ticks
+  DRIV  post filter drive, vax engine
+  DTUN  detune spread of the unison stack, vax engine
+  FBMX  feedback mix
+  FBTN  feedback tune
+  FCUT  set filter cutoff
+  FLTR  set cutoff and resonance together
+  FMFB  operator four self modulation, fm engine
+  FML1  operator output level, fm engine
+  FRES  set filter resonance
+  GROV  switch to groove bb
+  HOP   jump to step bb, aa times
+  IRTG  retrigger the instrument and transpose
+  KILL  stop the note after bb ticks
+  LEGA  slide from the previous note
+  LFOD  LFO depth
+  LFOR  LFO rate
+  LPOF  shift the sample loop points
+  MCCA  send a value on one of the instrument CC slots
+  MDAT  MIDI channel pressure
+  MDCC  send MIDI CC aa with value bb
+  MDPB  MIDI pitch bend, 2000 is centre
+  MDPG  MIDI program change
+  MVEL  set MIDI velocity for the step
+  PAN   pan to a value
+  PFIN  pitch fine tune
+  PLOF  jump within the sample
+  PTCH  slide the pitch, aa is the rate and bb the amount
+  RTRG  retrigger over bb ticks at speed aa
+  STOP  stop the song
+  TABL  start table bb
+  TMPO  set the tempo
+  UNIS  unison voices, one to seven, vax engine
+  VOLM  slide the volume
+
+PTCH and VOLM take a rate in the first two digits. A rate of 00 jumps
+straight to the target instead of sliding.
+
+
+9. TABLES
+
+A table is sixteen rows of three command columns that run alongside a
+note. Use one for anything that has to change over time, such as a
+filter sweep, an arpeggio, or a repeated retrigger.
+
+Start a table from a phrase step with the TABL command, or set an
+instrument to run one automatically from its table field.
+
+Tables run at tick rate, which is faster than the phrase steps.
+
+
+10. INSTRUMENTS
+
+An instrument is one of three types. Change the type on the top row of
+the instrument screen.
+
+SAMPLE plays a wav file or one of the built in drums. It has volume,
+pan, root note, fine tune, interpolation, loop mode and points, slice
+count, a drive and bit crush stage, a filter with cutoff, resonance and
+type, a feedback stage, an attenuator and an amplitude envelope.
+
+MIDI sends notes out of the PSP-MIDI adapter. It has a channel, volume,
+note length, pitch bend range and four CC slots.
+
+SYNTH generates sound on the PSP. Pick one of four engines on the second
+row.
+
+
+11. THE SYNTH ENGINES
+
+TONE is a single oscillator. Saw, square, triangle or sine, with a pulse
+width control on the square, a sub oscillator an octave down, and a
+noise source. It is the cheapest engine.
+
+PDX is phase distortion. Saw, square, resonant saw and resonant triangle.
+The mod envelope sweeps the distortion amount, which is what gives it
+the resonant sweep without a filter.
+
+VAX is the analogue style engine. A stack of up to seven detuned
+oscillators, saw or pulse, with pulse width modulation, a sub oscillator,
+noise, hard sync and ring modulation.
+
+FM is four operator frequency modulation with eight algorithms. The
+algorithm names describe the routing directly. A greater than sign means
+the operator on the left modulates the one on the right, a space
+separates independent branches, and any operator not followed by a
+greater than sign reaches the output. Each operator has a ratio, level,
+detune and its own envelope.
+
+
+12. HARD SYNC AND RING MODULATION
+
+Both are on the VAX engine and both are off at zero, so patches made
+before they existed are unaffected.
+
+SYNC runs a silent master oscillator at the note frequency. The
+oscillators you hear are lifted to between one and four times that
+frequency, and every time the master completes a cycle they are reset to
+the start. The pitch you hear stays on the note while the timbre climbs.
+Sweeping sync from a table is the classic hard sync lead.
+
+RING multiplies the oscillator by a sine running one octave below the
+note. At zero the oscillator passes through untouched. At full you hear
+only the product. It adds tones halfway between the normal harmonics,
+which is what makes it sound metallic or hollow. It is applied before
+the sub oscillator and the noise, so a ring modulated lead keeps a solid
+bottom end.
+
+Sync and ring together produce the most aggressive sounds the engine
+makes.
+
+Both are patch parameters. They cannot yet be changed from a phrase or
+table command.
+
+
+13. THE DRUM KIT
+
+The drum instruments are generated when a project loads, not read from
+sample files. That is what the progress line on the loading screen is
+doing. They cost no disk space and can be redistributed freely.
+
+Each drum has a soft and a hard variant.
+
+
+14. THE MIXER AND THE SEND EFFECTS
+
+Each channel has a level, a high pass, a low pass, and a send to the
+delay and to the reverb. The two send effects are shared by all
+channels.
+
+The master has a drive control, a clipper with several modes, and a
+gain switch.
+
+
+15. THE PROJECT SCREEN
+
+  tempo    beats per minute, and the tick count in brackets
+  transp   transpose the whole song
+  scale    constrain notes to a scale
+  master   master output level
+  repeat   whether the song loops
+  drive    input drive to the master stage
+  clip     the clipper mode
+  gain     unity or boost
+  device   MIDI output device
+  rate     audio sample rate
+  sync     follow an external MIDI clock
+
+The file column has load, save, save as, two compaction tools, and a
+render switch.
+
+
+16. SAVING AND RENDERING
+
+Save song writes to the current project folder. Save song as makes a new
+one. Projects live in ms0:/PSP/GAME/PSPATTERN/lgpt_NAME/.
+
+The tracker also keeps an automatic backup. If it was interrupted, it
+offers to recover the unsaved changes the next time you open the
+project.
+
+Set render to Stereo and press START to write mixdown.wav into the
+project folder while the song plays. Stems writes one file per channel.
+Set it back to Off when you are done, or every play writes a new file.
+
+
+17. LEVELS
+
+Instrument volume runs from 0 to 255 and is shown as a percentage of
+that range. Note that 50 percent is unity gain, not half volume. Above
+50 percent the instrument is amplified, up to about six decibels at 100
+percent. If a mix sounds quiet, this is the first thing to check.
+
+The two demo songs shipped with this build peak around ten decibels
+below full scale and are known to be too quiet.
+
+
+18. KNOWN ISSUES
+
+  The PAN command on sample instruments is unverified and may not work.
+
+  Sync and ring cannot be sequenced from a command, only set on the
+  patch.
+
+  The synth envelope values are shown in hexadecimal while the sliders
+  on the same page are shown as percentages.
+
+  A few stray pixels are drawn on the bottom rule of the oscillator
+  panel underneath the ring slider. It is cosmetic.
+
+  The product name is provisional.
+
+
+19. LICENCE
+
+PSPATTERN is free software under the GNU General Public License version
+3. See LICENSE.txt. The complete corresponding source code is included
+with this build in the source folder.
+
+usbmidi.prx is a separate kernel module with its own terms. It is not
+part of this program and is included only for convenience.
+
+The built in drums and both demo songs are original work and may be
+redistributed.
