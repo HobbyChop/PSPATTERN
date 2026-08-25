@@ -1,3 +1,39 @@
+PSPATTERN 0.2.1a
+
+    Rendering to wav did not stop when the song stopped.
+    Tearing the render down lived in the song screen's START handler, so
+        it only ran when somebody pressed START a second time. A song
+        that reaches its end with repeat on "once" stops on its own and
+        never went through it, so the screen went on saying it was
+        rendering over a file the mixer had already closed.
+    Worse, the mixer stayed in stereo render mode, so the next START
+        opened a fresh writer on the same path. Opening truncates, so a
+        finished render was replaced by however much of the new take had
+        been written. A 65 second wav came back as 0.78 seconds.
+    Now handled where the player's stop event arrives, so it works from
+        any screen, and it forces a redraw: a notification is painted
+        into the character grid, and once playback stops nothing repaints
+        the row it sits on.
+
+    Changing an instrument's type asked "settings are lost" on
+        instruments that had no settings.
+    The prompt asked IsEmpty, which is the question the save code asks.
+        Synth and midi instruments answer "never empty" there because
+        they always have to be written to the file, so both always
+        warned, including a patch straight out of the box. New projects
+        assign a drum to the first instruments automatically, so those
+        warned too.
+    There is now a separate question for it: has anything been changed
+        from the values a new instrument of this type starts with. The
+        sample a new project assigns for you and the midi channel the
+        bank stamps in by index are not counted, because neither was
+        chosen by anybody.
+
+    NEONDUSK, a second demo song. Melody led rather than arpeggio led,
+        with one arp channel instead of three, and a chord channel that
+        runs the same ARPG command at a slower ARPS so it strums instead
+        of trilling. Peak -0.09 dBFS, no clipped samples.
+
 PSPATTERN 0.2.0a
 
     Engine fixes:

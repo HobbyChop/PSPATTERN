@@ -69,6 +69,7 @@ public:
        virtual bool Render(int channel,fixed *buffer,int size,bool updateTick) ;
        virtual bool IsInitialized() ;
 	   virtual bool IsEmpty() ;
+   virtual bool IsAtDefaults() ;
 
 	   virtual InstrumentType GetType() { return IT_SAMPLE ; } ;
   	   virtual void ProcessCommand(int channel,FourCC cc,ushort value) ;

@@ -275,6 +275,7 @@ public:
 	virtual bool Render(int channel,fixed *buffer,int size,bool updateTick) ;
 	virtual bool IsInitialized() ;
 	virtual bool IsEmpty() ;
+	virtual bool IsAtDefaults() ;
 	virtual InstrumentType GetType() ;
 	virtual const char *GetName() ;
 	virtual void ProcessCommand(int channel,FourCC cc,ushort value) ;

@@ -1634,3 +1634,13 @@ void SampleInstrument::EnableDownsamplingLegacy()
   useDirtyDownsampling_ = true;
   Trace::Log("CONFIG","Enabling downsampling legacy");
 }
+
+
+// The sample is skipped because a new project assigns one to the
+// first instruments by itself, in AssignDefaults. Warning that a
+// pre-assigned drum is about to be lost, on an instrument nobody
+// has opened, is the noise this is here to stop.
+bool SampleInstrument::IsAtDefaults() {
+    SampleInstrument fresh;
+    return SameParametersAs(fresh, SIP_SAMPLE);
+}

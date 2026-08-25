@@ -1021,7 +1021,13 @@ void InstrumentView::Update(Observable &o,I_ObservableData *d) {
 		}
 
 		pendingType_=(InstrumentType)typeVar_.GetInt() ;
-		if (!bank->GetInstrument(i)->IsEmpty()) {
+		// Was IsEmpty, which is the question the SAVE code asks and
+		// answers "never empty" for synth and midi so they always get
+		// written out. Used here it meant every synth and every midi
+		// instrument warned that settings would be lost, including a
+		// patch straight out of the box with nothing in it to lose,
+		// and so did the drums a new project assigns for you.
+		if (!bank->GetInstrument(i)->IsAtDefaults()) {
 			// put the selector back until the answer comes in, so a
 			// cancelled swap does not leave the wrong type on screen
 			refreshingType_=true ;

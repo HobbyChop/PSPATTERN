@@ -1574,6 +1574,41 @@ void AppWindow::Update(Observable &o, I_ObservableData *d) {
     case VET_PLAYER_POSITION_UPDATE: {
         PlayerEvent *pt = (PlayerEvent *)ve;
 
+        // A song whose repeat is "once" reaches its end and stops with
+        // nobody pressing START, and the render was only ever torn down
+        // in the START handler on the song screen. Two things went
+        // wrong with that. The screen kept saying "rendering to wav"
+        // over a file the mixer had already closed, and the mixer was
+        // left in stereo render mode, so the next START opened a fresh
+        // writer on the same path and truncated the finished render to
+        // whatever the new take reached.
+        //
+        // It belongs here rather than in a view: only the CURRENT view
+        // is handed this event, and not even that one while a modal is
+        // open, so a song ending on any other screen left the flag set.
+        // Stopping with START clears the flag before the player stops,
+        // so this fires once either way and never notifies twice.
+        if (pt->GetType() == PET_STOP && _viewData &&
+            _viewData->isRendering_) {
+            _viewData->isRendering_ = false;
+            MixerService::GetInstance()->SetRenderMode(MSRM_PLAYBACK);
+            // The notification belongs to whichever screen is up. It is
+            // drawn by the view, so there has to be one to draw it; the
+            // state above is cleared either way.
+            //
+            // Redraw() is not decoration. A notification is painted into
+            // the char grid by DrawView, and once playback stops the only
+            // thing still repainting is AnimationUpdate, which draws the
+            // side panel and never touches the bottom row. Without a full
+            // redraw the new message is set and never drawn, and the
+            // "rendering to wav..." characters from the START of the take
+            // stay on screen over a finished file.
+            if (_currentView) {
+                _currentView->SetNotification("render complete");
+                Redraw();
+            }
+        }
+
         // A dialog owns the screen while it is up. OnPlayerUpdate paints
         // straight into the char grid -- play cursors, the note readout,
         // the hint bar -- so letting it run while a modal is open draws

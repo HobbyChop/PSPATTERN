@@ -1675,3 +1675,11 @@ void SynthInstrument::SetTableState(TableSaveState &state) {
 	memcpy(tableState_.hopCount_,state.hopCount_,sizeof(uchar)*TABLE_STEPS*3) ;
 	memcpy(tableState_.position_,state.position_,sizeof(int)*3) ;
 } ;
+
+
+// Nothing skipped: every parameter on a synth patch is one
+// somebody chose.
+bool SynthInstrument::IsAtDefaults() {
+    SynthInstrument fresh;
+    return SameParametersAs(fresh, 0);
+}

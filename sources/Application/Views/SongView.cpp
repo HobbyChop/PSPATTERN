@@ -1309,6 +1309,7 @@ void SongView::OnPlayerUpdate(PlayerEventType eventType, unsigned int tick) {
 
     Player *player = Player::GetInstance();
 
+
     GUIPoint anchor = GetAnchor();
     anchor._x = SONG_GRID_X;
     GUIPoint pos = anchor;

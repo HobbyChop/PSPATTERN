@@ -85,6 +85,7 @@ public:
       virtual bool IsInitialized() ;
 
 	  virtual bool IsEmpty() { return false ; } ;
+	  virtual bool IsAtDefaults() ;
 
 	  virtual InstrumentType GetType() { return IT_MIDI ; } ;
 

@@ -436,3 +436,12 @@ void MidiInstrument::SetTableState(TableSaveState &state) {
 	memcpy(tableState_.hopCount_,state.hopCount_,sizeof(uchar)*TABLE_STEPS*3) ;
 	memcpy(tableState_.position_,state.position_,sizeof(int)*3) ;
 } ;
+
+
+// The channel is skipped: InstrumentBank stamps one in per index
+// at construction, so it differs from a fresh instrument without
+// anybody having touched it.
+bool MidiInstrument::IsAtDefaults() {
+    MidiInstrument fresh;
+    return SameParametersAs(fresh, MIP_CHANNEL);
+}

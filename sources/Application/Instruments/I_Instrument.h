@@ -5,6 +5,8 @@
 #include "Foundation/Observable.h"
 #include "Application/Utils/fixed.h"
 
+#include <string.h>
+
 #include "Application/Player/TablePlayback.h"
 
 enum InstrumentType {
@@ -23,6 +25,39 @@ public:
 	  // Initialisation routine
 
 	  virtual bool Init()=0 ;
+
+	  // True when nothing here has been changed from the values a
+	  // freshly created instrument of this type starts with.
+	  //
+	  // Deliberately NOT IsEmpty. IsEmpty decides what gets written to
+	  // the save file, which is why a synth patch reports false there
+	  // unconditionally: it always has to be saved. Asking that
+	  // question to decide whether to warn somebody meant every synth
+	  // and every midi instrument warned about losing settings that
+	  // did not exist, on a patch nobody had touched.
+	  virtual bool IsAtDefaults() { return false ; } ;
+
+	  // Compares every parameter against another instrument of the
+	  // same type, which in practice is a freshly constructed one. One
+	  // parameter may be skipped: the sample a new project assigns by
+	  // itself, and the midi channel the bank stamps in by index, are
+	  // both set for you rather than by you, and neither is worth a
+	  // confirmation dialog on its own.
+	  bool SameParametersAs(I_Instrument &other, FourCC skip = 0) {
+		  IteratorPtr<Variable> mine(GetIterator()) ;
+		  IteratorPtr<Variable> theirs(other.GetIterator()) ;
+		  for (mine->Begin(), theirs->Begin() ;
+		       !mine->IsDone() && !theirs->IsDone() ;
+		       mine->Next(), theirs->Next()) {
+			  Variable &a=mine->CurrentItem() ;
+			  Variable &b=theirs->CurrentItem() ;
+			  if (a.GetID()==skip) continue ;
+			  // GetString formats into a buffer owned by the Variable
+			  // itself, so the two calls do not tread on each other.
+			  if (strcmp(a.GetString(),b.GetString())!=0) return false ;
+		  }
+		  return mine->IsDone() && theirs->IsDone() ;
+	  } ;
 
 	  // Start & stop the instument
       virtual bool Start(int channel,unsigned char note,bool retrigger=true)=0 ;
