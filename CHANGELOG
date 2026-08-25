@@ -1,3 +1,44 @@
+PSPATTERN 0.2.2a
+
+    The oscillators are band limited now.
+    Saw and pulse were naive: they stepped from one sample to the next
+        without regard for where inside the sample the edge fell, which
+        scatters energy off the harmonics and across the spectrum.
+        Measured on a rendered note, energy at frequencies that are not
+        in the note ran at -30 dB at A2 and -16 dB at A5, worsening
+        3 dB an octave upward. That matched a naive reference exactly,
+        which is what confirmed there was no band limiting at all.
+    Now a two sample PolyBLEP residual at each discontinuity, on the
+        main oscillator, on every member of the unison stack and on the
+        sub. Same measurement after: -67 dB at A2 and -32 dB at A5, so
+        16 dB better across the range and 37 dB at the bottom.
+    The divide only runs inside the edge window, which is twice a
+        cycle. Cost at eight voices: tone 17 to 18 per cent of a
+        block, vax 25 to 30 with the filter change below.
+
+    The filter is a real filter across its whole range.
+    A Chamberlin SVF is only stable while its coefficient stays well
+        under 2, which capped the table at 7.6 kHz and then clamped.
+        A clamped coefficient is not a corner frequency: measured,
+        cutoff 255 with resonance was not a 7.6 kHz lowpass but nearly
+        flat to 15 kHz, with the warp near the stability limit standing
+        in for an open filter. The top third of the knob did almost
+        nothing.
+    The SVF now ticks twice per sample, which halves the rate it sees
+        and buys the headroom to make the range real. Table extended to
+        30 Hz - 12.5 kHz. Measured after: cutoff 255 is -3 dB at
+        15 kHz, cutoff 192 at 3520 Hz with -32.9 dB at 10 kHz where it
+        used to be -21.2, and no resonant hump.
+    Cutoff numbers now mean different frequencies than they did. Every
+        setting is somewhat brighter than before, which is the safer
+        direction, but existing patches are worth a listen.
+
+    DEMO-2 level 0.29 to 0.26. A PolyBLEP residual overshoots slightly
+        at each edge and the filter passes more top, which together
+        took the render from no clipped samples to 84. Now 11 in 5.7
+        million, all of them transient peaks in the four full
+        arrangement rows.
+
 PSPATTERN 0.2.1a
 
     Rendering to wav did not stop when the song stopped.
@@ -29,7 +70,7 @@ PSPATTERN 0.2.1a
         bank stamps in by index are not counted, because neither was
         chosen by anybody.
 
-    NEONDUSK, a second demo song. Melody led rather than arpeggio led,
+    DEMO-2, a second demo song. Melody led rather than arpeggio led,
         with one arp channel instead of three, and a chord channel that
         runs the same ARPG command at a slower ARPS so it strums instead
         of trilling. Peak -0.09 dBFS, no clipped samples.

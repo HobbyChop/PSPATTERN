@@ -105,6 +105,56 @@ static inline int cosLookup(const short *table,unsigned int idx,unsigned int fra
 	return c0+(((c1-c0)*(int)frac)>>6) ;
 }
 
+/* ---- PolyBLEP ------------------------------------------------------
+   A naive saw or square steps from one sample to the next with no
+   regard for where inside the sample the edge actually fell, which
+   scatters energy across the spectrum instead of leaving it on the
+   harmonics. Measured on a rendered A5 saw, 2.5% of the output was at
+   frequencies that are not in the note, and it worsens 3dB an octave
+   going up: the top of a lead is where it is worst and where it is
+   heard.
+
+   The correction is a two sample polynomial residual around each
+   discontinuity. The divide only fires inside that window, which is
+   twice a cycle, so at 440Hz it is two divides per hundred samples per
+   oscillator rather than one per sample.
+
+   The pulse is built as two phase shifted saws with the width added
+   back rather than as a comparison against a threshold. That is what
+   makes any width DC free: a threshold pulse has a mean of
+   (2*duty-1)*amplitude, which is silent until the note ends and then
+   is a click, and it is why pulse width has had to stay pinned at the
+   centre on every patch written so far.
+*/
+static inline int blepResidual(unsigned int ph,unsigned int inc) {
+	if (inc==0) return 0 ;
+	if (ph<inc) {
+		int t=(int)(((unsigned long long)ph<<15)/inc) ;   // 0..32768
+		int c=32768-t ;
+		return -((c*c)>>15) ;
+	}
+	unsigned int r=0xFFFFFFFFu-ph ;
+	if (r<inc) {
+		int t=(int)(((unsigned long long)r<<15)/inc) ;
+		int c=32768-t ;
+		return (c*c)>>15 ;
+	}
+	return 0 ;
+}
+
+// Band limited saw, same +-32768 scale as the naive ramp it replaces.
+static inline int sawBlep(unsigned int ph,unsigned int inc) {
+	return ((int)(ph>>16)-32768)-blepResidual(ph,inc) ;
+}
+
+// Band limited pulse, +-32768 scale. w is the width as a 32 bit phase
+// offset, so w==0x80000000 is a square.
+static inline int pulseBlep(unsigned int ph,unsigned int inc,
+                            unsigned int w) {
+	int s=sawBlep(ph,inc)-sawBlep(ph+w,inc) ;
+	return s+(int)(w>>16)-32768 ;         // the DC the two saws left
+}
+
 // the click tail is a DC offset: cap it well under full scale
 #define CLICK_MAX (i2fp(8000))
 
@@ -306,11 +356,25 @@ bool SynthInstrument::Init() {
 			cosTable_[i]=(short)(-32000.0*cos(i*2.0*3.14159265358979/1024.0)) ;
 		}
 		for (int i=0;i<256;i++) {
-			// exponential 30Hz..~7.6kHz; f=2sin(pi fc/fs), capped for
-			// Chamberlin stability
-			double fc=30.0*pow(2.0,i*8.0/255.0) ;
-			double f=2.0*sin(3.14159265358979*fc/SYNTH_RATE)*32768.0 ;
-			if (f>32000.0) f=32000.0 ;
+			// Exponential 30Hz..~12.5kHz, with f=2sin(pi fc/fs)
+			// computed at TWICE the sample rate because the SVF is
+			// ticked twice per sample.
+			//
+			// A Chamberlin run at the sample rate is only stable while
+			// f stays well under 2, which put the ceiling at about
+			// fs/6. The old table stopped at 7.6kHz for that reason and
+			// then clamped f, and a clamped f is not a corner
+			// frequency: measured, cutoff 255 with resonance was not a
+			// 7.6kHz lowpass at all but nearly flat to 15kHz, with the
+			// warp near the limit standing in for an open filter. The
+			// knob was doing almost nothing across its top third.
+			//
+			// Ticking twice halves the effective rate the filter sees,
+			// which buys an octave of headroom and lets the whole
+			// range be real. Costs one extra pass of three multiplies.
+			double fc=30.0*pow(2.0,i*8.7/255.0) ;
+			double f=2.0*sin(3.14159265358979*fc/(2.0*SYNTH_RATE))*32768.0 ;
+			if (f>30000.0) f=30000.0 ;
 			cutTable_[i]=(short)f ;
 		}
 		for (int i=0;i<256;i++) {
@@ -795,10 +859,14 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 		unsigned int p16=phase>>16 ;
 		switch (wave) {
 			case SWT_SQUARE:
-				// pulse, not just square: at the default pwm of 0x80
-				// the threshold lands exactly on the half, so every
-				// patch written before this is bit-identical
-				s=(phase<pwThresh)?24576:-24576 ;
+				// Band limited, and built from two saws so it carries
+				// no DC at any width. The old threshold form was
+				// bit-identical to a naive pulse and left
+				// (2*duty-1)*24576 sitting on the channel whenever the
+				// width was off centre. Scaled back to the same 24576
+				// peak the threshold version had, so patch levels do
+				// not move.
+				s=(pulseBlep(phase,inc,pwThresh)*24576)>>15 ;
 				break ;
 			case SWT_TRIANGLE:
 				s=(p16<0x8000)?((int)p16*2-32768):(98302-(int)p16*2) ;
@@ -808,13 +876,16 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 				break ;
 			case SWT_SAW:
 			default:
-				s=(int)p16-32768 ;
+				s=sawBlep(phase,inc) ;
 				break ;
 		}
 		phase+=inc ;
 
 		if (subQ) {
-			int sb=(v.subPhase_&0x80000000)?-24576:24576 ;
+			// band limited too: the sub is an octave down, so it
+			// aliases less than the main oscillator, but it is also
+			// the loudest thing in a bass patch
+			int sb=(pulseBlep(v.subPhase_,inc>>1,0x80000000u)*24576)>>15 ;
 			s+=(sb*subQ)>>15 ;
 		}
 		v.subPhase_+=inc>>1 ;
@@ -831,15 +902,22 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 			// Q15 coefficient by state clamped at 1<<19, which does not
 			// fit an int
 			int mix=s ;
-			low+=(int)(((long long)f*band)>>15) ;
-			int high=mix-low-(int)(((long long)qQ*band)>>15) ;
-			band+=(int)(((long long)f*high)>>15) ;
-			if (band>SVF_CLAMP) band=SVF_CLAMP ;
-			if (band<-SVF_CLAMP) band=-SVF_CLAMP ;
-			if (low>SVF_CLAMP) low=SVF_CLAMP ;
-			if (low<-SVF_CLAMP) low=-SVF_CLAMP ;
-			if (high>SVF_CLAMP) high=SVF_CLAMP ;
-			if (high<-SVF_CLAMP) high=-SVF_CLAMP ;
+			// two passes at the same input: the filter runs at twice
+			// the sample rate so the coefficient stays in the region
+			// where a Chamberlin actually behaves like the filter it
+			// is meant to be
+			int high=0 ;
+			for (int pass=0;pass<2;pass++) {
+				low+=(int)(((long long)f*band)>>15) ;
+				high=mix-low-(int)(((long long)qQ*band)>>15) ;
+				band+=(int)(((long long)f*high)>>15) ;
+				if (band>SVF_CLAMP) band=SVF_CLAMP ;
+				if (band<-SVF_CLAMP) band=-SVF_CLAMP ;
+				if (low>SVF_CLAMP) low=SVF_CLAMP ;
+				if (low<-SVF_CLAMP) low=-SVF_CLAMP ;
+				if (high>SVF_CLAMP) high=SVF_CLAMP ;
+				if (high<-SVF_CLAMP) high=-SVF_CLAMP ;
+			}
 			s=(fltMode==VFM_LP)?low:((fltMode==VFM_BP)?band:high) ;
 			if (s>32700) s=32700 ;
 			if (s<-32700) s=-32700 ;
@@ -1355,16 +1433,21 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 		}
 		refresh-- ;
 
-		// unison stack
+		// Unison stack, band limited. Every member of the stack gets
+		// the correction, not just the centre: the residual costs a
+		// divide only in the two sample window around an edge, so a
+		// seven strong stack at 440Hz is still under two divides per
+		// hundred samples each, and a detuned stack of naive saws is
+		// exactly the case where the alias is loudest.
 		int mix=0 ;
 		if (wave==VWT_PULSE) {
 			for (int j=0;j<unison;j++) {
-				mix+=(v.uphase_[j]<pwThresh)?24576:-24576 ;
+				mix+=(pulseBlep(v.uphase_[j],uinc[j],pwThresh)*24576)>>15 ;
 				v.uphase_[j]+=uinc[j] ;
 			}
 		} else {
 			for (int j=0;j<unison;j++) {
-				mix+=(int)(v.uphase_[j]>>16)-32768 ;
+				mix+=sawBlep(v.uphase_[j],uinc[j]) ;
 				v.uphase_[j]+=uinc[j] ;
 			}
 		}
@@ -1392,7 +1475,7 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 
 		// sub square one octave down + noise
 		if (subQ) {
-			int sb=(v.subPhase_&0x80000000)?-24576:24576 ;
+			int sb=(pulseBlep(v.subPhase_,curInc>>1,0x80000000u)*24576)>>15 ;
 			mix+=(sb*subQ)>>15 ;
 		}
 		v.subPhase_+=curInc>>1 ;
@@ -1409,18 +1492,25 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 		// past what an int holds. Wrapping made the state run to its clamp
 		// and stay there: the voice stopped being audio and became a
 		// constant DC offset. They must be 64-bit.
-		low+=(int)(((long long)f*band)>>15) ;
-		int high=mix-low-(int)(((long long)qQ*band)>>15) ;
-		band+=(int)(((long long)f*high)>>15) ;
-		// ringing headroom is real; runaway is not
-		if (band>SVF_CLAMP) band=SVF_CLAMP ;
-		if (band<-SVF_CLAMP) band=-SVF_CLAMP ;
-		if (low>SVF_CLAMP) low=SVF_CLAMP ;
-		if (low<-SVF_CLAMP) low=-SVF_CLAMP ;
-		// high is derived from both, so it needs its own bound before the
-		// drive stage multiplies it by up to 1021
-		if (high>SVF_CLAMP) high=SVF_CLAMP ;
-		if (high<-SVF_CLAMP) high=-SVF_CLAMP ;
+		// two passes at the same input, as in renderTone: the filter
+		// ticks at twice the sample rate, which is what keeps the
+		// coefficient inside the range a Chamberlin is stable and
+		// untwisted in
+		int high=0 ;
+		for (int pass=0;pass<2;pass++) {
+			low+=(int)(((long long)f*band)>>15) ;
+			high=mix-low-(int)(((long long)qQ*band)>>15) ;
+			band+=(int)(((long long)f*high)>>15) ;
+			// ringing headroom is real; runaway is not
+			if (band>SVF_CLAMP) band=SVF_CLAMP ;
+			if (band<-SVF_CLAMP) band=-SVF_CLAMP ;
+			if (low>SVF_CLAMP) low=SVF_CLAMP ;
+			if (low<-SVF_CLAMP) low=-SVF_CLAMP ;
+			// high is derived from both, so it needs its own bound
+			// before the drive stage multiplies it by up to 1021
+			if (high>SVF_CLAMP) high=SVF_CLAMP ;
+			if (high<-SVF_CLAMP) high=-SVF_CLAMP ;
+		}
 
 		int s=(fltMode==VFM_LP)?low:((fltMode==VFM_BP)?band:high) ;
 
