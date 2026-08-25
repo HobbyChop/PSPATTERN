@@ -1,0 +1,34 @@
+-include $(PWD)/rules_base
+
+DEFINES := \
+	-DPLATFORM_$(PLATFORM) \
+	-DCPP_MEMORY \
+	-DNDEBUG
+
+TARGET=lgpt
+
+export OBJS:=$(OFILES)
+
+TARGET = lgpt-psp
+
+EXTRA_TARGETS = EBOOT.PBP
+PSP_EBOOT_TITLE = PSPATTERN
+# regenerate with tools/make_pspattern_icon.py
+PSP_EBOOT_ICON = $(PWD)/pspattern_icon.png
+PSP_EBOOT_PIC1 = $(PWD)/pspattern_bg.png
+# PRX-format EBOOT — the module format modern CFW loaders expect;
+# plain-ELF EBOOTs from the current toolchain fail with 80020009
+# (field-verified on hardware; same fix as the PSPECTRA/PSPHASE apps)
+BUILD_PRX = 1
+# Skip the large-memory SFO flag (slim-only) for PSP-1000 compatibility
+PSP_LARGE_MEMORY = 0
+
+PSPSDK=$(shell $(PSPDEV)/bin/psp-config --pspsdk-path)
+PSPBIN = $(PSPSDK)/../bin
+
+CFLAGS	:=	-O3 -G0 -Wall $(DEFINES) -I$(PWD)/../sources -I$(PSPSDK)/include
+CXXFLAGS:=	$(CFLAGS) -fexceptions -fno-rtti
+ASFLAGS :=	$(CFLAGS)
+LIBS = -L$(PSPDEV)/psp/lib -lSDL_image -lpng -lz -lstdc++ -lSDL -lGL -lGLU -lglut -lm -lc -ljpeg
+LIBS += -lpspvfpu -lpspgu -lpsphprm -lpsprtc -lpspaudio -lpspirkeyb -lpsppower -lpspusb -lpspsdk
+EXTENSION:= elf

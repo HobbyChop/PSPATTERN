@@ -11,6 +11,7 @@ PSPATTERN is a fork of [LittleGPTracker](https://github.com/Mdashdotdashn/Little
 by Marc Nostromo, released under the GNU General Public License version 3.
 
 * Website and user guide: [pspattern.hobbychop.com](https://pspattern.hobbychop.com)
+* Releases: [github.com/HobbyChop/PSPATTERN/releases](https://github.com/HobbyChop/PSPATTERN/releases)
 * Shop: [hobbychop.com](https://hobbychop.com)
 
 ## Features
@@ -20,6 +21,8 @@ by Marc Nostromo, released under the GNU General Public License version 3.
   analogue stack with hard sync and ring modulation, and four operator FM
 * A drum kit synthesised at load time, so it costs no disk space and can
   be redistributed freely
+* Soundfont support: drop an sf2 in a project and every preset in it
+  becomes a playable instrument, with its key splits and loop points
 * Per step velocity, written in decimal rather than hexadecimal
 * Tables: sixteen rows of automation running under a note at tick rate
 * A tempo synced delay and a reverb, on sends shared by all channels

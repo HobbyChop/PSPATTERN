@@ -9,6 +9,7 @@ four engine synthesiser, a built in drum kit, a delay and a reverb, and
 MIDI in and out through the PSP-MIDI adapter.
 
   Website and guide   https://pspattern.hobbychop.com
+  Releases            https://github.com/HobbyChop/PSPATTERN/releases
   Source              https://github.com/HobbyChop/PSPATTERN
   Shop                https://hobbychop.com
 
@@ -29,6 +30,7 @@ The other files in the folder are:
   config.xml       startup settings
   mapping.xml      button assignments
   custom_font.xml  the screen font
+  samplelib        a folder for samples you want in reach of every song
 
 usbmidi.prx is only needed if you have a PSP-MIDI adapter. Without it
 the tracker runs normally and the MIDI instrument type does nothing.
@@ -52,7 +54,9 @@ left or right changes a value by one. Holding O and pressing up or down
 changes it by sixteen, or by ten on the velocity column.
 
 Holding R and pressing a direction moves between screens. The bottom
-line of every screen lists the moves available from where you are.
+line of every screen lists the moves available from where you are. It
+does not list all of them. Copying, cloning, soloing and the rest are
+in section 8.
 
 
 4. SCREENS
@@ -126,7 +130,93 @@ panel at the bottom explains it. Hold O and press up or down to pick a
 command from the list.
 
 
-8. COMMANDS
+8. SELECTING, COPYING AND CLONING
+
+The song, chain, phrase and table screens share one editing grammar.
+None of it appears on the bottom line of the screen, so it is worth
+reading once rather than hoping to find it.
+
+ORDER MATTERS
+
+The program looks at every button already held at the moment you press
+the last one. A combination means hold the first and then press the
+second. Pressing them the other way round runs whatever the first
+button does on its own, which is usually not what you wanted.
+
+MAKING A SELECTION
+
+Hold X and press L. The cell under the cursor is highlighted. Move with
+the D-pad and the selection grows to cover what you pass over.
+
+  X then L          start a selection at the cursor
+  X on its own      copy the selection and end it
+  O then L          cut the selection
+  O then direction  change every value in the selection at once
+  L then X          widen: first to all columns, again to all sixteen rows
+  R then X          interpolate the selection
+
+With no selection up, hold O and press L to paste at the cursor. The
+clipboard holds whatever you copied last, so a block can be pasted as
+many times as you like.
+
+INTERPOLATE
+
+Interpolate draws a straight line between the first and last row of the
+selection and fills in everything between.
+
+The selection must be one column wide, and that column must be the note
+column or one of the two parameter columns. There must be at least two
+rows, and both ends must already hold a value. On notes, an empty cell
+at either end gives the message No note info and nothing happens.
+
+Put C-3 on row 0 and C-4 on row 8, select the note column between them
+and interpolate, and the result is C-3, C#3, D#3, E-3, F#3, G-3, A-3,
+A#3, C-4. Twelve semitones over eight steps does not divide evenly and
+the remainder is dropped rather than rounded, which is why the steps
+are uneven.
+
+On a parameter column the four digits are treated as one number
+counting up. That suits a volume or cutoff sweep. It does not suit a
+command whose digits mean separate things, such as an arp shape.
+
+CLONING
+
+Hold X and press L, then keep holding and press O with L. Whatever is
+under the cursor is duplicated to the next free number and the cursor
+is repointed at the copy.
+
+  Song screen        the chain under the cursor
+  Chain screen       the phrase under the cursor
+  Phrase screen      the instrument, or the table if the cursor is on
+                     a TABL parameter
+  Instrument screen  the instrument
+
+Cloning is for when a part is used in several places and you want to
+vary one of them. Editing the original would change all of them. If no
+number is free it says so and changes nothing.
+
+SINGLE STEPS
+
+  O on its own  on an empty note step, repeat the last note and
+                instrument entered
+  X then O      clear the step, taking the instrument with the note and
+                the parameter with the command
+  X then R      mute the channel
+  O then R      solo the channel
+
+Pressing O on a step that already holds a note does not overwrite it.
+It remembers that note and instrument as the pair to repeat next time,
+which is how a sound is picked up from one row and stamped down the
+phrase.
+
+Mute and solo depend on which button you release first. Let go of R
+while X is still down and the mute stays on. Let go of X while R is
+still down and the channel comes straight back. The same combination
+gives both a latch for arranging and a momentary drop for checking what
+a part is doing.
+
+
+9. COMMANDS
 
 Each command takes a four digit parameter. The help panel writes the
 parameter as aabb, meaning the first two digits and the last two are
@@ -173,7 +263,7 @@ PTCH and VOLM take a rate in the first two digits. A rate of 00 jumps
 straight to the target instead of sliding.
 
 
-9. TABLES
+10. TABLES
 
 A table is sixteen rows of three command columns that run alongside a
 note. Use one for anything that has to change over time, such as a
@@ -185,12 +275,13 @@ instrument to run one automatically from its table field.
 Tables run at tick rate, which is faster than the phrase steps.
 
 
-10. INSTRUMENTS
+11. INSTRUMENTS
 
 An instrument is one of three types. Change the type on the top row of
 the instrument screen.
 
-SAMPLE plays a wav file or one of the built in drums. It has volume,
+SAMPLE plays one of the built in drums, a wav file, or a preset from
+a soundfont. Section 14 covers where those files go. It has volume,
 pan, root note, fine tune, interpolation, loop mode and points, slice
 count, a drive and bit crush stage, a filter with cutoff, resonance and
 type, a feedback stage, an attenuator and an amplitude envelope.
@@ -202,7 +293,7 @@ SYNTH generates sound on the PSP. Pick one of four engines on the second
 row.
 
 
-11. THE SYNTH ENGINES
+12. THE SYNTH ENGINES
 
 TONE is a single oscillator. Saw, square, triangle or sine, with a pulse
 width control on the square, a sub oscillator an octave down, and a
@@ -224,7 +315,7 @@ greater than sign reaches the output. Each operator has a ratio, level,
 detune and its own envelope.
 
 
-12. HARD SYNC AND RING MODULATION
+13. HARD SYNC AND RING MODULATION
 
 Both are on the VAX engine and both are off at zero, so patches made
 before they existed are unaffected.
@@ -249,7 +340,93 @@ Both are patch parameters. They cannot yet be changed from a phrase or
 table command.
 
 
-13. THE DRUM KIT
+14. SAMPLES AND SOUNDFONTS
+
+A sample instrument plays one of the built in drums, a wav file, or a
+preset from a soundfont. Each project carries its own set.
+
+WHERE FILES GO
+
+Every project is a folder named lgpt_NAME under
+ms0:/PSP/GAME/PSPATTERN/, and inside it is a samples folder:
+
+  ms0:/PSP/GAME/PSPATTERN/lgpt_MYSONG/samples/
+
+Everything in there is read when the project opens. Copying a wav into
+that folder from a computer is all that is needed. There is no import
+step and nothing else to update.
+
+Creating a project on the PSP makes the project folder and its samples
+folder for you.
+
+THE SAMPLE LIBRARY
+
+Beside the projects is a folder called samplelib:
+
+  ms0:/PSP/GAME/PSPATTERN/samplelib/
+
+Nothing in it is loaded or playable on its own. It is the folder the
+import browser opens in, so it is where to keep files you want within
+reach of every song. You can fill it before you have created a single
+project, and it may hold subfolders.
+
+If samplelib is missing, importing reports that it cannot access the
+library. Creating an empty folder with that name is the fix.
+
+IMPORTING
+
+On the instrument screen set the type to SAMPLE, move to the file field
+and press O. The browser opens in samplelib. Choosing a file copies it
+into the current project samples folder and loads it straight away.
+
+It is a copy. The original stays in samplelib and the project gets its
+own version. That is what makes a project folder complete on its own:
+move it to another memory stick and it still plays. It also means a
+file used in four projects is stored four times.
+
+Saving a song does not move or copy any audio. The copy already
+happened when you imported.
+
+THE SAMPLE LIST
+
+The list is sorted alphabetically, and the drums, your wav files and
+any soundfont presets sit in it together. A file named Bassline lands
+between ANTOMLO and HDCLAP rather than at the end. Sorting is by
+character code, so capitals come before lower case.
+
+A project stores the name of the sample an instrument uses, not its
+position in the list. Adding or removing other files does not repoint
+an instrument at the wrong sample. A name that cannot be found gives no
+sample and silence rather than something else.
+
+SOUNDFONTS
+
+A .sf2 file in a project samples folder is read when the project opens,
+and every preset in it appears in the sample list under its own name.
+Note ranges, root keys and loop points come from the file, so a preset
+with several samples mapped across the keyboard plays the right one for
+each note.
+
+Limits:
+
+  Three .sf2 files per project. A fourth is not loaded.
+
+  Presets share the 128 slot sample list with the drums and your wavs.
+
+  Presets play in mono. A stereo preset uses its left sample.
+
+  Velocity layers are not chosen. The loudest layer plays at every
+  velocity. The velocity column still sets the volume.
+
+  The whole bank is held in memory while the project is open. A large
+  soundfont may not fit, and anything that does not fit is silent.
+
+The start, loop and end fields on the instrument screen read zero for a
+preset. Those values are per note for a soundfont and the screen has
+one set of fields to show them in.
+
+
+15. THE DRUM KIT
 
 The drum instruments are generated when a project loads, not read from
 sample files. That is what the progress line on the loading screen is
@@ -258,7 +435,7 @@ doing. They cost no disk space and can be redistributed freely.
 Each drum has a soft and a hard variant.
 
 
-14. THE MIXER AND THE SEND EFFECTS
+16. THE MIXER AND THE SEND EFFECTS
 
 Each channel has a level, a high pass, a low pass, and a send to the
 delay and to the reverb. The two send effects are shared by all
@@ -268,7 +445,7 @@ The master has a drive control, a clipper with several modes, and a
 gain switch.
 
 
-15. THE PROJECT SCREEN
+17. THE PROJECT SCREEN
 
   tempo    beats per minute, and the tick count in brackets
   transp   transpose the whole song
@@ -286,7 +463,7 @@ The file column has load, save, save as, two compaction tools, and a
 render switch.
 
 
-16. SAVING AND RENDERING
+18. SAVING AND RENDERING
 
 Save song writes to the current project folder. Save song as makes a new
 one. Projects live in ms0:/PSP/GAME/PSPATTERN/lgpt_NAME/.
@@ -300,7 +477,7 @@ project folder while the song plays. Stems writes one file per channel.
 Set it back to Off when you are done, or every play writes a new file.
 
 
-17. LEVELS
+19. LEVELS
 
 Instrument volume runs from 0 to 255 and is shown as a percentage of
 that range. Note that 50 percent is unity gain, not half volume. Above
@@ -311,7 +488,7 @@ The two demo songs shipped with this build peak around ten decibels
 below full scale and are known to be too quiet.
 
 
-18. KNOWN ISSUES
+20. KNOWN ISSUES
 
   The PAN command on sample instruments is unverified and may not work.
 
@@ -324,10 +501,8 @@ below full scale and are known to be too quiet.
   A few stray pixels are drawn on the bottom rule of the oscillator
   panel underneath the ring slider. It is cosmetic.
 
-  The product name is provisional.
 
-
-19. LICENCE
+21. LICENCE
 
 PSPATTERN is free software under the GNU General Public License version
 3. See LICENSE.txt. The complete corresponding source code is included
