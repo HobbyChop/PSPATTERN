@@ -1,3 +1,50 @@
+PSPATTERN 0.2.4a
+
+    No engine changes. Nothing under sources changed since 0.2.3a, so
+        the program itself is identical and a tester who already has
+        0.2.3a gains nothing by installing this. It is a version for
+        the work around the program.
+
+    A patch parameter the loader does not recognise is now a build
+        error.
+    InstrumentBank::RestoreContent applies a PARAM only where the name
+        matches one of the instrument's variables exactly, and skips
+        anything else without a word. Both demo songs had been setting
+        "cutoff" and "reso" on every drum since they were written; a
+        sample instrument's filter is "filter cut" and "filter res",
+        and neither number ever reached the engine. The kit was
+        balanced by ear against a patch that was ignoring two of its
+        settings.
+    The song builder now refuses to write a song carrying a parameter
+        the loader would drop, and reads the valid names out of the C++
+        rather than keeping a copy of them, so the check cannot drift
+        from what it checks.
+    The dead parameters are removed rather than renamed. Applying them
+        now would be an untested change to two finished songs, and a
+        4 kHz lowpass on the kick would take exactly the click it is
+        supposed to keep. Removing a setting that never applied cannot
+        change what either song sounds like.
+
+    DEMO-2: the breakdown chord breathes.
+    Row 5 held one strum a bar and then did nothing with it for four
+        bars. A table now steps the volume down and back with the
+        cutoff following, looping every twelve ticks, which at six
+        ticks to a step is an eighth note, so it lands with the open
+        hats. The amplitude envelope across that row moves through
+        10.9 dB where it was flat. Not in a tester build, which ships
+        no demo songs.
+
+    Sampler measured, not yet fixed.
+    The interpolator is healthy: at a ratio of 1.4983 it produces
+        -76.1 dB of everything-that-is-not-the-fundamental against
+        -76.5 dB for the same job done in floating point, so it is
+        within half a decibel of what linear interpolation can do.
+    Pitching a sample up is the gap. There is no filter before the
+        decimation, so a band limited saw played at 1.4983x puts
+        -26.5 dB of energy off the harmonic grid. That is worse than
+        the oscillators were before they were band limited, and it is
+        the next thing to fix.
+
 PSPATTERN 0.2.3a
 
     FM: the operator sine is interpolated now.
