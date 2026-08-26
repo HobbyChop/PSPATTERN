@@ -1,4 +1,5 @@
 #include "SDLAudioDriver.h"
+#include <string.h>
 #include "Services/Midi/MidiService.h"
 #include "Services/Time/TimeService.h"
 #include "System/Console/Trace.h"
@@ -154,8 +155,16 @@ void SDLAudioDriver::OnChunkDone(Uint8 *stream, int len) {
 
     while (bufferSize_ - bufferPos_ < len) {
 
-        // First move remaining bytes at the front
-        memcpy(mainBuffer_, mainBuffer_ + bufferPos_, bufferSize_ - bufferPos_);
+        // First move remaining bytes at the front.
+        //
+        // memmove, not memcpy: source and destination are the same
+        // buffer and they overlap whenever bufferPos_ is less than
+        // what is left. Overlapping memcpy is undefined, and the
+        // definition it happens to get is the C library's, which is
+        // not the same library on the machine this is developed on as
+        // on the machine it runs on.
+        memmove(mainBuffer_, mainBuffer_ + bufferPos_,
+                bufferSize_ - bufferPos_);
 
         // then get next queued buffer and copy data from it
 

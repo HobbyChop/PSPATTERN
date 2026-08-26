@@ -1,3 +1,71 @@
+PSPATTERN 0.2.6a
+
+    R with a direction moves between screens and does nothing else.
+        Everything that was held with R and was not navigation is held
+        with L now, on every screen, the way the mixer already worked:
+        mute, solo, and interpolate.
+
+    The combos those collided with went the other way onto R: start a
+        selection, clone, paste, cut, and widen. Nothing there can
+        clash with the screen map, because a combo held with X or O
+        never reaches the code that reads the map.
+
+    On the mixer, the four settings of the send effects are walked with
+        left and right. They sit side by side on one line and always
+        did; reaching them took up and down. Up from that line returns
+        to the channel strips.
+
+    The version the program announces comes from the same place the
+        release is named after. It had drifted to 0.2.0a while the
+        builds went out as 0.2.5a.
+
+    DEMO-3, a chiptune arrangement that leans on PDX. Not shipped in
+        tester builds, which carry no songs at all.
+
+PSPATTERN 0.2.5a
+
+    The audio block was 128 frames, which gave the whole render 2.9ms
+        to finish, 344 times a second. A block that overruns is filled
+        with silence by the driver, and a run of those is a buzz at the
+        block rate sitting on top of the music rather than a dropout
+        anybody would recognise as one. That is the grit, and it is why
+        it never appeared in the emulator: the arithmetic is identical
+        there, only the time budget is not.
+    Default is 256 now. Both the block size and the prebuffer count are
+        settable in config.xml as AUDIOBUFFERSIZE and AUDIOPREBUFFER.
+        If it is still gritty, try 512 and then 1024. Latency is frames
+        times prebuffer over 44100.
+
+    Muted channels no longer render. The instrument was rendered in
+        full and the mute applied afterwards, so muting saved only the
+        channel strip and soloing saved nothing at all. Soloing one
+        channel to find out what was overloading the machine reported
+        very nearly the load of the whole song.
+
+    The DSP figure shows the worst block when one overruns, instead of
+        an average smoothed over eight blocks and then clamped at 99. A
+        machine can glitch steadily while an average sits at twenty.
+
+    The channel strip is one pass instead of three. The high pass, the
+        low pass and the fader each walked the whole block separately.
+
+    The send path is 32 bit. Accumulate runs for every sample of every
+        sending channel and was widening to 64 bit to multiply by a
+        0..255 send. The delay line works in whole samples like the
+        comb bank already did.
+
+    PDX saw and square dropped a 64 bit multiply per sample that was
+        never needed: the compare against the knee already bounds the
+        product under 2^31. PDX is also in the load test now, which it
+        was never in.
+
+    The band limiting no longer divides per edge; the reciprocal moved
+        to the pitch change.
+
+    Wav writes are batched into 32 KB, which is why stems rendering
+        broke up on hardware: eight files at 1.4 MB a second in blocks
+        of a few hundred bytes is more than a Memory Stick will take.
+
 PSPATTERN 0.2.4a
 
     No engine changes. Nothing under sources changed since 0.2.3a, so

@@ -16,7 +16,7 @@
    audio will stutter while it runs; that is the price of measuring
    the render path with the render path.                            */
 
-#define DSPB_ENGINES 5      // tone / pdx / vax / fm / sample-ish floor
+#define DSPB_ENGINES 6      // tone / pdx / vax / fm / sample-ish floor
 #define DSPB_STEPS   4      // 1, 2, 4, 8 voices
 
 namespace DspBench {

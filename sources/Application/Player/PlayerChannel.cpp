@@ -126,6 +126,25 @@ void PlayerChannel::applyDeclick(fixed *buffer, int samplecount) {
 }
 
 bool PlayerChannel::Render(fixed *buffer,int samplecount) {
+
+   // A muted channel used to render its instrument in FULL and then
+   // throw the result away: the mute was applied after the synth had
+   // already done all the work. Muting saved only the channel strip,
+   // and soloing saved nothing at all, so eight voices ran to hear
+   // one. The synth is the expensive part of this by a wide margin,
+   // which is why soloing a channel to find out what was overloading
+   // the machine reported almost the same load as the whole song.
+   //
+   // Nothing downstream of this point can be heard while muted, the
+   // declick tail and the effect sends included, so there is nothing
+   // worth computing. The voice stops advancing while it is silent
+   // and picks up where it left off when it comes back; the next
+   // note-on resyncs it either way, because notes are started by the
+   // player and not by the instrument.
+   if (muted_) {
+       return false ;
+   }
+
    if (instr_) {
      bool tableSlice=SyncMaster::GetInstance()->TableSlice() ;
      bool status=instr_->Render(index_,buffer,samplecount,tableSlice) ;
@@ -135,55 +154,63 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
          instr_=0 ;
          releasing_=false ;
      }
-     if (status && !muted_) {
-         // Apply HPF if enabled
-         if (hpfMode_ != 0) {
-             for (int n = 0; n < samplecount; n++) {
-                 int idx = n * 2;
-                 fixed in_l = buffer[idx];
-                 fixed in_r = buffer[idx + 1];
-                 fixed out_l =
-                     fp_mul(hpfAlpha_, fp_add(hpfPrevOutput_[0],
-                                              fp_sub(in_l, hpfPrevInput_[0])));
-                 fixed out_r =
-                     fp_mul(hpfAlpha_, fp_add(hpfPrevOutput_[1],
-                                              fp_sub(in_r, hpfPrevInput_[1])));
-                 buffer[idx] = out_l;
-                 buffer[idx + 1] = out_r;
-                 hpfPrevInput_[0] = in_l;
-                 hpfPrevInput_[1] = in_r;
-                 hpfPrevOutput_[0] = out_l;
-                 hpfPrevOutput_[1] = out_r;
-             }
-         }
+     if (status) {
+         // One pass, not three.
+         //
+         // The high pass, the low pass and the fader each used to walk
+         // the whole block on their own, so a channel with both
+         // filters on read and wrote every sample three times over.
+         // The arithmetic below is the same operations in the same
+         // order as before, per sample, with the same state updates:
+         // what changes is that a sample is loaded once, carried
+         // through the strip in registers, and stored once. On a
+         // machine with this little cache, the passes were costing
+         // more than the maths in them.
+         //
+         // The flags are hoisted, so the branches inside are on
+         // values that do not change for the length of the block.
+         const bool doHpf = (hpfMode_ != 0);
+         const bool doLpf = (lpfFreq_ != 0);
+         const fixed chanGain = (velocity_ == i2fp(1))
+                                    ? volume_
+                                    : fp_mul(volume_, velocity_);
+         const bool doGain = (chanGain != i2fp(1));
 
-         // Apply LPF if enabled
-         if (lpfFreq_ != 0) {
-             fixed one_minus_alpha = fp_sub(i2fp(1), lpfAlpha_);
+         if (doHpf || doLpf || doGain) {
+             const fixed one_minus_alpha = fp_sub(i2fp(1), lpfAlpha_);
              for (int n = 0; n < samplecount; n++) {
-                 int idx = n * 2;
-                 fixed in_l = buffer[idx];
-                 fixed in_r = buffer[idx + 1];
-                 fixed out_l = fp_add(fp_mul(lpfAlpha_, in_l),
-                                      fp_mul(one_minus_alpha, lpfPrevOutput_[0]));
-                 fixed out_r = fp_add(fp_mul(lpfAlpha_, in_r),
-                                      fp_mul(one_minus_alpha, lpfPrevOutput_[1]));
-                 buffer[idx] = out_l;
-                 buffer[idx + 1] = out_r;
-                 lpfPrevOutput_[0] = out_l;
-                 lpfPrevOutput_[1] = out_r;
-             }
-         }
+                 const int idx = n * 2;
+                 fixed l = buffer[idx];
+                 fixed r = buffer[idx + 1];
 
-         // Apply per-channel volume, and the velocity of the note
-         // that is sounding. Folded into one multiply: two passes over
-         // the block to apply two gains is a pass too many on this
-         // machine, and the product is exact in Q15 either way.
-         fixed chanGain = (velocity_ == i2fp(1)) ? volume_
-                                                 : fp_mul(volume_, velocity_);
-         if (chanGain != i2fp(1)) {
-             for (int i = 0; i < samplecount * 2; i++) {
-                 buffer[i] = fp_mul(buffer[i], chanGain);
+                 if (doHpf) {
+                     const fixed in_l = l, in_r = r;
+                     l = fp_mul(hpfAlpha_, fp_add(hpfPrevOutput_[0],
+                                                  fp_sub(in_l, hpfPrevInput_[0])));
+                     r = fp_mul(hpfAlpha_, fp_add(hpfPrevOutput_[1],
+                                                  fp_sub(in_r, hpfPrevInput_[1])));
+                     hpfPrevInput_[0] = in_l;
+                     hpfPrevInput_[1] = in_r;
+                     hpfPrevOutput_[0] = l;
+                     hpfPrevOutput_[1] = r;
+                 }
+
+                 if (doLpf) {
+                     l = fp_add(fp_mul(lpfAlpha_, l),
+                                fp_mul(one_minus_alpha, lpfPrevOutput_[0]));
+                     r = fp_add(fp_mul(lpfAlpha_, r),
+                                fp_mul(one_minus_alpha, lpfPrevOutput_[1]));
+                     lpfPrevOutput_[0] = l;
+                     lpfPrevOutput_[1] = r;
+                 }
+
+                 if (doGain) {
+                     l = fp_mul(l, chanGain);
+                     r = fp_mul(r, chanGain);
+                 }
+
+                 buffer[idx] = l;
+                 buffer[idx + 1] = r;
              }
          }
 
@@ -193,7 +220,7 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
          // the same reason it does on a desk: what goes to the
          // effects is what the channel actually sounds like, after
          // its filters and its fader -- not the raw instrument.
-         if (!muted_ && (delaySend_ > 0 || reverbSend_ > 0)) {
+         if (delaySend_ > 0 || reverbSend_ > 0) {
              SendFx::Accumulate(buffer, samplecount, delaySend_,
                                 reverbSend_);
          }
@@ -203,17 +230,17 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
          if (declickPending_ || click_[0] || click_[1]) {
              for (int i = 0; i < samplecount * 2; i++) buffer[i] = 0;
              applyDeclick(buffer, samplecount);
-             return !muted_;
+             return true;
          }
      }
-     return (status && !muted_);
+     return status ;
    } else {
        // no instrument at all (note killed, nothing retriggered): the
        // cut still left a step, so ring its tail out here
        if (declickPending_ || click_[0] || click_[1]) {
            for (int i = 0; i < samplecount * 2; i++) buffer[i] = 0;
            applyDeclick(buffer, samplecount);
-           return !muted_;
+           return true;
        }
        return false;
    }

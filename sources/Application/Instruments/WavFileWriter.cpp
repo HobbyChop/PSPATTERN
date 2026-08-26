@@ -1,9 +1,17 @@
 #include "WavFileWriter.h"
+#include <string.h>
 #include "Services/Audio/Audio.h"
 #include "System/Console/Trace.h"
 
+// 32 KB a file. Eight stems is a quarter of a megabyte of buffer,
+// which the PSP can spare, against writes that arrive 64 times less
+// often and are the size a flash card actually wants.
+#define WAV_PENDING_SHORTS (16 * 1024)
+
 WavFileWriter::WavFileWriter(const char *path)
-    : file_(0), buffer_(0), bufferSize_(0), sampleCount_(0) {
+    : file_(0), buffer_(0), bufferSize_(0), sampleCount_(0),
+      pending_(0), pendingUsed_(0) {
+    pending_ = (short *)malloc(WAV_PENDING_SHORTS * sizeof(short));
     Path filePath(path);
     file_ = FileSystem::GetInstance()->Open(filePath.GetPath().c_str(), "wb");
     if (file_) {
@@ -92,14 +100,46 @@ void WavFileWriter::AddBuffer(fixed *bufferIn, int size) {
         }
         *s++ = short(fp2i(v));
     };
-    file_->Write(buffer_, 2, size * 2);
+    // Into the pending buffer, and out to the card only when there is
+    // a worthwhile amount of it. Falls back to writing straight
+    // through if the buffer could not be allocated, which is the old
+    // behaviour and still correct, just slower.
+    if (!pending_) {
+        file_->Write(buffer_, 2, size * 2);
+    } else {
+        int n = size * 2;
+        const short *src = buffer_;
+        while (n > 0) {
+            int room = WAV_PENDING_SHORTS - pendingUsed_;
+            int take = (n < room) ? n : room;
+            memcpy(pending_ + pendingUsed_, src, take * sizeof(short));
+            pendingUsed_ += take;
+            src += take;
+            n -= take;
+            if (pendingUsed_ == WAV_PENDING_SHORTS) {
+                flush();
+            }
+        }
+    }
     sampleCount_ += size;
+};
+
+void WavFileWriter::flush() {
+    if (!file_ || !pending_ || pendingUsed_ == 0)
+        return;
+    file_->Write(pending_, 2, pendingUsed_);
+    pendingUsed_ = 0;
 };
 
 void WavFileWriter::Close() {
 
     if (!file_)
         return;
+
+    // Whatever is still held has to reach the card before Tell is
+    // asked where the end is, or the header records a length that is
+    // short by up to the buffer size.
+    flush();
 
     size_t len = file_->Tell();
     len = Swap32(len - 8);
@@ -115,4 +155,5 @@ void WavFileWriter::Close() {
     file_->Close();
     SAFE_DELETE(file_);
     SAFE_FREE(buffer_);
+    SAFE_FREE(pending_);
 };

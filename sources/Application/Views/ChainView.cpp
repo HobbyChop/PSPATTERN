@@ -388,12 +388,12 @@ void ChainView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
     if (!pressed) {
         if (viewMode_ == VM_MUTEON) {
-            if (mask & EPBM_R) {
+            if (mask & EPBM_L) {
                 toggleMute();
             }
         };
         if (viewMode_ == VM_SOLOON) {
-            if (mask & EPBM_R) {
+            if (mask & EPBM_L) {
                 switchSoloMode();
             }
         };
@@ -412,9 +412,9 @@ void ChainView::ProcessButtonMask(unsigned short mask, bool pressed) {
     }
 
     if (viewMode_ == VM_CLONE) {
-        if ((mask & EPBM_A) && (mask & EPBM_L)) {
+        if ((mask & EPBM_A) && (mask & EPBM_R)) {
             clonePosition();
-            mask &= (0xFFFF - (EPBM_A | EPBM_L));
+            mask &= (0xFFFF - (EPBM_A | EPBM_R));
         } else {
             viewMode_ = VM_SELECTION;
         }
@@ -458,10 +458,10 @@ void ChainView::processNormalButtonMask(unsigned short mask) {
             warpInColumn(+1);
         if (mask & EPBM_A)
             cutPosition();
-        if (mask & EPBM_L) {
+        if (mask & EPBM_R) {
             viewMode_ = VM_CLONE;
         };
-        if (mask & EPBM_R)
+        if (mask & EPBM_L)
             toggleMute();
     } else {
 
@@ -476,14 +476,14 @@ void ChainView::processNormalButtonMask(unsigned short mask) {
                 updateCursorValue(-0x01);
             if (mask & EPBM_RIGHT)
                 updateCursorValue(0x01);
-            if (mask & EPBM_L)
+            if (mask & EPBM_R)
                 pasteClipboard();
             if (mask == EPBM_A) {
                 pasteLastPhrase();
                 if (viewData_->chainCol_ == 0)
                     viewMode_ = VM_NEW;
             }
-            if (mask & EPBM_R)
+            if (mask & EPBM_L)
                 switchSoloMode();
         } else {
 
@@ -564,9 +564,9 @@ void ChainView::processSelectionButtonMask(unsigned short mask) {
     if (mask & EPBM_B) {
         if (mask == EPBM_B)
             copySelection();
-        if (mask & EPBM_R)
-            toggleMute();
         if (mask & EPBM_L)
+            toggleMute();
+        if (mask & EPBM_R)
             extendSelection();
     } else {
 
@@ -583,10 +583,10 @@ void ChainView::processSelectionButtonMask(unsigned short mask) {
             if (mask & EPBM_RIGHT)
                 updateSelectionValue(0x01);
 
-            if (mask & EPBM_L) {
+            if (mask & EPBM_R) {
                 cutSelection();
             }
-            if (mask & EPBM_R)
+            if (mask & EPBM_L)
                 switchSoloMode();
         } else {
 

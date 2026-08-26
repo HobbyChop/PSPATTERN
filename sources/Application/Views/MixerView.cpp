@@ -71,19 +71,47 @@ void MixerView::onStop() {
 void MixerView::OnFocus() { viewData_->mixerCol_ = viewData_->songX_; }
 
 void MixerView::updateCursor(int dx,int dy) {
+
+    // The four send settings -- delay division, feedback, reverb size,
+    // damping -- are four separate entries in the cursor model because
+    // that is how the channel grid above is indexed. On screen they sit
+    // side by side on one line. So moving between them was up and down,
+    // against everything the eye was telling you.
+    //
+    // Below they behave as what they look like: one row, walked with
+    // left and right.
+    bool onSends = (mixerRow_ >= MIXER_CHAN_ROWS);
+
     if (dy != 0) {
-        // UP/DOWN cycles rows 0..3. Row 0 is the bus, which is drawn,
-        // saved, and read by PlayerMixer to route the channel -- it
-        // just had no way to reach it, so every channel stayed on
-        // whatever bus the file said forever.
-        if (dy < 0) {
-            mixerRow_ = (mixerRow_ == 0) ? MIXER_ROW_COUNT - 1 : mixerRow_ - 1;
+        if (onSends) {
+            // vertically the whole send line is a single row: up goes
+            // back to the channel grid, down wraps to the top of it
+            mixerRow_ = (dy < 0) ? (MIXER_CHAN_ROWS - 1) : 0;
+        } else if (dy < 0) {
+            // Row 0 is the bus, which is drawn, saved, and read by
+            // PlayerMixer to route the channel -- it just had no way to
+            // reach it, so every channel stayed on whatever bus the
+            // file said forever.
+            mixerRow_ = (mixerRow_ == 0) ? MIXER_CHAN_ROWS : mixerRow_ - 1;
         } else {
-            mixerRow_ = (mixerRow_ == MIXER_ROW_COUNT - 1) ? 0 : mixerRow_ + 1;
+            mixerRow_ = (mixerRow_ == MIXER_CHAN_ROWS - 1)
+                            ? MIXER_CHAN_ROWS       // into the sends, at dly
+                            : mixerRow_ + 1;
         }
 		isDirty_ = true;
+        return;
     }
+
     if (dx != 0) {
+        if (onSends) {
+            int f = (mixerRow_ - MIXER_CHAN_ROWS) + dx;
+            if (f < 0) f = 0;
+            if (f > (MIXER_ROW_COUNT - MIXER_CHAN_ROWS - 1))
+                f = MIXER_ROW_COUNT - MIXER_CHAN_ROWS - 1;
+            mixerRow_ = MIXER_CHAN_ROWS + f;
+            isDirty_ = true;
+            return;
+        }
         // LEFT/RIGHT switches between channels (0-7 only, Master is
         // display-only)
         int x = viewData_->mixerCol_;
@@ -150,15 +178,34 @@ void MixerView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
 void MixerView::processNormalButtonMask(unsigned int mask) {
 
-    // R Modifier
-    if (mask & EPBM_R) {
+    // L modifier: mute, solo and unmute-all.
+    //
+    // These were on R, which is also the key that leaves this screen:
+    // R with a direction goes to the chain or the table, R and down
+    // opens the load dialog, R and start stops the transport. Holding
+    // it to mute means holding the key that navigates away, and one
+    // stray direction takes you off the mixer or puts a modal over it.
+    //
+    // L does nothing else here. It is the selection and clone modifier
+    // on the grid screens, but the mixer's selection handler has empty
+    // branches for it, so the key was free on this screen and only on
+    // this screen.
+    if (mask & EPBM_L) {
         if (mask & EPBM_B) {
             toggleMute();
         } else if (mask & EPBM_A) {
             toggleSolo();
-        } else if (mask & EPBM_L) {
-            unMuteAll();
         } else if (mask & EPBM_UP) {
+            unMuteAll();
+        } else if (mask & EPBM_DOWN) {
+            // The mixer is where the dsp figure lives, so this is
+            // where the thing that explains it lives too.
+            DoModal(new DspBenchModal(*this)) ;
+        }
+
+    // R Modifier: leaving the screen, and the transport
+    } else if (mask & EPBM_R) {
+        if (mask & EPBM_UP) {
             // R + UP = the screen ABOVE this one on the map, which is
             // the chain. It used to return to whatever view you came
             // from, so the map said mixer sat under chain and the
@@ -188,10 +235,6 @@ void MixerView::processNormalButtonMask(unsigned int mask) {
             }
             SetChanged();
             NotifyObservers(&ve);
-        } else if (mask & EPBM_DOWN) {
-            // The mixer is where the dsp figure lives, so this is
-            // where the thing that explains it lives too.
-            DoModal(new DspBenchModal(*this)) ;
         } else if (mask & EPBM_START) {
             onStop();
         }
@@ -463,7 +506,7 @@ void MixerView::DrawView() {
 
     Clear();
     DrawTitleStrip("MIXER","");
-    DrawHintBar("R+X mute  R+O solo  R+L all  R+v cpu");
+    DrawHintBar("L+X mute  L+O solo  L+^ all  L+v cpu");
 
     GUITextProperties props;
     Player *player = Player::GetInstance();

@@ -21,10 +21,10 @@ namespace DspBench {
 // Chosen to be the shapes people actually use, not the cheapest
 // settings each engine has: a bare saw tells you nothing about
 // whether a track will fit.
-enum { B_TONE=0, B_TONEF, B_VAX, B_FM2, B_FM4 } ;
+enum { B_TONE=0, B_TONEF, B_VAX, B_PDX, B_FM2, B_FM4 } ;
 
 static const char *names_[DSPB_ENGINES]= {
-	"tone","tone+flt","vax x2","fm 2op","fm 4op"
+	"tone","tone+flt","vax x2","pdx","fm 2op","fm 4op"
 } ;
 
 const char *EngineName(int e) {
@@ -67,6 +67,19 @@ static void configure(SynthInstrument &s,int which) {
 			s.FindVariable(SYP_CUTOFF)->SetInt(0x80) ;
 			s.FindVariable(SYP_RESO)->SetInt(0x60) ;
 			break ;
+		// PDX was missing from this table entirely, which meant the
+		// engine a chord or pad patch is most likely to be written on
+		// was the one nobody could measure. Configured like a real
+		// patch: a saw with the distortion envelope moving, because a
+		// static mod amount is not what anybody plays.
+		case B_PDX:
+			s.FindVariable(SYP_ENGINE)->SetInt(SET_PDX) ;
+			s.FindVariable(SYP_PDXWAVE)->SetInt(PWT_SAW) ;
+			s.FindVariable(SYP_DCWAMT)->SetInt(0x48) ;
+			s.FindVariable(SYP_DCWDEC)->SetInt(0x36) ;
+			s.FindVariable(SYP_DCWSUS)->SetInt(0x28) ;
+			break ;
+
 		case B_FM2:
 		case B_FM4: {
 			s.FindVariable(SYP_ENGINE)->SetInt(SET_FM) ;

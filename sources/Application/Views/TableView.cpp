@@ -651,7 +651,7 @@ void TableView::processNormalButtonMask(unsigned short mask) {
             warpToNeighbour(16);
         if (mask & EPBM_A)
             cutPosition();
-        if (mask & EPBM_L)
+        if (mask & EPBM_R)
             viewMode_ = VM_SELECTION;
 
     } else {
@@ -677,7 +677,7 @@ void TableView::processNormalButtonMask(unsigned short mask) {
                 updateCursorValue(0x01);
             if (mask == EPBM_A)
                 pasteLast();
-            if (mask & EPBM_L)
+            if (mask & EPBM_R)
                 pasteClipboard();
         } else {
 
@@ -747,9 +747,9 @@ void TableView::processSelectionButtonMask(unsigned short mask) {
     Player *player = Player::GetInstance();
 
     if (mask & EPBM_B) {
-        if (mask & EPBM_L) {
+        if (mask & EPBM_R) {
             extendSelection();
-        } else if (mask & EPBM_R) {
+        } else if (mask & EPBM_L) {
             interpolateSelection();
         } else {
             copySelection();
@@ -759,7 +759,7 @@ void TableView::processSelectionButtonMask(unsigned short mask) {
         // A Modifer
 
         if (mask & EPBM_A) {
-            if (mask & EPBM_L)
+            if (mask & EPBM_R)
                 cutSelection();
             //		if (mask&EPBM_R) switchSoloMode() ;
         } else {

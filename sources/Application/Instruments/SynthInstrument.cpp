@@ -127,16 +127,29 @@ static inline int cosLookup(const short *table,unsigned int idx,unsigned int fra
    is a click, and it is why pulse width has had to stay pinned at the
    centre on every patch written so far.
 */
-static inline int blepResidual(unsigned int ph,unsigned int inc) {
+// One reciprocal per pitch change instead of a divide per edge. The
+// first version divided inside the residual, and a 64 bit divide on
+// this machine costs tens of cycles where a multiply costs one. Both
+// PSPOLY and PSPECTRA moved the divide to the retune point for the
+// same reason; this does what they do.
+//
+// ph < inc and rcp = 2^31/inc, so the product stays under 2^31 and the
+// whole thing fits in 32 bit arithmetic with no widening at all.
+static inline unsigned int blepRcp(unsigned int inc) {
+	return inc?(0x80000000u/inc):0 ;
+}
+
+static inline int blepResidual(unsigned int ph,unsigned int inc,
+                               unsigned int rcp) {
 	if (inc==0) return 0 ;
 	if (ph<inc) {
-		int t=(int)(((unsigned long long)ph<<15)/inc) ;   // 0..32768
+		int t=(int)((ph*rcp)>>16) ;   // 0..32768
 		int c=32768-t ;
 		return -((c*c)>>15) ;
 	}
 	unsigned int r=0xFFFFFFFFu-ph ;
 	if (r<inc) {
-		int t=(int)(((unsigned long long)r<<15)/inc) ;
+		int t=(int)((r*rcp)>>16) ;
 		int c=32768-t ;
 		return (c*c)>>15 ;
 	}
@@ -144,15 +157,16 @@ static inline int blepResidual(unsigned int ph,unsigned int inc) {
 }
 
 // Band limited saw, same +-32768 scale as the naive ramp it replaces.
-static inline int sawBlep(unsigned int ph,unsigned int inc) {
-	return ((int)(ph>>16)-32768)-blepResidual(ph,inc) ;
+static inline int sawBlep(unsigned int ph,unsigned int inc,
+                          unsigned int rcp) {
+	return ((int)(ph>>16)-32768)-blepResidual(ph,inc,rcp) ;
 }
 
 // Band limited pulse, +-32768 scale. w is the width as a 32 bit phase
 // offset, so w==0x80000000 is a square.
 static inline int pulseBlep(unsigned int ph,unsigned int inc,
-                            unsigned int w) {
-	int s=sawBlep(ph,inc)-sawBlep(ph+w,inc) ;
+                            unsigned int rcp,unsigned int w) {
+	int s=sawBlep(ph,inc,rcp)-sawBlep(ph+w,inc,rcp) ;
 	return s+(int)(w>>16)-32768 ;         // the DC the two saws left
 }
 
@@ -807,6 +821,10 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 	// stepped inside the loop so a long block glides further than a
 	// short one instead of the same amount
 	unsigned int inc=v.curInc_ ;
+	// reciprocals for the band limiting, recomputed only when the
+	// pitch moves rather than at every edge
+	unsigned int rcp=blepRcp(inc) ;
+	unsigned int subRcp=blepRcp(inc>>1) ;
 	int refresh=0 ;
 
 	// TONE had no filter, so FCUT, FRES and FLTR all did nothing on the
@@ -833,6 +851,8 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 			refresh=GLIDE_TICK ;
 			glideStep(v,GLIDE_TICK) ;
 			inc=v.curInc_ ;
+			rcp=blepRcp(inc) ;
+			subRcp=blepRcp(inc>>1) ;
 
 			// the LFO runs at block rate like the VAX engine's: a
 			// vibrato does not need a sample-rate sine of its own
@@ -873,7 +893,7 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 				// width was off centre. Scaled back to the same 24576
 				// peak the threshold version had, so patch levels do
 				// not move.
-				s=(pulseBlep(phase,inc,pwThresh)*24576)>>15 ;
+				s=(pulseBlep(phase,inc,rcp,pwThresh)*24576)>>15 ;
 				break ;
 			case SWT_TRIANGLE:
 				s=(p16<0x8000)?((int)p16*2-32768):(98302-(int)p16*2) ;
@@ -883,7 +903,7 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 				break ;
 			case SWT_SAW:
 			default:
-				s=sawBlep(phase,inc) ;
+				s=sawBlep(phase,inc,rcp) ;
 				break ;
 		}
 		phase+=inc ;
@@ -892,7 +912,7 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 			// band limited too: the sub is an octave down, so it
 			// aliases less than the main oscillator, but it is also
 			// the loudest thing in a bass patch
-			int sb=(pulseBlep(v.subPhase_,inc>>1,0x80000000u)*24576)>>15 ;
+			int sb=(pulseBlep(v.subPhase_,inc>>1,subRcp,0x80000000u)*24576)>>15 ;
 			s+=(sb*subQ)>>15 ;
 		}
 		v.subPhase_+=inc>>1 ;
@@ -1009,13 +1029,15 @@ bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
 			case PWT_SQUARE: {
 				// each half: fast cosine half-turn inside the knee,
 				// then hold at the endpoint
+				// same bound as the saw arm: the compare against k is
+				// what keeps the product inside 32 bits
 				unsigned int q ;
 				if (p16<32768) {
-					q=(p16<k)?(unsigned int)(((unsigned long long)p16*slope1)>>16):32768 ;
+					q=(p16<k)?((p16*slope1)>>16):32768 ;
 				} else {
 					unsigned int lp=p16-32768 ;
 					if (lp<k) {
-						q=32768+(unsigned int)(((unsigned long long)lp*slope1)>>16) ;
+						q=32768+((lp*slope1)>>16) ;
 						if (q>65535) q=65535 ;
 					} else {
 						q=0 ;   // cos(0)==cos(2pi): the high hold
@@ -1050,11 +1072,17 @@ bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
 
 			case PWT_SAW:
 			default: {
+				// The branch already bounds the product. slope1 is
+				// (32768<<16)/k, and this arm only runs when p16 < k,
+				// so p16*slope1 < 32768<<16, which is 2^31 exactly. The
+				// same holds on the other side with (65536-k). Neither
+				// has ever needed to widen to 64 bit, and this runs
+				// once a sample for every voice on the engine.
 				unsigned int q ;
 				if (p16<k) {
-					q=(unsigned int)(((unsigned long long)p16*slope1)>>16) ;
+					q=(p16*slope1)>>16 ;
 				} else {
-					q=32768+(unsigned int)(((unsigned long long)(p16-k)*slope2)>>16) ;
+					q=32768+(((p16-k)*slope2)>>16) ;
 					if (q>65535) q=65535 ;
 				}
 				s=cosLookup(cosTable_,q>>6,q&0x3F) ;
@@ -1387,6 +1415,8 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 	int lfoDepth=v.lfoDepth_<<7 ;
 
 	int unisonAmp=32768/unison ;
+	unsigned int urcp[VAX_MAX_UNISON]={0} ;
+	unsigned int subRcp=0 ;
 	int qQ=32768-(resoP<<7) ;         // reso: damping 1.0 -> 0.03
 	if (qQ<1024) qQ=1024 ;
 	int gcoef=v.glideCoef_ ;
@@ -1443,6 +1473,10 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 				}
 			}
 			syncInc=baseInc ;
+			// one reciprocal per stack member per pitch change, not
+			// one divide per edge per member
+			for (int j=0;j<unison;j++) urcp[j]=blepRcp(uinc[j]) ;
+			subRcp=blepRcp(curInc>>1) ;
 
 			// pulse width, possibly LFO-animated
 			int pwmEff=pwm ;
@@ -1469,12 +1503,12 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 		int mix=0 ;
 		if (wave==VWT_PULSE) {
 			for (int j=0;j<unison;j++) {
-				mix+=(pulseBlep(v.uphase_[j],uinc[j],pwThresh)*24576)>>15 ;
+				mix+=(pulseBlep(v.uphase_[j],uinc[j],urcp[j],pwThresh)*24576)>>15 ;
 				v.uphase_[j]+=uinc[j] ;
 			}
 		} else {
 			for (int j=0;j<unison;j++) {
-				mix+=sawBlep(v.uphase_[j],uinc[j]) ;
+				mix+=sawBlep(v.uphase_[j],uinc[j],urcp[j]) ;
 				v.uphase_[j]+=uinc[j] ;
 			}
 		}
@@ -1502,7 +1536,7 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 
 		// sub square one octave down + noise
 		if (subQ) {
-			int sb=(pulseBlep(v.subPhase_,curInc>>1,0x80000000u)*24576)>>15 ;
+			int sb=(pulseBlep(v.subPhase_,curInc>>1,subRcp,0x80000000u)*24576)>>15 ;
 			mix+=(sb*subQ)>>15 ;
 		}
 		v.subPhase_+=curInc>>1 ;

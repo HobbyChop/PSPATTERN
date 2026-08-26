@@ -56,6 +56,22 @@ int AppWindow::charHeight_ = 8;
 #define AUTOSAVE_PATH     "project:lgptsav.autosav"
 #define AUTOSAVE_CHECK_MS 4000
 #define AUTOSAVE_FORCE_MS 120000
+/* How long the project has to stop changing before the write happens.
+   Without this, the first edit starts a four second fuse and the write
+   goes off while the editing is still going on: the Memory Stick light
+   comes on and the machine stops taking input for a second or two,
+   over and over, exactly while somebody is trying to work. Waiting for
+   a gap costs nothing -- the recovery file is for crashes, and a crash
+   during editing loses the same few seconds either way. */
+#define AUTOSAVE_QUIET_MS 6000
+/* And how long since a button was touched.
+   Waiting for the DATA to settle is not enough on its own: somebody
+   pauses to think, the data has been still for six seconds, the write
+   goes off, and the next button press is the one that gets eaten. The
+   write costs a second or two of dead input, so it has to wait until
+   nobody is using the machine at all. Ten seconds of no buttons is not
+   a pause for thought, it is somebody who has put it down. */
+#define AUTOSAVE_IDLE_MS 10000
 
 static void RecoverCallback(View &v, ModalView &dialog) {
     instance->RecoverAutosave(dialog.GetReturnCode() == MBL_YES);
@@ -159,6 +175,9 @@ AppWindow::AppWindow(I_GUIWindowImp &imp) : GUIWindow(imp) {
     _undoScratchContext = 0;
     _savedChecksum = 0;
     _lastAutosaveCheck = 0;
+    _lastSeenChecksum = 0;
+    _lastChangeAt = 0;
+    _lastInputAt = 0;
     _dirtySince = 0;
     _lastA = 0;
     _lastB = 0;
@@ -1365,6 +1384,7 @@ bool AppWindow::onEvent(GUIEvent &event) {
     switch (event.GetType()) {
 
     case ET_PADBUTTONDOWN:
+        _lastInputAt = System::GetInstance()->GetClock();
 
         _mask |= v;
         // Holding the nav modifier brings up the screen map, so the arrows
@@ -1850,10 +1870,31 @@ void AppWindow::autoSaveTick() {
     unsigned int current = persist->Checksum();
     if (current == _savedChecksum) {
         _dirtySince = 0;
+        _lastSeenChecksum = current;
         return;
     }
     if (_dirtySince == 0) {
         _dirtySince = now;
+    }
+
+    // Still being edited? Then wait. The write costs a second or two
+    // of frozen input on this machine, and doing that while somebody
+    // is placing chains is the worst possible moment for it.
+    if (current != _lastSeenChecksum) {
+        _lastSeenChecksum = current;
+        _lastChangeAt = now;
+        return;
+    }
+    if ((now - _lastChangeAt) < AUTOSAVE_QUIET_MS &&
+        (now - _dirtySince) < AUTOSAVE_FORCE_MS) {
+        return;
+    }
+    // Nobody touching it, either. Debouncing the data alone still
+    // fires into the gap where somebody stopped to think and is about
+    // to press the next button.
+    if (_lastInputAt && (now - _lastInputAt) < AUTOSAVE_IDLE_MS &&
+        (now - _dirtySince) < AUTOSAVE_FORCE_MS) {
+        return;
     }
 
     // Hold off while the player is running -- a Memory Stick write can

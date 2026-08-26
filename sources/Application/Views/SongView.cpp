@@ -610,12 +610,12 @@ void SongView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
     if (!pressed) {
         if (viewMode_ == VM_MUTEON) {
-            if (mask & EPBM_R) {
+            if (mask & EPBM_L) {
                 toggleMute();
             }
         };
         if (viewMode_ == VM_SOLOON) {
-            if (mask & EPBM_R) {
+            if (mask & EPBM_L) {
                 switchSoloMode();
             }
         };
@@ -634,16 +634,16 @@ void SongView::ProcessButtonMask(unsigned short mask, bool pressed) {
     }
 
     if (viewMode_ == VM_CLONE) {
-        if ((mask & EPBM_A) && (mask & EPBM_L)) {
+        if ((mask & EPBM_A) && (mask & EPBM_R)) {
             clonePosition();
-            mask &= (0xFFFF - (EPBM_A | EPBM_L));
+            mask &= (0xFFFF - (EPBM_A | EPBM_R));
             canDeepClone_ = true;
         } else {
             viewMode_ = VM_SELECTION;
         }
     };
 
-    if (canDeepClone_ && (mask & EPBM_A) && (mask & EPBM_L)) {
+    if (canDeepClone_ && (mask & EPBM_A) && (mask & EPBM_R)) {
         deepClonePosition();
         mask &= (0xFFFF - (EPBM_A | EPBM_L));
         canDeepClone_ = false;
@@ -701,13 +701,13 @@ void SongView::processNormalButtonMask(unsigned int mask) {
             }
             isDirty_ = true;
         }
-        if ((mask & EPBM_A) && (!(mask & EPBM_R)))
+        if ((mask & EPBM_A) && (!(mask & EPBM_L)))
             cutPosition();
-        if (mask & EPBM_L) {
+        if (mask & EPBM_R) {
 
             viewMode_ = VM_CLONE;
         };
-        if (mask & EPBM_R) {
+        if (mask & EPBM_L) {
             toggleMute();
         };
         if (mask & EPBM_START) {
@@ -727,7 +727,7 @@ void SongView::processNormalButtonMask(unsigned int mask) {
                 updateChain(-0x01);
             if (mask & EPBM_RIGHT)
                 updateChain(0x01);
-            if (mask & EPBM_L && !canDeepClone_) {
+            if (mask & EPBM_R && !canDeepClone_) {
                 pasteClipboard();
             }
             if (mask == EPBM_A) {
@@ -735,7 +735,7 @@ void SongView::processNormalButtonMask(unsigned int mask) {
                 pasteLast();
                 viewMode_ = VM_NEW;
             }
-            if (mask & EPBM_R) {
+            if (mask & EPBM_L) {
                 switchSoloMode();
             };
         } else {
@@ -832,10 +832,10 @@ void SongView::processSelectionButtonMask(unsigned int mask) {
     // B Modifier
 
     if (mask & EPBM_B) {
-        if (mask & EPBM_R) {
+        if (mask & EPBM_L) {
             toggleMute();
         };
-        if (mask & EPBM_L) {
+        if (mask & EPBM_R) {
             extendSelection();
         };
         if (mask == EPBM_B) {
@@ -847,10 +847,10 @@ void SongView::processSelectionButtonMask(unsigned int mask) {
         // A modifier
 
         if (mask & EPBM_A) {
-            if (mask & EPBM_L) {
+            if (mask & EPBM_R) {
                 cutSelection();
             }
-            if (mask & EPBM_R) {
+            if (mask & EPBM_L) {
                 switchSoloMode();
             };
         } else {
@@ -1002,13 +1002,32 @@ void SongView::DrawSidePanel() {
 
     // --- mix: dsp load, tempo, project, midi, battery --------------
     DrawPanel(PANEL_X, 10, 12, 5, "mix");
+    // A dropout is one block missing its deadline. The figure on the
+    // left of this line is an average smoothed over eight blocks, so a
+    // spike to three hundred per cent moves it a few points and is
+    // gone before anybody looks: a machine can glitch steadily while
+    // this reads twenty. It also used to clamp at 99, so an overrun
+    // could not be shown even when it was being averaged in.
+    //
+    // When a block has recently overrun, show the worst one instead,
+    // with an exclamation mark rather than a per cent sign, in the
+    // mute colour so it reads as a warning at a glance.
     int dsp = running ? AudioStats::GetDspPercent() : 0;
-    if (dsp > 99) dsp = 99;
+    int peak = running ? AudioStats::GetDspPeak() : 0;
+    bool over = (peak > 100);
+    int shown = over ? peak : dsp;
+    if (shown > 999) shown = 999;
     SetColor(CD_ROW2);
     DrawString(PANEL_TXT, 11, "dsp", props);
-    app.OpBar(PANEL_TXT * 8 + 26, 11 * 8 + 1, 34, dsp * 34 / 100, false);
-    sprintf(buf, "%2d%%", dsp);
-    SetColor(CD_HILITE2);
+    app.OpBar(PANEL_TXT * 8 + 26, 11 * 8 + 1, 34,
+              (dsp > 100 ? 100 : dsp) * 34 / 100, false);
+    if (over) {
+        sprintf(buf, "%3d!", shown);
+        SetColor(CD_MUTE);
+    } else {
+        sprintf(buf, "%2d%%", shown);
+        SetColor(CD_HILITE2);
+    }
     DrawString(36, 11, buf, props);
 
     int bpm = viewData_->project_->GetTempo();
@@ -1295,7 +1314,7 @@ void SongView::DrawView() {
     };
 
     DrawSidePanel();
-    DrawHintBar("O set  O+</> edit  R+> chain  R+X mute");
+    DrawHintBar("O set  O+</> edit  R+> chain  L+X mute");
 };
 
 /******************************************************

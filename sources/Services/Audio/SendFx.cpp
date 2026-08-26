@@ -222,13 +222,31 @@ void Accumulate(const fixed *buffer, int samplecount,
 	if (delaySend <= 0 && reverbSend <= 0) return ;
 	if (!ensureAcc(samplecount)) return ;
 	int n = samplecount * 2 ;
+
+	// Shift first, then multiply.
+	//
+	// This is the busiest loop in the mixer: it runs for every sample
+	// of every channel that sends, twice over when a channel sends to
+	// both. Eight channels sending both is more than twenty thousand
+	// passes through it per block.
+	//
+	// It used to widen to 64 bit to do it, because a Q15 sample times
+	// a 0..255 send overflows an int. Shifting the sample down by the
+	// eight bits the send is about to shift it back up by keeps the
+	// product under 2^31, so the multiply is a single 32 bit one. What
+	// that costs is the bottom eight bits of a value that still has
+	// seven fractional bits left and is on its way into a send anyway.
+	//
+	// The add stays 64 bit: both terms are clamped to i2fp(32767) and
+	// their sum can just pass what an int holds. An add is not what
+	// was expensive here.
 	if (delaySend > 0) {
 		if (!dlyFed_) { memset(dlyAcc_, 0, n * sizeof(fixed)) ;
 		                dlyFed_ = true ; }
 		dlyIdle_ = 0 ;
 		for (int i = 0 ; i < n ; i++)
 			dlyAcc_[i] = clampfx((long long)dlyAcc_[i] +
-			                     (((long long)buffer[i] * delaySend) >> 8)) ;
+			                     ((buffer[i] >> 8) * delaySend)) ;
 	}
 	if (reverbSend > 0) {
 		if (!revFed_) { memset(revAcc_, 0, n * sizeof(fixed)) ;
@@ -236,7 +254,7 @@ void Accumulate(const fixed *buffer, int samplecount,
 		revIdle_ = 0 ;
 		for (int i = 0 ; i < n ; i++)
 			revAcc_[i] = clampfx((long long)revAcc_[i] +
-			                     (((long long)buffer[i] * reverbSend) >> 8)) ;
+			                     ((buffer[i] >> 8) * reverbSend)) ;
 	}
 }
 
@@ -286,14 +304,27 @@ bool Return::Render(fixed *buffer, int samplecount) {
 		// --- delay: a ping-pong, which is why it is stereo at all.
 		// The left tap feeds the right line and vice versa, so a
 		// mono source still opens out across the image.
-		fixed dInL = dlyAcc_[i * 2] ;
-		fixed dInR = dlyAcc_[i * 2 + 1] ;
-		dOutL = i2fp(dlyL_[dlyPos_]) ;
-		dOutR = i2fp(dlyR_[dlyPos_]) ;
-		dlyL_[dlyPos_] = clip16(clampfx((long long)dInL +
-		                                (((long long)dOutR * fb) >> 8))) ;
-		dlyR_[dlyPos_] = clip16(clampfx((long long)dInR +
-		                                (((long long)dOutL * fb) >> 8))) ;
+		// Whole samples, as the comb bank below already does.
+		//
+		// The line holds shorts, so the fraction the Q15 version
+		// carried through the feedback multiply was thrown away at the
+		// store anyway. Doing it in sample units puts the products
+		// inside an int -- 32767 by 255 is eight million -- and takes
+		// two 64 bit multiplies and two 64 bit clamps per sample out
+		// of a loop that runs at the sample rate whenever anything is
+		// echoing.
+		int outL = dlyL_[dlyPos_] ;
+		int outR = dlyR_[dlyPos_] ;
+		dOutL = i2fp(outL) ;
+		dOutR = i2fp(outR) ;
+		int inL = fp2i(dlyAcc_[i * 2]) ;
+		int inR = fp2i(dlyAcc_[i * 2 + 1]) ;
+		int fbL = inL + ((outR * fb) >> 8) ;
+		int fbR = inR + ((outL * fb) >> 8) ;
+		if (fbL > 32767) fbL = 32767 ; if (fbL < -32768) fbL = -32768 ;
+		if (fbR > 32767) fbR = 32767 ; if (fbR < -32768) fbR = -32768 ;
+		dlyL_[dlyPos_] = (short)fbL ;
+		dlyR_[dlyPos_] = (short)fbR ;
 		if (++dlyPos_ >= dlyLen_) dlyPos_ = 0 ;
 		}
 

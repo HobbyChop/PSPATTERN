@@ -23,5 +23,8 @@ private:
 	ViewData *viewData_ ;
 
 	bool soloMask_[SONG_CHANNEL_COUNT] ;
+	// Whether soloMask_ currently holds anything. Without it, a
+	// second solo overwrites the first one's snapshot.
+	bool soloing_ ;
 } ;
 #endif

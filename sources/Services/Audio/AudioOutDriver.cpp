@@ -87,9 +87,28 @@ void AudioOutDriver::clipToMix() {
             fixed leftSample = *p++;
             fixed rightSample = *p++;
 
-            *s1 = short(fp2i(leftSample));
+            // CLAMP. The function is called clipToMix and did not
+            // clip: fp2i is a shift, and casting the result to short
+            // WRAPS. A sample ten per cent past full scale came out as
+            // a large value of the opposite sign, which is not
+            // distortion, it is a full scale step on every sample that
+            // goes over. That is the "blown speaker" sound, and it is
+            // worst on whichever channel is loudest.
+            //
+            // It never showed up in anything rendered to a file,
+            // because WavFileWriter::AddBuffer clamps properly and
+            // this is a different path: the render was clean and the
+            // thing coming out of the headphone socket was not.
+            int l = fp2i(leftSample);
+            int r = fp2i(rightSample);
+            if (l > 32767) l = 32767;
+            else if (l < -32768) l = -32768;
+            if (r > 32767) r = 32767;
+            else if (r < -32768) r = -32768;
+
+            *s1 = (short)l;
             s1 += offset;
-			*s2 = short(fp2i(rightSample));
+			*s2 = (short)r;
 			s2 += offset;
         };
     }

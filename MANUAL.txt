@@ -53,10 +53,11 @@ Most editing is a modifier held with a direction. Holding O and pressing
 left or right changes a value by one. Holding O and pressing up or down
 changes it by sixteen, or by ten on the velocity column.
 
-Holding R and pressing a direction moves between screens. The bottom
-line of every screen lists the moves available from where you are. It
-does not list all of them. Copying, cloning, soloing and the rest are
-in section 8.
+Holding R and pressing a direction moves between screens. R with a
+direction is always the map and never anything else, which is why
+muting and soloing are held with L instead. The bottom line of every
+screen lists the moves available from where you are. It does not list
+all of them. Copying, cloning, soloing and the rest are in section 8.
 
 
 4. SCREENS
@@ -92,7 +93,7 @@ The panel on the right shows the DSP load, the tempo, the project name,
 the MIDI device and the battery. The scope above it draws the master
 output.
 
-R and X mutes the channel under the cursor.
+L and X mutes the channel under the cursor.
 
 
 6. THE CHAIN SCREEN
@@ -145,19 +146,30 @@ button does on its own, which is usually not what you wanted.
 
 MAKING A SELECTION
 
-Hold X and press L. The cell under the cursor is highlighted. Move with
+Hold X and press R. The cell under the cursor is highlighted. Move with
 the D-pad and the selection grows to cover what you pass over.
 
-  X then L          start a selection at the cursor
+  X then R          start a selection at the cursor
   X on its own      copy the selection and end it
-  O then L          cut the selection
+  O then R          cut the selection
   O then direction  change every value in the selection at once
-  L then X          widen: first to all columns, again to all sixteen rows
-  R then X          interpolate the selection
+  R then X          widen: first to all columns, again to all sixteen rows
+  L then X          interpolate the selection
 
-With no selection up, hold O and press L to paste at the cursor. The
+With no selection up, hold O and press R to paste at the cursor. The
 clipboard holds whatever you copied last, so a block can be pasted as
 many times as you like.
+
+CLONING
+
+On the song and chain screens, X then R followed by O then R copies what
+is under the cursor into a free slot and puts the copy there. The
+original is left alone, so a chain can be varied without disturbing
+every other place it is used.
+
+On the song screen a second O then R goes deeper: it clones the phrases
+inside the chain as well, so nothing the copy contains is shared with
+what it came from.
 
 INTERPOLATE
 
@@ -201,16 +213,16 @@ SINGLE STEPS
                 instrument entered
   X then O      clear the step, taking the instrument with the note and
                 the parameter with the command
-  X then R      mute the channel
-  O then R      solo the channel
+  X then L      mute the channel
+  O then L      solo the channel
 
 Pressing O on a step that already holds a note does not overwrite it.
 It remembers that note and instrument as the pair to repeat next time,
 which is how a sound is picked up from one row and stamped down the
 phrase.
 
-Mute and solo depend on which button you release first. Let go of R
-while X is still down and the mute stays on. Let go of X while R is
+Mute and solo depend on which button you release first. Let go of L
+while X is still down and the mute stays on. Let go of X while L is
 still down and the channel comes straight back. The same combination
 gives both a latch for arranging and a momentary drop for checking what
 a part is doing.
@@ -440,6 +452,10 @@ Each drum has a soft and a hard variant.
 Each channel has a level, a high pass, a low pass, and a send to the
 delay and to the reverb. The two send effects are shared by all
 channels.
+
+Up and down move through the rows of a strip. The four settings of the
+send effects themselves sit on one line below the strips, and left and
+right walk between them. Up from that line returns to the strips.
 
 The master has a drive control, a clipper with several modes, and a
 gain switch.

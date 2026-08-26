@@ -68,9 +68,44 @@ void PSPSystem::Boot(int argc,char **argv) {
 
 	// Install Sound
 
+	// Audio block size, in frames.
+	//
+	// This was 128, which gives the whole render -- eight voices, the
+	// channel strips and the sends -- 2.9 milliseconds to finish, 344
+	// times a second. Any block that overruns is filled with the
+	// silent buffer the driver keeps for the purpose, and a run of
+	// those is a buzz at the block rate rather than a dropout anybody
+	// would call a dropout.
+	//
+	// A small block also repeats every per-block cost 344 times a
+	// second: each voice re-reads its parameters and recomputes its
+	// pan on entry to every render, and that work is per BLOCK, not
+	// per sample. Doubling the block halves it.
+	//
+	// 256 by default, and settable, because the right number is a
+	// property of the machine and the song and I would rather it be
+	// found than guessed. Latency is the price: frames times the
+	// prebuffer count over 44100. Must be a multiple of 64, which is
+	// what the PSP's audio hardware accepts.
 	AudioSettings hints ;
-	hints.bufferSize_=128 ;
+	hints.bufferSize_=256 ;
 	hints.preBufferCount_=6 ;
+	const char *abs=Config::GetInstance()->GetValue("AUDIOBUFFERSIZE") ;
+	if (abs) {
+		int v=atoi(abs) ;
+		if (v>=64 && v<=4096) {
+			v=(v/64)*64 ;
+			if (v>=64) hints.bufferSize_=v ;
+		}
+	}
+	const char *apb=Config::GetInstance()->GetValue("AUDIOPREBUFFER") ;
+	if (apb) {
+		int v=atoi(apb) ;
+		if (v>=2 && v<=16) hints.preBufferCount_=v ;
+	}
+	Trace::Log("AUDIO","block %d frames, prebuffer %d, latency %dms",
+	           hints.bufferSize_,hints.preBufferCount_,
+	           hints.bufferSize_*hints.preBufferCount_*1000/44100) ;
 	Audio::Install(new SDLAudio(hints)) ;
 
 	// Install Midi: usbmidi.prx (PSP-MIDI adapter) next to the EBOOT.

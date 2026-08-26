@@ -28,6 +28,11 @@ static volatile int scopePos_=0 ;
 static short curMin_=32767,curMax_=-32768 ;
 static int curCount_=0 ;
 static volatile int dspPercent_=0 ;
+// peak hold, and the countdown of blocks before it starts falling
+static volatile int dspPeak_=0 ;
+static int peakHold_=0 ;
+// about a second and a half at 641 frames a block
+#define DSP_PEAK_HOLD 100
 static unsigned int blockStart_=0 ;
 
 void BeginBlock() {
@@ -45,6 +50,18 @@ void EndBlock(short *buf,int frames,bool interlaced) {
 		int pct=(int)(spent*100u/budget) ;
 		if (pct>999) pct=999 ;
 		dspPercent_=(dspPercent_*7+pct)>>3 ;
+		// Held, then allowed to fall slowly. Held so a spike can be
+		// read by somebody looking at the screen a moment later;
+		// falling so it does not stay stuck on one bad block from a
+		// minute ago and stop meaning anything.
+		if (pct>=dspPeak_) {
+			dspPeak_=pct ;
+			peakHold_=DSP_PEAK_HOLD ;
+		} else if (peakHold_>0) {
+			peakHold_-- ;
+		} else if (dspPeak_>dspPercent_) {
+			dspPeak_-- ;
+		}
 	}
 
 	// scope: peak envelope of the left channel, one bucket per column.
@@ -69,6 +86,15 @@ void EndBlock(short *buf,int frames,bool interlaced) {
 	}
 	curMin_=lo ; curMax_=hi ; curCount_=cnt ;
 	scopePos_=pos ;
+}
+
+int GetDspPeak() {
+	return dspPeak_ ;
+}
+
+void ResetDspPeak() {
+	dspPeak_=0 ;
+	peakHold_=0 ;
 }
 
 int GetDspPercent() {

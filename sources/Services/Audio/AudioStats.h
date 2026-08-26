@@ -16,6 +16,17 @@ namespace AudioStats {
 
 	// UI side
 	int GetDspPercent() ;
+
+	// The worst single block seen recently, not the average.
+	//
+	// A dropout is caused by ONE block missing its deadline. The
+	// average is smoothed over eight blocks, so a spike to 300 per
+	// cent moves it by a few points and is gone again before anybody
+	// reads it: a machine can glitch steadily while the meter sits at
+	// twenty. This is the number that tells you whether that is what
+	// is happening.
+	int GetDspPeak() ;
+	void ResetDspPeak() ;
 	// A scope column is the MIN and MAX of a bucket of samples, not one
 	// decimated sample. Two reasons, and the second is the one that
 	// matters:

@@ -904,12 +904,12 @@ void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
     if (!pressed) {
         if (viewMode_ == VM_MUTEON) {
-            if (mask & EPBM_R) {
+            if (mask & EPBM_L) {
                 toggleMute();
             }
         };
         if (viewMode_ == VM_SOLOON) {
-            if (mask & EPBM_R) {
+            if (mask & EPBM_L) {
                 switchSoloMode();
             }
         };
@@ -966,7 +966,7 @@ void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
     }
 
     if (viewMode_ == VM_CLONE) {
-        if ((mask & EPBM_A) && (mask & EPBM_L)) {
+        if ((mask & EPBM_A) && (mask & EPBM_R)) {
             if (col_ < 2) {
                 InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
                 unsigned char *c =
@@ -1019,7 +1019,7 @@ void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
                     }
                 }
             };
-            mask &= (0xFFFF - (EPBM_A | EPBM_L));
+            mask &= (0xFFFF - (EPBM_A | EPBM_R));
         } else {
             viewMode_ = VM_SELECTION;
         }
@@ -1061,10 +1061,10 @@ void PhraseView::processNormalButtonMask(unsigned short mask) {
         if (mask & EPBM_A) {
             cutPosition();
         }
-        if (mask & EPBM_L) {
+        if (mask & EPBM_R) {
             viewMode_ = VM_CLONE;
         };
-        if (mask & EPBM_R)
+        if (mask & EPBM_L)
             toggleMute();
     } else {
 
@@ -1095,9 +1095,9 @@ void PhraseView::processNormalButtonMask(unsigned short mask) {
                 updateCursorValue(VUD_LEFT);
             if (mask & EPBM_RIGHT)
                 updateCursorValue(VUD_RIGHT);
-            if (mask & EPBM_L)
-                pasteClipboard();
             if (mask & EPBM_R)
+                pasteClipboard();
+            if (mask & EPBM_L)
                 switchSoloMode();
             if (mask == EPBM_A) {
                 pasteLast();
@@ -1223,9 +1223,9 @@ void PhraseView::processSelectionButtonMask(unsigned short mask) {
     // B modifier
 
     if (mask & EPBM_B) {
-        if (mask & EPBM_L) {
+        if (mask & EPBM_R) {
             extendSelection();
-        } else if (mask & EPBM_R) {
+        } else if (mask & EPBM_L) {
             interpolateSelection();
         } else {
             copySelection();
@@ -1245,9 +1245,9 @@ void PhraseView::processSelectionButtonMask(unsigned short mask) {
             if (mask & EPBM_RIGHT)
                 updateSelectionValue(VUD_RIGHT);
 
-            if (mask & EPBM_L)
-                cutSelection();
             if (mask & EPBM_R)
+                cutSelection();
+            if (mask & EPBM_L)
                 switchSoloMode();
         } else {
 

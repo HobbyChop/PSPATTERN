@@ -64,6 +64,14 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     unsigned int _savedChecksum;   // hash of what is currently persisted
     unsigned long _lastAutosaveCheck;
     unsigned long _dirtySince;     // 0 = in step with disk
+    // The checksum seen on the PREVIOUS tick, and when it last moved.
+    // Editing has to go quiet before anything is written, or the write
+    // lands in the middle of the editing.
+    unsigned int _lastSeenChecksum;
+    unsigned long _lastChangeAt;
+    // When a button was last touched. The write blocks input, so it
+    // waits until nobody is using the machine.
+    unsigned long _lastInputAt;
     ViewType currentViewType();
     void CloseProject();
 

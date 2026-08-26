@@ -2,7 +2,8 @@
 
 #include "Application/Player/Player.h"
 
-UIController::UIController() {
+UIController::UIController() : soloing_(false) {
+	for (int i=0;i<SONG_CHANNEL_COUNT;i++) soloMask_[i]=false ;
 } ;
 
 UIController *UIController::GetInstance() {
@@ -47,13 +48,25 @@ void UIController::SwitchSoloMode(int from,int to,bool soloing) {
 	
 	if (soloing) {
 
+		// The snapshot is taken on the way IN and only then. Soloing a
+		// second channel without leaving the first used to retake it,
+		// and by that point the mutes it was saving were the FIRST
+		// solo's doing, not the mix. Leaving solo then restored those:
+		// start with nothing muted, solo one channel, solo another,
+		// come out, and seven of eight are muted that nobody muted.
+		if (!soloing_) {
+			for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+				soloMask_[i]=player->IsChannelMuted(i) ;
+			} ;
+			soloing_=true ;
+		} ;
 		for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
-			soloMask_[i]=player->IsChannelMuted(i) ;
 			player->SetChannelMute(i,(i<from)||(i>to)) ;
 		} ;
 	} else {
 		for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
 			player->SetChannelMute(i,soloMask_[i]) ;
 		} ;
+		soloing_=false ;
 	}
 } ;
