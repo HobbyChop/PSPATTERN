@@ -949,6 +949,7 @@ void InstrumentView::drawSynthChrome() {
 			instrument->FindVariable(SYP_ATTACK)->GetInt(),
 			instrument->FindVariable(SYP_DECAY)->GetInt(),
 			instrument->FindVariable(SYP_SUSTAIN)->GetInt()) ;
+		drawFmAlgo(instrument) ;
 		DrawPanel(1,21,38,2,"TABLE") ;
 		return ;
 	}
@@ -1045,4 +1046,144 @@ void InstrumentView::Update(Observable &o,I_ObservableData *d) {
 	}
 
 	onInstrumentChange() ;
+}
+
+/* The routing picture, under the operator columns it describes.
+ *
+ * Four operators and eight algorithms is eight numbers and a shrug
+ * until you can see where they go. This draws it: a box per operator,
+ * stacked by how far it is from the output, with a line from each one
+ * to whatever it feeds.
+ *
+ * Two things it does deliberately.
+ *
+ * Each operator keeps its own horizontal slot whatever the algorithm
+ * does, and the slot is labelled with the operator number. A diagram
+ * that rearranged the boxes to look tidy would be prettier and would
+ * make you work out which box was which every time you changed the
+ * algorithm.
+ *
+ * The box is also the level meter: the fill is that operator's level,
+ * so an operator turned down is visibly an empty box and the ones
+ * doing the work are the full ones. Carriers -- the ones you hear --
+ * are drawn in the highlight colour, modulators in the structure
+ * colour, so which is which reads without counting arrows.
+ *
+ * The routing comes from SynthInstrument::AlgoDest, which is the same
+ * table the engine plays from. There is no second copy to drift.
+ */
+void InstrumentView::drawFmAlgo(SynthInstrument *instrument) {
+
+	AppWindow &app=(AppWindow &)w_ ;
+
+	int algo=instrument->FindVariable(SYP_FMALGO)->GetInt() ;
+	if (algo<0) algo=0 ;
+	if (algo>=FM_ALGO_COUNT) algo=FM_ALGO_COUNT-1 ;
+
+	static const FourCC lvlId[FM_OPS]={SYP_FML1,SYP_FML2,SYP_FML3,SYP_FML4} ;
+	int level[FM_OPS],dest[FM_OPS],depth[FM_OPS] ;
+	for (int i=0;i<FM_OPS;i++) {
+		level[i]=instrument->FindVariable(lvlId[i])->GetInt()&0xFF ;
+		dest[i]=SynthInstrument::AlgoDest(algo,i) ;
+	}
+
+	/* How far each operator is from the output. A destination is
+	   always a lower-numbered operator, so walking upwards settles in
+	   one pass -- but the loop is bounded anyway, because a table
+	   edited into a cycle should draw something wrong rather than
+	   hang the screen. */
+	for (int i=0;i<FM_OPS;i++) {
+		int d=0,at=i,guard=0 ;
+		while (dest[at]!=FM_OUT&&guard++<FM_OPS) { at=dest[at] ; d++ ; }
+		depth[i]=(d>3)?3:d ;
+	}
+
+	DrawPanel(21,14,18,5,"ROUTING") ;
+
+	/* Signal runs left to right: the deepest modulator on the left,
+	   carriers on the right, output off the right edge.
+	 *
+	 * The first version stacked it vertically, by depth, which is how
+	 * a DX7 manual draws it -- and there are 40 pixels of panel to do
+	 * it in. Four levels left two pixels between boxes, so every
+	 * connecting line came out a one pixel stub and the picture had no
+	 * arrows at all. There are 144 pixels across and 40 down; the
+	 * chain goes the way there is room for it.
+	 *
+	 * Operators at the same depth stack, which is what a diagram
+	 * should do anyway: four carriers side by side reads as four
+	 * voices, and that is exactly what algorithm 8 is.
+	 */
+	static const int colCell[4]={22,26,30,34} ;   // depth 3,2,1,0
+	GUITextProperties props ;
+
+	// where each operator sits: column by depth, row by how many
+	// share that depth
+	int rowOf[FM_OPS],colOf[FM_OPS],used[4]={0,0,0,0},total[4]={0,0,0,0} ;
+	for (int i=0;i<FM_OPS;i++) total[depth[i]]++ ;
+	for (int i=0;i<FM_OPS;i++) {
+		int d=depth[i] ;
+		colOf[i]=colCell[3-d] ;
+		rowOf[i]=15+(4-total[d])/2+used[d] ;
+		used[d]++ ;
+	}
+
+	for (int i=0;i<FM_OPS;i++) {
+
+		int row=rowOf[i] ;
+		int bx=(colOf[i]+1)*8 ;
+		int by=row*8+1 ;
+		bool carrier=(dest[i]==FM_OUT) ;
+		bool live=(level[i]>0) ;
+
+		// the number goes in the cell left of the box, where the
+		// overlay cannot paint over it
+		SetColor(live?(carrier?CD_HILITE1:CD_ROW2):CD_ROW) ;
+		char lab[2]={(char)('1'+i),0} ;
+		DrawString(colOf[i],row,lab,props) ;
+
+		app.OpRing(bx,by,16,6,live?AppWindow::OC_GRID:AppWindow::OC_PANEL2) ;
+		if (live) {
+			int fill=level[i]*14/255 ;
+			if (fill<1) fill=1 ;
+			app.OpRect(1,bx+1,by+1,fill,4,carrier?CD_HILITE1:CD_HILITE2) ;
+		}
+
+		// the line to whatever it feeds, rightwards
+		int fromX=bx+16 ;
+		int cy=by+2 ;
+		if (carrier) {
+			app.OpRect(1,fromX,cy,(38*8)-fromX,2,AppWindow::OC_GRID) ;
+		} else {
+			int drow=rowOf[dest[i]] ;
+			/* Stop at the LEFT edge of the destination's label cell,
+			   not at its box. Run it to the box and the line crosses
+			   the digit, which reads as a number with a line through
+			   it rather than as a signal arriving. */
+			int dx=colOf[dest[i]]*8 ;
+			int toY=drow*8+3 ;
+			int midX=(fromX+dx)/2 ;
+			app.OpRect(1,fromX,cy,midX-fromX,2,AppWindow::OC_GRID) ;
+			int y0=(cy<toY)?cy:toY ;
+			int hseg=(cy<toY)?(toY-cy+2):(cy-toY+2) ;
+			app.OpRect(1,midX,y0,2,hseg,AppWindow::OC_GRID) ;
+			app.OpRect(1,midX,toY,dx-midX,2,AppWindow::OC_GRID) ;
+		}
+	}
+
+	/* op4's feedback loop, when it is turned up: a small hook off the
+	   right of its box.
+	   
+	   It used to be drawn above the box, at by-3, which is in the row
+	   ABOVE -- fine while op4 happened to sit low, and straight
+	   through the panel's top rule the moment an algorithm put it on
+	   the first row. Everything here stays inside its own row. */
+	if ((instrument->FindVariable(SYP_FMFB)->GetInt()&0xFF)>0) {
+		int bx=(colOf[FM_OPS-1]+1)*8 ;
+		int by=rowOf[FM_OPS-1]*8+1 ;
+		app.OpRect(1,bx+16,by,6,2,CD_HILITE2) ;
+		app.OpRect(1,bx+20,by,2,6,CD_HILITE2) ;
+		app.OpRect(1,bx+16,by+4,6,2,CD_HILITE2) ;
+	}
+	SetColor(CD_NORMAL) ;
 }

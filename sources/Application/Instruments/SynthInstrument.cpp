@@ -122,6 +122,13 @@ static short synthTableRam_[SYNTH_TABLE_SHORTS] ;
 #define SYNTH_SCRATCHPAD_SIZE (16*1024)
 #endif
 
+int SynthInstrument::AlgoDest(int algo,int op) {
+	if (algo<0) algo=0 ;
+	if (algo>=FM_ALGO_COUNT) algo=FM_ALGO_COUNT-1 ;
+	if (op<0||op>=FM_OPS) return FM_OUT ;
+	return fmAlgoDest[algo][op] ;
+}
+
 void SynthInstrument::placeTables() {
 	if (noteInc_) return ;
 	short *p = synthTableRam_ ;

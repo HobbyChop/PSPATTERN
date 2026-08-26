@@ -123,7 +123,27 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     void OpVBar(int x, int y, int w, int h, int fillPx, int cap = 0);
     // live oscilloscope of the master mix (reads AudioStats at flush;
     // pass a changing tick while audio runs so it repaints)
-    void OpScope(int x, int y, int w, int h, int tick = 0);
+    // channel 0 is left, 1 is right
+    void OpScope(int x, int y, int w, int h, int tick = 0, int channel = 0);
+
+    /* A bar between the background and the play colour, at any
+       intensity from 0 to 255.
+       
+       Text cannot do this. A character cell stores a ColorDefinition
+       index rather than a colour, so text can only ever be one of the
+       palette entries -- there is no way to say "this row, but a
+       third as bright". Anything that fades has to be drawn, not
+       written, and this is the primitive for it.
+       
+       Intensity 0 paints the background, which is how a fade ends
+       without needing the op removed. */
+    void OpGlow(int x, int y, int w, int h, int intensity);
+
+
+    /* The wordmark, built from inverted spaces -- a filled cell is
+       one "pixel" of it. The font has no block glyphs, and a bitmap
+       drawn this way needs nothing from it. */
+    void DrawWordmark(int x0, int y0);
 
     // overlay color ids: ColorDefinition values plus derived tones
     enum {
@@ -186,7 +206,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     unsigned char _charScreen[1200];
     unsigned char _charScreenProp[1200];
 
-    enum OverlayOpType { OOP_RECT, OOP_FRAME, OOP_BAR, OOP_ADSR, OOP_WAVE, OOP_VBAR, OOP_SCOPE };
+    enum OverlayOpType { OOP_RECT, OOP_FRAME, OOP_BAR, OOP_ADSR, OOP_WAVE, OOP_VBAR, OOP_SCOPE, OOP_GLOW };
     struct OverlayOp {
         unsigned char type_, layer_, colA_, focused_;
         short x_, y_, w_, h_;

@@ -1003,7 +1003,14 @@ void SongView::DrawSidePanel() {
     DrawPanel(PANEL_X, 2, 12, 6, "scope");
     static short scopeTick = 0;
     if (running) scopeTick++;
-    app.OpScope(PANEL_X * 8 + 5, 24, 92, 44, running ? scopeTick : 0);
+    /* One trace per channel, left above right, same size as each
+       other. It was a single trace of the left channel only, which
+       said nothing about what the right one was doing -- a hard
+       panned part or a ping-pong delay looked exactly like a mono
+       mix. Both still span the full width, so neither loses any of
+       the time window. */
+    app.OpScope(PANEL_X * 8 + 5, 24, 92, 21, running ? scopeTick : 0, 0);
+    app.OpScope(PANEL_X * 8 + 5, 47, 92, 21, running ? scopeTick : 0, 1);
 
     // --- mix: memory, tempo, project, midi, battery ----------------
     DrawPanel(PANEL_X, 10, 12, 5, "mix");

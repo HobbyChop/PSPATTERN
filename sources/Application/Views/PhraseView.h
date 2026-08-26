@@ -14,6 +14,9 @@ class PhraseView : public View {
     PhraseView(GUIWindow &w, ViewData *viewData);
     ~PhraseView();
     virtual void ProcessButtonMask(unsigned short mask, bool pressed);
+
+    /* The fading trail behind the playhead. See the definition. */
+    void drawTriggerTrail();
     virtual int  UndoSize() ;
     virtual int  UndoContext() ;
     virtual void UndoCapture(unsigned char *dst) ;

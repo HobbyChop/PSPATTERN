@@ -89,10 +89,100 @@ static void ProjectSelectCallback(View &v, ModalView &dialog) {
     }
 };
 
+/* Named palettes.
+ *
+ * The colour system already read every colour from config.xml, which
+ * meant the app had exactly one look and changing it meant editing
+ * thirteen hex strings by hand. These are the same thirteen, grouped
+ * and named, so THEME picks a whole set at once.
+ *
+ * Order matters and is checked against themeKeys_ below: a mismatch
+ * would silently paint the cursor colour on the row numbers.
+ *
+ * Each one has to survive a PSP-1000 screen, which is dimmer and
+ * flatter than an emulator on a desk. That rules out the obvious
+ * moves -- dark grey on black reads as one colour in daylight -- so
+ * every palette keeps a real gap between the ground, the structure
+ * lines and the type, and keeps the cursor clear of both highlights.
+ */
+static const char *themeKeys_[] = {
+    "BACKGROUND", "FOREGROUND", "BORDER", "SONGVIEW_FE", "SONGVIEW_00",
+    "HICOLOR1", "HICOLOR2", "CURSORCOLOR", "PLAYCOLOR", "MUTECOLOR",
+    "ROWCOLOR1", "ROWCOLOR2", "MAJORBEAT",
+};
+#define THEME_COLOR_COUNT 13
+
+struct AppTheme {
+    const char *name_;
+    const char *v_[THEME_COLOR_COUNT];
+};
+
+static const AppTheme themes_[] = {
+    /* SUNSET -- the hobbychop signature, and what shipped before this
+       existed. Violet ground, cyan for anything live, gold for values,
+       hot magenta cursor. */
+    {"SUNSET",
+     {"0A0218", "FFFFFF", "5A1878", "8C82AA", "5A5276",
+      "00FFFF", "FFD25A", "FF20C8", "00FFFF", "FF7828",
+      "3C305A", "8C82AA", "6E5A96"}},
+
+    /* ICEBOX -- deep teal and glacial highs, with one warm note. The
+       values are sand rather than another blue, because a screen of
+       nothing but cool colours is where numbers stop being readable. */
+    {"ICEBOX",
+     {"04121A", "D8ECF5", "0E4257", "6F97AB", "45677A",
+      "00D9FF", "FFE9A8", "FF5470", "00D9FF", "FF8A3D",
+      "2A4757", "6F97AB", "3E6579"}},
+
+    /* EMBER -- warm dark, amber CRT. Green for mute, which is the only
+       cool colour in it and therefore the one thing that cannot be
+       mistaken for anything else. */
+    {"EMBER",
+     {"140805", "FFE9C2", "5C1F0E", "B08258", "7D5A3C",
+      "FFB03A", "FFD08A", "FF4D1F", "FFB03A", "8CE06B",
+      "4A2A18", "B08258", "6B3C22"}},
+
+    /* GRAPHITE -- near monochrome, one red cursor. For anybody who
+       finds the others loud, and the easiest of the four to read in
+       bright light. */
+    {"GRAPHITE",
+     {"0E0E10", "E6E6EA", "33333A", "8A8A94", "5C5C66",
+      "FFFFFF", "FFD60A", "FF3B30", "FFFFFF", "FF9500",
+      "3A3A42", "8A8A94", "4E4E58"}},
+};
+#define THEME_COUNT ((int)(sizeof(themes_) / sizeof(themes_[0])))
+
+/* What the selected theme says this colour should be, or 0 if no
+   theme is named or it does not know the key. An unknown THEME is
+   ignored rather than fatal: a typo in a config file should not stop
+   the program starting. */
+static const char *themeValue(const char *colorName) {
+    Config *config = Config::GetInstance();
+    const char *want = config->GetValue("THEME");
+    if (!want)
+        return 0;
+    for (int t = 0; t < THEME_COUNT; t++) {
+        if (strcasecmp(want, themes_[t].name_))
+            continue;
+        for (int k = 0; k < THEME_COLOR_COUNT; k++)
+            if (!strcasecmp(colorName, themeKeys_[k]))
+                return themes_[t].v_[k];
+        return 0;
+    }
+    return 0;
+}
+
 void AppWindow::defineColor(const char *colorName, GUIColor &color) {
 
     Config *config = Config::GetInstance();
+    /* An explicit colour in config.xml still wins, so somebody who has
+       tuned one value keeps it while taking the rest of a theme. That
+       only works because the shipped config names a THEME instead of
+       spelling all thirteen out -- as it used to, which would have
+       masked every theme completely. */
     const char *value = config->GetValue(colorName);
+    if (!value)
+        value = themeValue(colorName);
     if (value) {
         unsigned char r;
         char2hex(value, &r);
@@ -645,6 +735,14 @@ void AppWindow::OpBar(int x, int y, int w, int fillPx, bool focused) {
     setOp(op);
 }
 
+void AppWindow::OpGlow(int x, int y, int w, int h, int intensity) {
+    if (intensity < 0) intensity = 0;
+    if (intensity > 255) intensity = 255;
+    OverlayOp op = {OOP_GLOW, 1, 0, 0, (short)x, (short)y, (short)w,
+                    (short)h, (short)intensity, 0, 0, 0};
+    setOp(op);
+}
+
 void AppWindow::OpAdsr(int x, int y, int w, int h, int a, int d, int s) {
     OverlayOp op = {OOP_ADSR, 1, 0, 0, (short)x, (short)y, (short)w,
                     (short)h, (short)a, (short)d, (short)s, 0};
@@ -663,8 +761,10 @@ void AppWindow::OpWave(int x, int y, int w, int h, int kind) {
     setOp(op);
 }
 
-void AppWindow::OpScope(int x, int y, int w, int h, int tick) {
-    OverlayOp op = {OOP_SCOPE, 1, 0, 0, (short)x, (short)y, (short)w,
+void AppWindow::OpScope(int x, int y, int w, int h, int tick, int channel) {
+    // colA_ carries the channel: 0 left, 1 right
+    OverlayOp op = {OOP_SCOPE, 1, (unsigned char)(channel & 1), 0,
+                    (short)x, (short)y, (short)w,
                     (short)h, (short)tick, 0, 0, 0};
     setOp(op);
 }
@@ -918,6 +1018,29 @@ void AppWindow::flushOverlayOps() {
         if (!need[i])
             continue;
         switch (o.type_) {
+        case OOP_RECT: {
+            // The layer 0 pass above takes rects at layer 0 and skips
+            // everything else; this switch had no case for a rect at
+            // all. So OpRect(1, ...) was accepted, stored, counted
+            // against the op budget, and then drawn by nobody -- it
+            // just did not appear, with nothing to say why. The one
+            // caller in the tree passes 0, which is why it went
+            // unnoticed.
+            if (o.layer_ != 1)
+                break;
+            GUIColor rc = opColor(o.colA_);
+            GUIWindow::SetColor(rc);
+            GUIRect r(o.x_, o.y_, o.x_ + o.w_, o.y_ + o.h_);
+            GUIWindow::DrawRect(r);
+            break;
+        }
+        case OOP_GLOW: {
+            GUIColor g = lerpColor(backgroundColor_, playColor_, o.p1_, 255);
+            GUIWindow::SetColor(g);
+            GUIRect r(o.x_, o.y_, o.x_ + o.w_, o.y_ + o.h_);
+            GUIWindow::DrawRect(r);
+            break;
+        }
         case OOP_FRAME: {
             if (o.layer_ != 1)
                 break;
@@ -964,9 +1087,24 @@ void AppWindow::flushOverlayOps() {
                 done = e;
             }
             if (o.focused_) {
+                // y+7, not y+8. The bar sits at row*8+1, so a tick
+                // ending at y+8 paints rows row*8 through row*8+8 --
+                // nine rows, the last of which is the FIRST row of the
+                // next character row. Nothing ever repaints that one:
+                // the track stops at y+6, the underline at y+7, the
+                // rings above only cover the left and right margins,
+                // and the erase pass works from the op's height of
+                // six, which does not reach it either. So every
+                // position the tick passed through kept one white
+                // pixel row, and dragging a slider drew a line under
+                // it.
+                //
+                // Ending at y+7 keeps the whole tick inside its own
+                // character row, where the track and the rings repaint
+                // every pixel of it on the next flush.
                 GUIWindow::SetColor(normalColor_);
                 GUIRect tick(o.x_ + fill - 1, o.y_ - 1, o.x_ + fill + 1,
-                             o.y_ + 8);
+                             o.y_ + 7);
                 GUIWindow::DrawRect(tick);
             }
             break;
@@ -1046,7 +1184,7 @@ void AppWindow::flushOverlayOps() {
             bool live = Player::GetInstance()->IsRunning();
             short lo[96], hi[96];
             int n = o.w_ > 96 ? 96 : o.w_;
-            if (live) AudioStats::ReadScope(lo, hi, n);
+            if (live) AudioStats::ReadScope(lo, hi, n, o.colA_);
             int amp = o.h_ / 2 - 1;
             int mid = o.y_ + o.h_ / 2;
             GUIColor lc = live ? colorForProp(CD_HILITE1) : opColor(CD_ROW);
@@ -1117,6 +1255,52 @@ void AppWindow::flushOverlayOps() {
 static AppWindow *bootWindow_ = 0;
 static const char *bootPhase_ = "";
 
+/* Nine letters and eight gaps: 36 of the 40 columns. A filled cell is
+   drawn as an inverted space, so this needs no glyphs the font might
+   not have.
+   
+   Every letter is three cells wide except N, which is four. Three
+   columns can hold two uprights or a diagonal but not both, so a
+   three wide N is an H with a nick in it -- the first version of this
+   read PSPATTERH on screen, which is the sort of thing that is
+   obvious the moment you look and invisible while you are counting
+   columns. */
+void AppWindow::DrawWordmark(int x0, int y0) {
+
+    static const char *mark[5] = {
+        "### ### ### ### ### ### ### ### #..#",
+        "#.# #.. #.# #.# .#. .#. #.. #.# ##.#",
+        "### ### ### ### .#. .#. ### ### #.##",
+        "#.. ..# #.. #.# .#. .#. #.. ##. #..#",
+        "#.. ### #.. #.# .#. .#. ### #.# #..#",
+    };
+    const int markW = 36;
+
+    GUITextProperties props;
+    props.invert_ = true;
+
+    // a shadow one cell down and right, so the letters have some
+    // weight on a screen with no panels on it
+    SetColor(CD_ROW);
+    for (int r = 0; r < 5; r++)
+        for (int c = 0; c < markW; c++)
+            if (mark[r][c] == '#') {
+                GUIPoint p(x0 + c + 1, y0 + r + 1);
+                DrawString(" ", p, props);
+            }
+
+    SetColor(CD_CURSOR);
+    for (int r = 0; r < 5; r++)
+        for (int c = 0; c < markW; c++)
+            if (mark[r][c] == '#') {
+                GUIPoint p(x0 + c, y0 + r);
+                DrawString(" ", p, props);
+            }
+
+    props.invert_ = false;
+    SetColor(CD_NORMAL);
+}
+
 void AppWindow::DrawBootProgress(const char *phase, const char *what,
                                  int done, int total) {
     Clear(false);
@@ -1124,9 +1308,11 @@ void AppWindow::DrawBootProgress(const char *phase, const char *what,
     GUIPoint pos;
     char line[42];
 
-    SetColor(CD_HILITE1);
-    pos._x = 15; pos._y = 11;
-    DrawString(PSPATTERN_NAME, pos, props);
+    /* The wordmark goes HERE, not on the null view behind it. The
+       null view is covered by the project dialog and gone in a frame
+       when a project auto-loads: this is the screen anybody actually
+       looks at, for the seconds the sample bank takes to open. */
+    DrawWordmark((40 - 36) / 2, 6);
 
     SetColor(CD_ROW2);
     pos._x = 6; pos._y = 14;

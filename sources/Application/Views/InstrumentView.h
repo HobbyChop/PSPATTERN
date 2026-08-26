@@ -7,6 +7,8 @@
 #include "Foundation/Variables/WatchedVariable.h"
 #include "ViewData.h"
 
+class SynthInstrument ;
+
 class InstrumentView: public FieldView, public I_Observer {
 public:
 	InstrumentView(GUIWindow &w,ViewData *data) ;
@@ -16,6 +18,10 @@ public:
 	virtual void DrawView() ;
 	virtual void OnPlayerUpdate(PlayerEventType,unsigned int) {} ;
 	virtual void OnFocus() ;
+
+	// The routing picture under the operator columns. See the
+	// definition for why it is drawn the way it is.
+	void drawFmAlgo(SynthInstrument *instrument) ;
 
 	// answer to the "replace instrument?" prompt
 	void ConfirmTypeChange(bool go) ;

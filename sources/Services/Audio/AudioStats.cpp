@@ -14,18 +14,19 @@ static unsigned int statsMicros() {
 #endif
 
 #define SCOPE_MASK (AUDIOSTATS_SCOPE_SIZE-1)
-// 16 frames = 0.36ms, so the 92 columns of the scope panel span 33ms
+// 16 frames = 0.36ms, so the 92 columns of a trace span 33ms. Both
+// traces are full width, so this is what it always was.
 #define SCOPE_BUCKET 16
 
 namespace AudioStats {
 
-// one entry per bucket of SCOPE_BUCKET frames, min and max
-static short scopeMin_[AUDIOSTATS_SCOPE_SIZE] ;
-static short scopeMax_[AUDIOSTATS_SCOPE_SIZE] ;
+// one entry per bucket of SCOPE_BUCKET frames, min and max, per channel
+static short scopeMin_[2][AUDIOSTATS_SCOPE_SIZE] ;
+static short scopeMax_[2][AUDIOSTATS_SCOPE_SIZE] ;
 static volatile int scopePos_=0 ;
 // the bucket in progress, carried across blocks so the trace does not
 // get a seam at every block boundary
-static short curMin_=32767,curMax_=-32768 ;
+static short curMin_[2]={32767,32767},curMax_[2]={-32768,-32768} ;
 static int curCount_=0 ;
 static volatile int dspPercent_=0 ;
 // peak hold, and the countdown of blocks before it starts falling
@@ -76,21 +77,25 @@ void EndBlock(short *buf,int frames,bool interlaced) {
 	// the shape of a transient, which plain decimation did not.
 	int step=(interlaced)?2:1 ;
 	int pos=scopePos_ ;
-	short lo=curMin_,hi=curMax_ ;
 	int cnt=curCount_ ;
 	for (int i=0;i<frames;i+=2) {
-		short v=buf[i*step] ;
-		if (v<lo) lo=v ;
-		if (v>hi) hi=v ;
+		for (int ch=0;ch<2;ch++) {
+			short v=interlaced?buf[i*step+ch]:buf[i*step] ;
+			if (v<curMin_[ch]) curMin_[ch]=v ;
+			if (v>curMax_[ch]) curMax_[ch]=v ;
+		}
 		cnt+=2 ;
 		if (cnt>=SCOPE_BUCKET) {
-			scopeMin_[pos]=lo ;
-			scopeMax_[pos]=hi ;
+			for (int ch=0;ch<2;ch++) {
+				scopeMin_[ch][pos]=curMin_[ch] ;
+				scopeMax_[ch][pos]=curMax_[ch] ;
+				curMin_[ch]=32767 ; curMax_[ch]=-32768 ;
+			}
 			pos=(pos+1)&SCOPE_MASK ;
-			lo=32767 ; hi=-32768 ; cnt=0 ;
+			cnt=0 ;
 		}
 	}
-	curMin_=lo ; curMax_=hi ; curCount_=cnt ;
+	curCount_=cnt ;
 	scopePos_=pos ;
 }
 
@@ -107,11 +112,12 @@ int GetDspPercent() {
 	return dspPercent_ ;
 }
 
-void ReadScope(short *outMin,short *outMax,int count) {
+void ReadScope(short *outMin,short *outMax,int count,int channel) {
+	int ch=(channel&1) ;
 	// most recent 'count' buckets, oldest first
 	int pos=(scopePos_-count)&SCOPE_MASK ;
 	for (int i=0;i<count;i++) {
-		short a=scopeMin_[pos],b=scopeMax_[pos] ;
+		short a=scopeMin_[ch][pos],b=scopeMax_[ch][pos] ;
 		// a bucket the audio thread has not filled yet reads as the
 		// empty sentinel; show it as silence rather than as a spike
 		if (a>b) { a=0 ; b=0 ; }

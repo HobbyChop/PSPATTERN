@@ -1,3 +1,34 @@
+PSPATTERN 0.4.0a
+
+    Four palettes instead of one, picked by a single line in
+        config.xml: SUNSET, which is what shipped, ICEBOX, EMBER and
+        GRAPHITE. Any individual colour named in the file still wins
+        over the theme, so you can take a palette and change one
+        thing. If you are updating an older config.xml that spelled
+        all thirteen colours out, delete those lines or the theme has
+        nothing left to set.
+
+    The instrument screen draws the FM routing. A box per operator,
+        laid out by how far it is from the output, with a line from
+        each one to whatever it feeds. The box is the level meter too,
+        so an operator turned down is visibly an empty box; carriers
+        are drawn in the highlight colour and modulators in the
+        structure colour. It reads the same table the engine plays
+        from, so the picture cannot drift from the sound.
+
+    The phrase screen shows what just fired. A short bar beside every
+        row that has a note and has just been passed, brightest on the
+        row sounding now and fading over the three behind it. Gaps
+        stay dark, runs light up in sequence, and the rhythm you are
+        listening to is visible instead of inferred.
+
+    The scope draws both channels, one trace above the other, same
+        size. It was the left channel only, so a hard panned part or a
+        ping pong delay looked exactly like a mono mix.
+
+    The boot screen has the wordmark on it, for the few seconds the
+        sample bank takes to open.
+
 PSPATTERN 0.3.1a
 
     The DSP figure no longer shoots past 100 while rendering. It was

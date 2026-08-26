@@ -340,5 +340,12 @@ private:
 	static short *fmSin_ ;               /* [1024] */
 	static short *fmSinD_ ;              /* [1024] */
 	static void placeTables() ;
+public:
+	/* Where operator `op` sends its output under `algo`: another
+	   operator's index, or FM_OUT. The instrument screen draws the
+	   routing from this, so the picture cannot drift from the engine
+	   -- there is one table and both read it. */
+	static int AlgoDest(int algo,int op) ;
+private:
 } ;
 #endif

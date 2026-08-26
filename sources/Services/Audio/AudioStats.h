@@ -62,6 +62,10 @@ namespace AudioStats {
 	//
 	// A bucket of SCOPE_BUCKET frames puts ~33ms across the panel:
 	// several cycles of the bass, and a kick transient sweeping over.
-	void ReadScope(short *outMin,short *outMax,int count) ;
+	/* channel 0 is left, 1 is right. Both are captured: the panel
+	   shows a trace each, and a stereo mix that is doing something
+	   different on the two sides should look like it. */
+	void ReadScope(short *outMin,short *outMax,int count,int channel) ;
+
 }
 #endif

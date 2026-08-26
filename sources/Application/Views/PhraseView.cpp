@@ -1386,6 +1386,8 @@ void PhraseView::DrawView() {
                     16 * 8 + 12, CD_ROW);
     }
 
+    drawTriggerTrail();
+
     // Compute song grid location
 
     GUIPoint anchor = gridAnchor();
@@ -1610,6 +1612,7 @@ void PhraseView::OnPlayerUpdate(PlayerEventType eventType, unsigned int tick) {
 
     GUITextProperties props;
     drawNotes();
+    drawTriggerTrail();
 
     GUIPoint anchor = gridAnchor();
     GUIPoint pos = anchor;
@@ -1688,4 +1691,69 @@ void PhraseView::printHelpLegend(FourCC command, GUITextProperties props) {
     }
     DrawCommandHelp(command);
     DrawHintBar("O set  O+</> edit  R+v table  R+< chain");
+}
+
+/* A trail behind the playhead, on the rows that actually fired.
+ *
+ * The playhead marker says where the player is. It does not say what
+ * just happened, so a phrase full of notes and a phrase full of empty
+ * rows look identical while they play, and you have to read the grid
+ * to see the rhythm you are listening to.
+ *
+ * This puts a short bar beside each row that has a note and has just
+ * been passed, brightest on the row sounding now and fading over the
+ * three behind it. The rhythm becomes visible: gaps stay dark, runs
+ * light up in sequence.
+ *
+ * Only rows with a note glow. A trail that followed the playhead
+ * regardless would be a longer playhead, which is not worth any
+ * pixels.
+ *
+ * Drawn rather than written, because a character cell holds a palette
+ * index and not a colour -- there is no way to write text a third as
+ * bright. OpGlow exists for this.
+ *
+ * The op for every row is registered every time, including the ones
+ * that are dark: intensity 0 paints the background, so a row leaving
+ * the trail erases itself without anything having to remember that it
+ * used to be lit. setOp replaces by position, so this stays at
+ * sixteen ops however long it runs.
+ */
+void PhraseView::drawTriggerTrail() {
+
+    AppWindow &app = (AppWindow &)w_;
+    GUIPoint anchor = gridAnchor();
+
+    Player *player = Player::GetInstance();
+    int playRow = -1;
+    if (player->IsRunning() && viewData_->playMode_ != PM_AUDITION) {
+        for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
+            if (player->IsChannelPlaying(i) &&
+                !player->IsChannelMuted(i) &&
+                viewData_->currentPlayPhrase_[i] ==
+                    viewData_->currentPhrase_) {
+                playRow = viewData_->phrasePlayPos_[i];
+                break;
+            }
+        }
+    }
+
+    unsigned char *note =
+        phrase_->note_ + (16 * viewData_->currentPhrase_);
+
+    for (int j = 0; j < 16; j++) {
+
+        int intensity = 0;
+        if (playRow >= 0 && note[j] != 0xFF) {
+            // how many steps ago this row went by, wrapping at the
+            // top of the phrase
+            int age = playRow - j;
+            if (age < 0)
+                age += 16;
+            if (age < 4)
+                intensity = 255 >> age;      // 255, 127, 63, 31
+        }
+        app.OpGlow(anchor._x * 8 - 8, (anchor._y + j) * 8 + 2, 4, 4,
+                   intensity);
+    }
 }
