@@ -1,8 +1,10 @@
 #include "MidiInstrument.h"
+#include "VibratoMath.h"
 #include "CommandList.h"
 #include "System/Console/Trace.h"
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 MidiService *MidiInstrument::svc_=0 ;
 
@@ -127,7 +129,7 @@ void MidiInstrument::sendBend(MidiVoice &v) {
 	if (range<1) range=1 ;
 
 	// bend_ is 1/256 semitone; scale it against the device's range
-	int units=v.bend_*8192/(range*BEND_UNIT) ;
+	int units=(v.bend_+v.vibBend_)*8192/(range*BEND_UNIT) ;
 	if (units>8191) units=8191 ;
 	if (units<-8192) units=-8192 ;
 	int value=8192+units ;
@@ -184,6 +186,10 @@ bool MidiInstrument::Start(int c,unsigned char note,bool retrigger) {
 	v.bend_=0 ;
 	v.bendTarget_=0 ;
 	v.bendRate_=0 ;
+	v.vibBend_=0 ;
+	v.vibSpeed_=0 ;
+	v.vibDepth_=0 ;
+	v.vibPhase_=0 ;
 	sendBend(v) ;
 
 	v.arpOn_=false ;
@@ -224,6 +230,16 @@ bool MidiInstrument::Render(int channel,fixed *buffer,int size,bool updateTick) 
 	}
 
 	stepBend(v) ;
+
+	/* VIBR: a wobble in the same 1/256 semitone units the bend uses,
+	   recomputed each tick and sent with it. This cannot retune the
+	   note the way the synth does, so the device's own bend range
+	   setting is what decides how far the wobble actually goes. */
+	if (v.vibSpeed_ && v.vibDepth_) {
+		float semis=VibratoSemitones(v.vibPhase_,v.vibSpeed_,v.vibDepth_) ;
+		v.vibBend_=(int)(semis*BEND_UNIT) ;
+	}
+
 	sendBend(v) ;
 
 	// ARPG: walk the four nibbles, one per tick, as note off/on pairs
@@ -331,6 +347,14 @@ void MidiInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 					setBendSemitones(v,semis,0x20) ;
 				}
 			}
+			break ;
+
+		case I_CMD_VIBR:
+			v.vibSpeed_=(unsigned short)((value>>8)&0xFF) ;
+			v.vibDepth_=(unsigned char)(value&0xFF) ;
+			v.vibPhase_=0 ;
+			// off puts the pitch back to whatever the slide says
+			if (!v.vibSpeed_||!v.vibDepth_) v.vibBend_=0 ;
 			break ;
 
 		case I_CMD_ARPG:

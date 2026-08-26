@@ -56,6 +56,12 @@ struct MidiVoice {
 	int  velocity_ ;
 	// pitch bend, in 1/256 semitone so a slide has somewhere to walk
 	int  bend_ ;
+	// VIBR rides beside the bend rather than in it, so a slide and a
+	// wobble can happen at once instead of overwriting each other.
+	int  vibBend_ ;          // 1/256 semitone, like bend_
+	unsigned short vibSpeed_ ;
+	unsigned char  vibDepth_ ;
+	unsigned short vibPhase_ ;
 	int  bendTarget_ ;
 	int  bendRate_ ;        // 0 = jump straight there
 	int  bentSent_ ;        // last 14-bit value actually sent

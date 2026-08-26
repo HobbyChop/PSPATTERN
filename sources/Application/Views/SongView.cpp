@@ -556,6 +556,46 @@ void SongView::onStop() {
     player->OnSongStartButton(from, to, true, false);
 };
 
+void SongView::toggleBookmark(bool on) {
+    int row = viewData_->songY_ + viewData_->songOffset_;
+    if ((row < 0) || (row >= SONG_ROW_COUNT))
+        return;
+    viewData_->song_->bookmark_[row] = on ? 1 : 0;
+    SetNotification(on ? "bookmark set" : "bookmark cleared");
+    isDirty_ = true;
+}
+
+/* Walk to the next marked row, wrapping, and say so rather than
+   moving if there are none -- a jump that silently lands somewhere
+   arbitrary is worse than one that tells you there was nowhere to
+   go. */
+void SongView::jumpToBookmark(int direction) {
+    int start = viewData_->songY_ + viewData_->songOffset_;
+    for (int i = 1; i <= SONG_ROW_COUNT; i++) {
+        int r = start + direction * i;
+        while (r < 0) r += SONG_ROW_COUNT;
+        while (r >= SONG_ROW_COUNT) r -= SONG_ROW_COUNT;
+        if (!viewData_->song_->bookmark_[r])
+            continue;
+        // hold the cursor where it sits on screen and move the window
+        // under it, so the row landed on is not stuck against an edge
+        int offset = r - viewData_->songY_;
+        int maxOffset = SONG_ROW_COUNT - View::songRowCount_;
+        if (offset < 0) {
+            viewData_->songOffset_ = 0;
+            viewData_->songY_ = r;
+        } else if (offset > maxOffset) {
+            viewData_->songOffset_ = maxOffset;
+            viewData_->songY_ = r - maxOffset;
+        } else {
+            viewData_->songOffset_ = offset;
+        }
+        isDirty_ = true;
+        return;
+    }
+    SetNotification("no bookmarks");
+}
+
 void SongView::jumpToNextSection(int direction) {
 
     int current = viewData_->songY_ + viewData_->songOffset_;
@@ -685,6 +725,22 @@ void SongView::ProcessButtonMask(unsigned short mask, bool pressed) {
  ******************************************************/
 
 void SongView::processNormalButtonMask(unsigned int mask) {
+
+    /* SELECT first, and on its own.
+    
+       It is the one modifier on this machine that was not already
+       spoken for: L, R, X and O all carry two or three jobs on this
+       screen and every direction under them is taken. SELECT was
+       wired to nothing at all -- the button was not even in
+       mapping.xml -- so bookmarks get a whole modifier to themselves
+       instead of a chord nobody would remember. */
+    if (mask & EPBM_SELECT) {
+        if (mask & EPBM_A) toggleBookmark(true);
+        if (mask & EPBM_B) toggleBookmark(false);
+        if (mask & EPBM_DOWN) jumpToBookmark(1);
+        if (mask & EPBM_UP) jumpToBookmark(-1);
+        return;
+    }
 
     // B Modifier
 
@@ -1114,9 +1170,29 @@ void SongView::DrawSidePanel() {
     bool liveMode = (player->GetSequencerMode() == SM_LIVE);
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         char c[2] = {'-', 0};
-        if (liveMode && running && player->GetQueueingMode(i) != QM_NONE) {
-            c[0] = player->GetLiveIndicator(i)[0];
-            SetColor(CD_PLAY);
+        QueueingMode qm = player->GetQueueingMode(i);
+        if (liveMode && running && qm != QM_NONE) {
+            // The one column this row can spare per channel is worth
+            // more as a countdown than as a blink: it says how many
+            // steps are left before the switch actually happens, and
+            // it visibly ticks down so you can play to it. Anything
+            // further out than a screenful of steps is just "later".
+            int steps = player->GetQueueSteps(i);
+            if (steps < 0) {
+                // No boundary to count to -- fall back to the blinking
+                // marker rather than print a number that isn't true.
+                c[0] = player->GetLiveIndicator(i)[0];
+            } else if (steps > 15) {
+                c[0] = '+';
+            } else {
+                c[0] = (steps < 10) ? ('0' + steps) : ('A' + steps - 10);
+            }
+            // A queue that stops a channel and one that starts it are
+            // the same countdown but opposite outcomes, so they take
+            // the colours mute and play already own on this panel.
+            bool stopping =
+                (qm == QM_CHAINSTOP) || (qm == QM_PHRASESTOP);
+            SetColor(stopping ? CD_MUTE : CD_PLAY);
         } else {
             SetColor(CD_ROW);
         }
@@ -1263,9 +1339,20 @@ void SongView::DrawView() {
     pos = anchor;
     pos._x -= 3;
     for (int j = 0; j < View::songRowCount_; j++) {
-        char p = j + viewData_->songOffset_;
-        ((p / altRowNumber_) % 2) ? SetColor(CD_ROW) : SetColor(CD_ROW2);
-        hex2char(p, row);
+        int p = j + viewData_->songOffset_;
+        /* A bookmarked row wears it in its own number rather than
+           getting a marker beside it. The font is a bitmap blob with
+           no per-glyph table, so picking a symbol means guessing at
+           what it contains -- an asterisk drew nothing at all. The
+           row number is already there and already coloured. */
+        bool marked = (p >= 0) && (p < SONG_ROW_COUNT) &&
+                      viewData_->song_->bookmark_[p];
+        if (marked) {
+            SetColor(CD_HILITE2);
+        } else {
+            ((p / altRowNumber_) % 2) ? SetColor(CD_ROW) : SetColor(CD_ROW2);
+        }
+        hex2char((char)p, row);
         DrawString(pos._x, pos._y, row, props);
         pos._y += 1;
     }

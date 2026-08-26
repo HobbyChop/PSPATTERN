@@ -150,6 +150,7 @@ SampleInstrument::SampleInstrument() {
          rp->updaters_.push_back(&rp->fbMixRamp_);
          rp->updaters_.push_back(&rp->fbTunRamp_);
          rp->updaters_.push_back(&rp->arp_);
+         rp->updaters_.push_back(&rp->vibrato_);
          rp->updaters_.push_back(&rp->speedRamp_);
          rp->updaters_.push_back(&rp->legato_);
          rp->updaters_.push_back(&rp->pfin_);
@@ -1314,6 +1315,16 @@ void SampleInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 				if (!rp->arp_.Enabled()) {
 					rp->arp_.Enable() ;
 					rp->activeUpdaters_.push_back(&rp->arp_) ;
+				}
+			}
+			break ;
+
+		case I_CMD_VIBR:
+			{
+				rp->vibrato_.SetData(value) ;
+				if (!rp->vibrato_.Enabled()) {
+					rp->vibrato_.Enable() ;
+					rp->activeUpdaters_.push_back(&rp->vibrato_) ;
 				}
 			}
 			break ;

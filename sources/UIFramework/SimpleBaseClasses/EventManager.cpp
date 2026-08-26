@@ -52,6 +52,7 @@ void EventManager::InstallMappings() {
 	mapConfigKey(APP_BUTTON_R,"KEY_RSHOULDER") ;
 	mapConfigKey(APP_BUTTON_START,"KEY_START") ;
 	mapConfigKey(APP_BUTTON_VOLINC,"KEY_VOLINC") ;
+	mapConfigKey(APP_BUTTON_SELECT,"KEY_SELECT") ;
 	mapConfigKey(APP_BUTTON_VOLDEC,"KEY_VOLDEC") ;
 	
 	ControlRoom *cr=ControlRoom::GetInstance() ;
@@ -65,6 +66,7 @@ void EventManager::InstallMappings() {
 	cr->Attach(URL_EVENT_LSHOULDER,mapping_[APP_BUTTON_L].c_str()) ;
 	cr->Attach(URL_EVENT_RSHOULDER,mapping_[APP_BUTTON_R].c_str()) ;
 	cr->Attach(URL_EVENT_START,mapping_[APP_BUTTON_START].c_str()) ;
+	cr->Attach(URL_EVENT_SELECT,mapping_[APP_BUTTON_SELECT].c_str()) ;
 	cr->Attach(URL_VOLUME_INCREASE,mapping_[APP_BUTTON_VOLINC].c_str()) ;
 	cr->Attach(URL_VOLUME_DECREASE,mapping_[APP_BUTTON_VOLDEC].c_str()) ;
 	

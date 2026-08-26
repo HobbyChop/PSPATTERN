@@ -27,6 +27,13 @@
 // what a table's transpose column emits, and it is useful typed into
 // a step on its own.
 #define I_CMD_TRSP MAKE_FOURCC('T','R','S','P')
+// A step that only sometimes happens. In a phrase it decides whether
+// the note plays; in a table, where each command column walks its own
+// position, it is a hop that only sometimes hops. Both are the same
+// question asked of the same dice, which is why it is one command.
+#define I_CMD_MAYB MAKE_FOURCC('M','A','Y','B')
+// Pitch that moves on its own, per step, rather than per instrument.
+#define I_CMD_VIBR MAKE_FOURCC('V','I','B','R')
 #define I_CMD_TMPO MAKE_FOURCC('T','M','P','O')
 #define I_CMD_MDCC MAKE_FOURCC('M','D','C','C')
 #define I_CMD_MDPG MAKE_FOURCC('M','D','P','G')

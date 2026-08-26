@@ -99,6 +99,9 @@ public:
 	void QueueChannel(int i,QueueingMode mode,unsigned char position,unsigned char chainpos=0) ;
 
 	char *GetLiveIndicator(int channel) ;
+	// Steps of the current groove until a queued channel actually
+	// switches. -1 when nothing is queued on that channel.
+	int GetQueueSteps(int channel) ;
 	double GetPlayTime() ;
 
 	char *GetPlayedNote(int channel) ;
@@ -167,6 +170,11 @@ protected:
     QueueingMode liveQueueingMode_[SONG_CHANNEL_COUNT] ;
 	unsigned char liveQueueChainPosition_[SONG_CHANNEL_COUNT] ;
 	unsigned int timeToLive_[SONG_CHANNEL_COUNT] ;
+	// The dice MAYB rolls with. One stream for the whole player
+	// rather than one per channel, so two channels asking the same
+	// question on the same step do not get the same answer.
+	unsigned int rng_ ;
+	bool rollStepMaybe(int channel,unsigned char phrase,int pos) ;
 	unsigned int timeToStart_[SONG_CHANNEL_COUNT] ;
 
 	bool retrigAllImmediate_ ;

@@ -29,6 +29,12 @@ class SongView : public View {
     void extendSelection();
     void updateChain(int offset);
     void updateSongOffset(int offset);
+
+    /* Rows you have told the tracker you want to come back to.
+       SELECT+O marks the row under the cursor, SELECT+X clears it,
+       SELECT+up/down goes to the previous or next one. */
+    void toggleBookmark(bool on);
+    void jumpToBookmark(int direction);
     void updateCursor(int dx, int dy);
     void setChain(unsigned char);
     void cutPosition();

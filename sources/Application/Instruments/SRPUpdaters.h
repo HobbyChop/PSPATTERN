@@ -125,14 +125,21 @@ private:
 } ;
 
 
-/*class Vibrato: public I_SRPUpdater {
+/* Left as a stub by the tracker this is forked from. Speed is a
+   phase advance per tick and depth is in sixteenths of a semitone,
+   so 10 is one semitone and 02 the smallest wobble worth having. */
+class Vibrato: public I_SRPUpdater {
 public:
-	Vibrato() {} ;
+	Vibrato() { phase_=0 ; speed_=0 ; depth_=0 ; } ;
 	virtual ~Vibrato() {} ;
-	void SetData() ;
+	void SetData(uint data) ;
 	virtual void Trigger(bool tableTick) ;
 	virtual void UpdateSRP(struct RUParams &rup) ;
 private:
+	ushort phase_ ;
+	ushort speed_ ;
+	uchar depth_ ;
+	fixed current_ ;
 } ;
-*/
+
 #endif

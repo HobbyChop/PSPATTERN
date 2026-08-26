@@ -1,3 +1,88 @@
+PSPATTERN 0.7.0a
+
+    Two commands, both of them things LSDJ has had for years and this
+        did not.
+
+    MAYB aa-b is a step that only sometimes happens. aa is the odds
+        out of FF -- 00 never, FF always, 80 about half. A step with
+        no MAYB on it always happens, so nothing written before this
+        changes.
+
+    In a phrase it decides whether the note plays. A step it skips is
+        left alone rather than cut off, so whatever was ringing keeps
+        ringing, exactly as an empty step would. A maybe that cut the
+        previous note would be a gate, not a maybe.
+
+    In a table it is a hop that only sometimes hops, and b is the row
+        to land on -- the same parameter shape HOP already uses, with
+        the repeat count replaced by odds. The three command columns
+        in a table each walk their own position, so one column can
+        wander while the others hold.
+
+    VIBR aabb wobbles the pitch: aa speed, bb depth in sixteenths of a
+        semitone, so 10 is one semitone and 02 the smallest wobble
+        worth having. 0000 turns it off and puts the pitch back.
+
+    It is centred on the note, so a part with vibrato sits at the same
+        average pitch as one without -- the difference between vibrato
+        and a detune that wobbles. It also rides on top of whatever
+        pitch the step is already playing, so vibrato and an arpeggio
+        run at once instead of overwriting each other.
+
+    All three instruments have it. The sampler fills in a Vibrato
+        updater that the tracker this is forked from left as a
+        commented out stub; the synth multiplies the phase increment;
+        MIDI sends it as pitch bend, which means the device's own bend
+        range decides how far it goes.
+
+    Fixed: the synth's note-on set its phase increment directly
+        instead of going through setVoicePitch, so the voice never
+        recorded which note it was playing. Nothing had needed that
+        until VIBR 0000 asked for the pitch back and got the previous
+        note's.
+
+    The on screen help knows about CHRD, RTGR, RAND and TRSP now. All
+        four shipped in 0.5.0a with no help entry, which meant the one
+        place you can look a command up on the device did not have
+        them.
+
+PSPATTERN 0.6.0a
+
+    Song rows can be bookmarked. SELECT and O marks the row under the
+        cursor, SELECT and X clears it, and SELECT with up or down
+        jumps to the next mark in that direction. A song is 256 rows
+        and the screen shows sixteen, so the intro and the last chorus
+        were a long way apart. Marks are saved with the song, and a
+        song saved with marks still opens in an older build.
+
+    SELECT does something now. The button was in the enum, commented
+        out of the event dispatcher and left out of the PSP mapping
+        entirely, so it had never been wired to anything -- a whole
+        modifier nobody could press. It is a modifier now, which is
+        where the bookmark bindings went rather than into an already
+        crowded chord.
+
+    A marked row is drawn in the value colour instead of the row
+        colour. The font is a bitmap with no per-glyph table, so a
+        marker character is a guess that fails silently; the row number
+        was already on screen and already coloured.
+
+    The cue row counts down. A queued channel used to show a blinking
+        arrow whose blink rate encoded which boundary it was waiting
+        for, which is not something anyone reads mid-set. The same
+        single column now shows how many steps are left before the
+        channel actually switches, counting down to the change, in the
+        play colour to start and the mute colour to stop. More than
+        sixteen steps out reads +.
+
+    The count comes from the same two rules the player uses to end a
+        phrase and a chain, and is tested against them directly, since
+        a countdown that reaches zero a step early is worse on stage
+        than no countdown.
+
+    Fixed: an unmapped controller trigger read an uninitialised
+        variable and shifted a bit by whatever was on the stack.
+
 PSPATTERN 0.5.0a
 
     Tables have a transpose column. Sixteen rows of semitones on the

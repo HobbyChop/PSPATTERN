@@ -37,6 +37,36 @@ static inline std::string* getHelpLegend(FourCC command) {
 			result[1].assign("ticks each arp note holds,");
 			result[2].assign("1 = every tick (default)");
 			break;
+		case I_CMD_CHRD:
+			result[0].assign("CHoRD:abcd four relative");
+			result[1].assign("pitches cycled every tick,");
+			result[2].assign("no ARPS needed");
+			break;
+		case I_CMD_RTGR:
+			result[0].assign("ReTriGgeR shape:aabb");
+			result[1].assign("aa volume, bb pitch per");
+			result[2].assign("repeat, signed. Beside RTRG");
+			break;
+		case I_CMD_RAND:
+			result[0].assign("RANDom:aabb scatter this");
+			result[1].assign("note aa semitones and");
+			result[2].assign("bb of level. Down only");
+			break;
+		case I_CMD_TRSP:
+			result[0].assign("TRanSPose:--bb shift the");
+			result[1].assign("note bb semitones and");
+			result[2].assign("hold it there. Signed");
+			break;
+		case I_CMD_MAYB:
+			result[0].assign("MAYBe:aa-b odds aa out of");
+			result[1].assign("FF. In a phrase the note");
+			result[2].assign("plays, in a table hop to b");
+			break;
+		case I_CMD_VIBR:
+			result[0].assign("VIBRato:aabb speed aa,");
+			result[1].assign("depth bb in 1/16 semitone");
+			result[2].assign("so 10 is one. 0000 off");
+			break;
 		case I_CMD_VOLM:
 			result[0].assign("VOLuMe:aabb");
 			result[1].assign("approach volume");

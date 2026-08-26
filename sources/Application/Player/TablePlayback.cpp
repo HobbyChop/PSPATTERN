@@ -1,8 +1,10 @@
 #include "TablePlayback.h"
 #include "Application/Instruments/CommandList.h"
 #include "Application/Instruments/I_Instrument.h"
+#include "MaybeRoll.h"
 
 TablePlayback TablePlayback::playback_[SONG_CHANNEL_COUNT] ;
+unsigned int TablePlayback::rng_=0x9E3779B9u ;
 
 void TableSaveState::Reset() {
 		position_[0]=0 ;
@@ -108,6 +110,26 @@ bool TablePlayback::ProcessLocalCommand(int row,FourCC *commandList,ushort *para
     // First process any positional command
 
 	switch(command) {
+		case I_CMD_MAYB:
+		{
+			/* A hop that only sometimes happens. aa is the chance out
+			   of FF, b the row to land on -- the same parameter shape
+			   HOP uses, with the repeat count replaced by odds, so a
+			   column that sometimes loops and one that always does are
+			   written the same way.
+
+			   Unlike HOP there is no counter to keep: the dice are the
+			   whole state, so none of the hopCount_ bookkeeping below
+			   applies here. */
+			bool take=MaybeTake(rng_,(param>>8)&0xFF) ;
+			if (take) {
+				position_[row]=param&0xF ;
+			} else {
+				position_[row]=(position_[row]+1)%16 ;
+			}
+			hopped=true ;
+			break ;
+		}
 		case I_CMD_HOP:
 		{
 			int count=param>>8  ;

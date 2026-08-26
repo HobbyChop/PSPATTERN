@@ -9,6 +9,8 @@ static FourCC _all[]= {
 	I_CMD_RTGR,
 	I_CMD_RAND,
 	I_CMD_TRSP,
+	I_CMD_MAYB,
+	I_CMD_VIBR,
 	I_CMD_CRSH,
 	I_CMD_DLAY,
 	I_CMD_DRIV,
@@ -59,7 +61,7 @@ int CommandList::AppliesTo(FourCC command) {
 		// handled by the player or the table engine: any channel
 		case I_CMD_TMPO: case I_CMD_GROV: case I_CMD_HOP:
 		case I_CMD_TABL: case I_CMD_KILL: case I_CMD_IRTG:
-		case I_CMD_DLAY: case I_CMD_STOP:
+		case I_CMD_DLAY: case I_CMD_STOP: case I_CMD_MAYB:
 			return CMD_ON_ALL ;
 
 		// every instrument implements these
@@ -67,7 +69,7 @@ int CommandList::AppliesTo(FourCC command) {
 			return CMD_ON_ALL ;
 
 		// the shared musical ones -- MIDI sends them as bend and CCs
-		case I_CMD_TRSP:
+		case I_CMD_TRSP: case I_CMD_VIBR:
 		case I_CMD_PTCH: case I_CMD_ARPG: case I_CMD_ARPS: case I_CMD_CHRD:
 		case I_CMD_LEGA:
 		case I_CMD_PAN_: case I_CMD_FCUT: case I_CMD_FRES:

@@ -1,5 +1,6 @@
 
 #include "SRPUpdaters.h"
+#include "VibratoMath.h"
 #include <math.h>
 #include "System/Console/Trace.h"
 //
@@ -347,3 +348,39 @@ void Arp::UpdateSRP(struct RUParams &rup) {
 	rup.speedOffset_=fp_mul(rup.speedOffset_,current_) ;
 } ;
 
+
+/* Vibrato.
+
+   aabb: aa is speed, bb is depth in sixteenths of a semitone. 0000
+   turns it off and puts the pitch back, which is what a V00 is for.
+
+   The phase is a 16 bit counter advanced by speed<<8 each tick, so it
+   wraps on its own and needs no comparison. current_ is recomputed
+   once per tick, not per sample: this is a tick rate updater like the
+   arpeggiator beside it, and the pitch it produces is applied to the
+   whole tick. */
+
+void Vibrato::SetData(unsigned int data) {
+	speed_=(ushort)((data>>8)&0xFF) ;
+	depth_=(uchar)(data&0xFF) ;
+	phase_=0 ;
+	current_=fl2fp(1.0) ;
+} ;
+
+void Vibrato::Trigger(bool tableTick) {
+
+	if((!tableTick)||(!enabled_)) return ;
+
+	if ((speed_==0)||(depth_==0)) {
+		current_=fl2fp(1.0) ;
+		return ;
+	}
+
+	float semis=VibratoSemitones(phase_,speed_,depth_) ;
+	current_=fl2fp(float(pow(2.0,semis/12.0))) ;
+} ;
+
+void Vibrato::UpdateSRP(struct RUParams &rup) {
+	if (!enabled_) return ;
+	rup.speedOffset_=fp_mul(rup.speedOffset_,current_) ;
+} ;

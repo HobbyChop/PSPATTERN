@@ -15,6 +15,8 @@ Song::Song():Persistent("SONG") {
 	data_=(unsigned char *)SYS_MALLOC(SONG_CHANNEL_COUNT*SONG_ROW_COUNT) ;
 	memset(data_,0xFF,SONG_CHANNEL_COUNT*SONG_ROW_COUNT) ;
 	
+	memset(bookmark_,0,SONG_ROW_COUNT) ;
+
 	chain_=new Chain() ;   // Allocate chain datas
 	phrase_=new Phrase() ; // Allocate phrase datas
 } ;
@@ -39,6 +41,7 @@ unsigned int Song::Checksum(unsigned int h) {
 	h=checksumBytes(h,phrase_->param1_,psize*sizeof(ushort)) ;
 	h=checksumBytes(h,phrase_->cmd2_,psize*sizeof(FourCC)) ;
 	h=checksumBytes(h,phrase_->param2_,psize*sizeof(ushort)) ;
+	h=checksumBytes(h,bookmark_,SONG_ROW_COUNT) ;
 	return h ;
 } ;
 
@@ -60,6 +63,9 @@ void Song::SaveContent(TiXmlNode *node) {
 	saveHexBuffer(node,"PARAM1",phrase_->param1_,PHRASE_COUNT*16) ;
 	saveHexBuffer(node,"COMMAND2",phrase_->cmd2_,PHRASE_COUNT*16) ;
 	saveHexBuffer(node,"PARAM2",phrase_->param2_,PHRASE_COUNT*16) ;
+	// Its own element, like VELOCITY: a project written without it
+	// loads with no bookmarks, which is the right answer.
+	saveHexBuffer(node,"BOOKMARKS",bookmark_,SONG_ROW_COUNT) ;
 
 } ;
 
@@ -89,6 +95,9 @@ void Song::RestoreContent(TiXmlElement *element) {
 		// at full, exactly as they did.
 		if (!strcmp("VELOCITY",value)) {
 			restoreHexBuffer(current,phrase_->velocity_,PHRASE_COUNT*16) ;
+		} ;
+		if (!strcmp("BOOKMARKS",value)) {
+			restoreHexBuffer(current,bookmark_,SONG_ROW_COUNT) ;
 		} ;
 		if (!strcmp("COMMAND1",value)) {
 			restoreHexBuffer(current,(uchar *)phrase_->cmd1_,PHRASE_COUNT*16*sizeof(FourCC)) ;

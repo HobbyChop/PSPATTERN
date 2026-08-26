@@ -1,4 +1,6 @@
 #include "Player.h"
+#include "LiveQueue.h"
+#include "MaybeRoll.h"
 #include "MidiNoteInput.h"
 #include "Application/Views/BaseClasses/ViewEvent.h"
 #include "System/io/Status.h"
@@ -24,6 +26,7 @@ Player::Player() {
 
     lastSongPos_ = 0;
     mode_=PM_SONG;
+    rng_=0x1234567u ;
 	sequencerMode_=SM_SONG;
 	lastPercentage_=0;
 	retrigAllImmediate_=false;
@@ -264,6 +267,52 @@ char *Player::GetLiveIndicator(int channel) {
         }
     }
     return " ";
+}
+
+/********************************************************
+ GetQueueSteps:
+    How many steps of the current phrase are left before a
+    queued channel actually switches.
+
+    The two boundaries are the ones the player itself uses:
+    a phrase ends when its position would reach 16, and a
+    chain ends when the next slot in it is empty. A tick
+    queue lands on the very next step.
+
+    This is a count of steps, not of time: the groove decides
+    how long each of them lasts, and a HOP in the phrase can
+    end it early. Neither is knowable from here, which is why
+    the readout is a step count and not a clock.
+ ********************************************************/
+
+int Player::GetQueueSteps(int channel) {
+
+	if (mode_ != PM_LIVE) return -1 ;
+
+	switch (liveQueueingMode_[channel]) {
+	case QM_NONE:
+		return -1 ;
+	case QM_TICKSTART:
+		return 0 ;
+	default:
+		break ;
+	}
+
+	// Nothing is playing on the channel, so there is no boundary to
+	// wait for -- the queue lands as soon as the player looks at it.
+
+	if (viewData_->currentPlayPhrase_[channel] == 0xFF) return 0 ;
+
+	bool chainBoundary = (liveQueueingMode_[channel] == QM_CHAINSTART) ||
+	                     (liveQueueingMode_[channel] == QM_CHAINSTOP) ;
+
+	int chain = viewData_->currentPlayChain_[channel] ;
+	unsigned char *data =
+	    (chain != 0xFF) ? viewData_->song_->chain_->data_ + 16 * chain : 0 ;
+
+	return LiveQueueSteps(viewData_->phrasePlayPos_[channel],
+	                      viewData_->chainPlayPos_[channel], data,
+	                      chainBoundary) ;
 }
 
 void Player::MidiNoteOn(unsigned char note,unsigned char velocity) {
@@ -836,6 +885,42 @@ void Player::updatePhrasePos(int pos, int channel) {
     }
 }
 
+/********************************************************
+ rollStepMaybe:
+    Does this step's note happen?
+
+    MAYB aa-b: aa is the chance out of FF that the note plays,
+    00 never and FF always. A step with no MAYB on it always
+    plays, so the command is opt-in and every song written
+    before it sounds the same.
+
+    Read here rather than in ProcessCommands because commands
+    run after the note has started, and a note that has already
+    sounded cannot be taken back. This is the same reason DLAY
+    is read up in updatePhrasePos.
+
+    A step that loses its roll is left alone entirely -- the
+    instrument is not stopped -- so a skipped step behaves like
+    an empty one and whatever was ringing keeps ringing. A
+    "maybe" that cut the previous note would be a gate, not a
+    maybe.
+ ********************************************************/
+
+bool Player::rollStepMaybe(int channel,unsigned char phrase,int pos) {
+
+	Phrase *p=viewData_->song_->phrase_ ;
+	int idx=16*phrase+pos ;
+
+	// Either command column can carry it; each takes its own
+	// parameter, which is the bug DLAY had here once.
+	int chance=-1 ;
+	if (p->cmd1_[idx]==I_CMD_MAYB) chance=(p->param1_[idx]>>8)&0xFF ;
+	if (p->cmd2_[idx]==I_CMD_MAYB) chance=(p->param2_[idx]>>8)&0xFF ;
+
+	if (chance<0) return true ;     // no MAYB on this step
+	return MaybeTake(rng_,chance) ;
+}
+
 void Player::playCursorPosition(int channel) {
 
     int pos = viewData_->phrasePlayPos_[channel];
@@ -853,7 +938,10 @@ void Player::playCursorPosition(int channel) {
         TableHolder *th = TableHolder::GetInstance();
         TablePlayback &tpb = TablePlayback::GetTablePlayback(channel);
 
-        if (note != 0xFF) {
+        // Asked once, before anything is started or stopped.
+        bool playNote = (note != 0xFF) && rollStepMaybe(channel, currentPhrase, pos);
+
+        if (playNote) {
 
             // Stop instrument if playing
 

@@ -95,6 +95,80 @@ output.
 
 L and X mutes the channel under the cursor.
 
+BOOKMARKS
+
+A song is 256 rows and the screen shows sixteen, so getting from the
+intro to the last chorus is a lot of holding down. Mark the rows you
+keep coming back to and jump between them.
+
+  SELECT then O      mark the row under the cursor
+  SELECT then X      clear it
+  SELECT then v      go to the next marked row
+  SELECT then ^      go to the previous one
+
+A marked row is drawn in the value colour instead of the row colour.
+Marks are saved with the song.
+
+LIVE MODE
+
+The song screen has two modes. In song mode it plays the arrangement
+from the top. In live mode each channel is launched by hand and keeps
+looping until you say otherwise, which is closer to a groovebox than
+to a tape.
+
+  X then < or >      switch between song and live mode
+
+In live mode, O on a cell queues that chain rather than starting it,
+so parts arrive on a musical boundary instead of wherever your thumb
+landed. Press O on the same cell again and it comes in sooner: the
+first press waits for the end of the chain, the second for the end of
+the current phrase.
+
+The live panel on the right has two rows. The mut row shows which
+channels are muted. The cue row shows what each channel is waiting to
+do, and counts the wait down:
+
+  8 7 6 ...          steps left before this channel switches
+  play colour        it is queued to start
+  mute colour        it is queued to stop
+  +                  further out than sixteen steps
+  -                  nothing queued
+
+The count is in steps, not in time. The groove decides how long each
+step lasts, and a HOP in the phrase can end it early, so treat the
+number as the number of steps still to play rather than a clock.
+
+
+PROBABILITY
+
+MAYB aa-b makes a step happen only sometimes. aa is the odds out of
+FF: 00 never, FF always, 80 about half. A step with no MAYB on it
+always happens, so nothing you wrote before this existed changes.
+
+In a phrase it decides whether the note plays. A step it skips is left
+alone rather than cut off, so whatever was already ringing keeps
+ringing, exactly as an empty step would.
+
+In a table it is a hop that only sometimes hops, and b is the row to
+land on. The three command columns in a table each walk their own
+position, so a MAYB in one column does not touch the others -- which
+is what makes it useful: one column can wander while the others hold.
+
+VIBRATO
+
+VIBR aabb wobbles the pitch. aa is the speed, bb the depth in
+sixteenths of a semitone, so 10 is one semitone, 02 is the smallest
+wobble worth having and 80 is the widest. VIBR 0000 turns it off and
+puts the pitch back where the note left it.
+
+It is centred on the note, so a part with vibrato sits at the same
+average pitch as one without. It also rides on top of whatever pitch
+the step is already playing, so vibrato and an arpeggio can run at the
+same time: the arpeggio moves the note, the vibrato bends around it.
+
+On a MIDI instrument the wobble is sent as pitch bend, which means the
+device's own bend range setting decides how far it actually goes.
+
 
 6. THE CHAIN SCREEN
 
@@ -255,6 +329,7 @@ read separately, or as aaaa when all four are one number.
   LFOD  LFO depth
   LFOR  LFO rate
   LPOF  shift the sample loop points
+  MAYB  a step that only sometimes happens
   MCCA  send a value on one of the instrument CC slots
   MDAT  MIDI channel pressure
   MDCC  send MIDI CC aa with value bb
@@ -273,6 +348,7 @@ read separately, or as aaaa when all four are one number.
   TMPO  set the tempo
   TRSP  shift the note by bb semitones, and hold it there
   UNIS  unison voices, one to seven, vax engine
+  VIBR  vibrato: speed aa, depth bb in sixteenths of a semitone
   VOLM  slide the volume
 
 PTCH and VOLM take a rate in the first two digits. A rate of 00 jumps

@@ -1,4 +1,5 @@
 #include "SynthInstrument.h"
+#include "VibratoMath.h"
 #include "CommandList.h"
 #include "Application/Player/SyncMaster.h"
 #include "Application/Model/Config.h"
@@ -588,6 +589,10 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	v.pan_=0x7F ;
 	v.glideCoef_=(glide==0)?0:(32768/(1+((glide*glide)>>7))) ;
 	v.baseNote_=note ;
+	v.vibSpeed_=0 ;
+	v.vibDepth_=0 ;
+	v.vibPhase_=0 ;
+	v.vibMul_=65536u ;
 	v.arpOn_=false ;
 	v.arpStep_=0 ;
 	v.arpData_=0 ;
@@ -606,6 +611,11 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	v.tickLen_=tickLength() ;
 
 	v.phaseInc_=noteInc_[note] ;
+	// This path sets the increment directly rather than going through
+	// setVoicePitch, so the note has to be recorded here too --
+	// VIBR 0000 asks for it back, and without this it would restore
+	// whatever the previous note left behind.
+	v.pitchNote_=(signed short)note ;
 	lastNote_[channel]=note ;
 	v.phase_=0 ;
 	// unison voices start phase-spread so the stack doesn't cancel
@@ -719,11 +729,22 @@ void SynthInstrument::retrigger(SynthVoice &v) {
 // set the voice's target pitch from an absolute note; glideCoef_
 // decides whether the walk is instant or a slide
 void SynthInstrument::setVoicePitch(SynthVoice &v,int note) {
+	// Remembered before the transpose is folded in, so that calling
+	// this again with it -- which VIBR does every tick -- lands on the
+	// same pitch rather than transposing a second time.
+	v.pitchNote_=(signed short)note ;
 	// the transpose rides on top of whatever asked for this pitch
 	note+=v.transpose_ ;
 	if (note<0) note=0 ;
 	if (note>127) note=127 ;
 	v.phaseInc_=noteInc_[note] ;
+	if (v.vibMul_!=65536u) {
+		// Q16 multiply in 64 bits: at eight semitones of depth the
+		// ratio reaches 1.59, which would overflow a 32 bit product
+		// for the top octave.
+		v.phaseInc_=(unsigned int)
+		    (((unsigned long long)v.phaseInc_*v.vibMul_)>>16) ;
+	}
 	if (v.glideCoef_==0) {
 		v.curInc_=v.phaseInc_ ;
 	}
@@ -734,11 +755,17 @@ void SynthInstrument::setVoicePitch(SynthVoice &v,int note) {
 // on tick boundaries.
 void SynthInstrument::serviceTicks(SynthVoice &v,int channel,int samples) {
 
-	if (!v.arpOn_ && v.rtgTicks_==0) return ;
+	if (!v.arpOn_ && v.rtgTicks_==0 && v.vibSpeed_==0) return ;
 
 	v.tickAcc_+=samples ;
 	while (v.tickAcc_>=v.tickLen_) {
 		v.tickAcc_-=v.tickLen_ ;
+
+		if (v.vibSpeed_ && v.vibDepth_) {
+			float semis=VibratoSemitones(v.vibPhase_,v.vibSpeed_,v.vibDepth_) ;
+			v.vibMul_=(unsigned int)(pow(2.0,semis/12.0)*65536.0+0.5) ;
+			setVoicePitch(v,v.pitchNote_) ;
+		}
 
 		if (v.arpOn_ && (++v.arpTick_>=(v.arpRate_?v.arpRate_:1))) {
 			v.arpTick_=0 ;
@@ -1938,6 +1965,21 @@ void SynthInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 				setVoicePitch(v,v.baseNote_) ;
 			} else {
 				v.tickLen_=tickLength() ;
+			}
+			break ;
+
+		case I_CMD_VIBR:
+			/* aabb: aa speed, bb depth in sixteenths of a semitone.
+			   0000 puts the pitch back where the note left it, which
+			   is what turning vibrato off has to mean. */
+			v.vibSpeed_=(unsigned short)((value>>8)&0xFF) ;
+			v.vibDepth_=(unsigned char)(value&0xFF) ;
+			v.vibPhase_=0 ;
+			v.vibMul_=65536u ;
+			if (v.vibSpeed_ && v.vibDepth_) {
+				v.tickLen_=tickLength() ;
+			} else {
+				setVoicePitch(v,v.pitchNote_) ;
 			}
 			break ;
 

@@ -12,6 +12,11 @@
 #define URL_EVENT_LSHOULDER "/event/lshoulder"
 #define URL_EVENT_RSHOULDER "/event/rshoulder"
 #define URL_EVENT_START "/event/start"
+/* SELECT was never wired to anything. The enum had a slot, the
+   dispatcher had a commented out case, and the PSP mapping left the
+   button out entirely -- so the machine had a whole spare modifier
+   nobody could reach. */
+#define URL_EVENT_SELECT "/event/select"
 
 #define URL_TEMPO_TAP "/tempo/tap"
 #define URL_QUEUE_ROW "/sequencer/current/all/queue"
@@ -27,6 +32,7 @@
 #define TRIG_EVENT_LSHOULDER MAKE_FOURCC('E','V','L','S')
 #define TRIG_EVENT_RSHOULDER MAKE_FOURCC('E','V','R','S')
 #define TRIG_EVENT_START MAKE_FOURCC('E','V','S','T')
+#define TRIG_EVENT_SELECT MAKE_FOURCC('E','V','S','L')
 
 #define TRIG_TEMPO_TAP MAKE_FOURCC('T','T','A','P')
 #define TRIG_SEQ_QUEUE_ROW MAKE_FOURCC('T','S','Q','R')

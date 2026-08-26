@@ -39,6 +39,10 @@ private:
 	bool automated_ ;
 	uchar hopCount_[TABLE_STEPS][3] ;
 	ChannelGroove groove_ ;
+	// One stream shared by every table, for the same reason the
+	// player has one: two columns rolling on the same tick should
+	// not agree.
+	static unsigned int rng_ ;
 
 	static TablePlayback playback_[SONG_CHANNEL_COUNT] ;
 } ;

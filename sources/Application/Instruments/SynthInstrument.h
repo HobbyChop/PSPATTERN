@@ -192,6 +192,14 @@ struct SynthVoice {
 	// exists only to reset the audible oscillators when it wraps
 	unsigned int syncPhase_ ;
 	unsigned int curInc_ ;    // glide walks this toward phaseInc_
+	// VIBR. The multiplier rides on top of whatever note the voice
+	// was last told to play, so vibrato and an arpeggio can run at
+	// once: the arp moves the note, this bends around it.
+	unsigned short vibSpeed_ ;
+	unsigned char vibDepth_ ;
+	unsigned short vibPhase_ ;
+	unsigned int vibMul_ ;    // Q16, 65536 is no bend
+	signed short pitchNote_ ; // last note asked for, before transpose
 	unsigned int lfoPhase_ ;
 	unsigned int rng_ ;
 	int svfLow_ ;
