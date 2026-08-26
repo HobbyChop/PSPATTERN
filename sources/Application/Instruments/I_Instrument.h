@@ -107,4 +107,20 @@ public:
 	  virtual void SetTableState(TableSaveState &state)=0 ;	 
 
 };
+
+/* The shortest fade either engine will do.
+ *
+ * A parameter of 0 means "instant", and instant used to mean one
+ * sample, which is a step and therefore a click. It has been a fade
+ * for a while, but at 64 samples -- 1.45ms -- it was short enough that
+ * the corner at each end of the ramp still ticked on a clean part with
+ * nothing to hide it. 128 samples is 2.9ms: far too short to read as
+ * an attack or a release, long enough that the corner is below what
+ * you can hear as a separate event.
+ *
+ * It is used for attack, decay and release alike, in both engines, so
+ * a value of 0 anywhere means the same thing everywhere.
+ */
+#define DECLICK_FADE_SAMPLES 128
+
 #endif

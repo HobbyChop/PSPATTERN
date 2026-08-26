@@ -44,6 +44,11 @@ struct renderParams {
     // every project written before this has.
     bool  envActive_;
     bool  envReleasing_;
+    // At the defaults the envelope is a 1.5ms fade in and then nothing.
+    // This says so, and the fade turns the envelope off when it lands,
+    // so a plain sample pays for the fade and not for the rest of the
+    // note.
+    bool  envAutoOff_;
     fixed envLevel_;
     fixed envTarget_;
     fixed envStep_;

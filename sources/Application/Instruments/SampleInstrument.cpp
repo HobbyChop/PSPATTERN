@@ -444,22 +444,25 @@ void SampleInstrument::startAmpEnv(renderParams *rp) {
 	rp->envDecay_=d ;
 	rp->envSustain_=(su>=0xFF)?FP_ONE:fp_mul(i2fp(su),fl2fp(1.0f/255.0f)) ;
 
-	// Nothing to do at the defaults: no attack, no decay, full sustain,
-	// no release. Skip the whole thing rather than multiply by one.
-	if ((a==0)&&(d==0)&&(su>=0xFF)&&(r==0)) {
-		rp->envActive_=false ;
-		rp->envLevel_=FP_ONE ;
-		rp->envTarget_=FP_ONE ;
-		rp->envStep_=0 ;
-		return ;
-	}
+	// At the defaults this used to jump straight to full level in one
+	// sample and skip the envelope entirely. The synth has faded at
+	// attack 0 since the declick work; the sampler did not, so every
+	// note on a plain sample started with a step the size of whatever
+	// the wav happened to open on, and the only thing standing between
+	// that and the speaker was the channel declick papering over it
+	// afterwards. A patched step is still something you can hear.
+	//
+	// It fades now, like everything else, and then takes itself out of
+	// the per-sample path so the note costs nothing after the first
+	// few milliseconds.
+	rp->envAutoOff_=((d==0)&&(su>=0xFF)&&(r==0)) ;
 
 	rp->envActive_=true ;
 	rp->envLevel_=0 ;
 	rp->envTarget_=FP_ONE ;
-	// attack 0 is still a ~1.5ms fade rather than a step, same as the
-	// synth: a level that jumps to full in one sample is a click
-	int samples=(a==0)?64:(1+a*a) ;
+	// attack 0 is a fade rather than a step, same as the synth: a
+	// level that jumps to full in one sample is a click
+	int samples=(a==0)?DECLICK_FADE_SAMPLES:(1+a*a) ;
 	rp->envStep_=FP_ONE/samples ;
 	if (rp->envStep_==0) rp->envStep_=1 ;
 } ;
@@ -467,12 +470,17 @@ void SampleInstrument::startAmpEnv(renderParams *rp) {
 void SampleInstrument::releaseAmpEnv(renderParams *rp) {
 
 	int r=release_->GetInt() ;
-	if (r==0) return ;
 
+	// Release 0 used to return here and leave the voice to be cut
+	// where it stood. On a phrase where one note is followed by the
+	// next, that cut lands on the same boundary as the note on, and it
+	// is heard as a click on the note that follows rather than on the
+	// one that ended. Same shortest fade as everywhere else.
 	rp->envActive_=true ;
 	rp->envReleasing_=true ;
+	rp->envAutoOff_=false ;
 	rp->envTarget_=0 ;
-	int samples=1+r*r*8 ;
+	int samples=(r==0)?DECLICK_FADE_SAMPLES:(1+r*r*8) ;
 	rp->envStep_=-(rp->envLevel_/samples) ;
 	if (rp->envStep_==0) rp->envStep_=-1 ;
 } ;
@@ -1058,10 +1066,14 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 							if ((rp->envTarget_==FP_ONE)&&
 							    (rp->envSustain_<FP_ONE)) {
 								rp->envTarget_=rp->envSustain_ ;
-								int ds=(rp->envDecay_==0)?64:
+								int ds=(rp->envDecay_==0)?DECLICK_FADE_SAMPLES:
 								       (1+rp->envDecay_*rp->envDecay_*4) ;
 								rp->envStep_=-((FP_ONE-rp->envSustain_)/ds) ;
 								if (rp->envStep_==0) rp->envStep_=-1 ;
+							} else if (rp->envAutoOff_) {
+								// nothing left to do: full level from
+								// here to the note off
+								rp->envActive_=false ;
 							}
 						}
 					} else if (rp->envStep_<0) {

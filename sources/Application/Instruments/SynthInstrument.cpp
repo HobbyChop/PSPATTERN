@@ -187,6 +187,7 @@ static inline int pulseBlep(unsigned int ph,unsigned int inc,
 // a 2% of full scale step on every note-on that a saw did not have.
 #define DECLICK_MAX (i2fp(32767))
 
+
 // Per-sample declick epilogue, shared by all three engines.
 //
 // declickPending_ is the measured path: something discontinuous
@@ -430,9 +431,9 @@ void SynthInstrument::startRamp(SynthRamp &r,int attack,bool fromCurrent) {
 	// attack restarts from the current level so voice stealing on a
 	// busy channel doesn't step
 	r.target_=ENV_ONE ;
-	// attack 0 still fades over ~64 samples (1.5ms): a level that
-	// jumps to full in one sample is an audible pop on every note
-	int samples=(attack==0)?64:(1+attack*attack) ;  // .. ~1.5s
+	// attack 0 still fades: a level that jumps to full in one sample
+	// is an audible pop on every note
+	int samples=(attack==0)?DECLICK_FADE_SAMPLES:(1+attack*attack) ;  // .. ~1.5s
 	r.step_=(ENV_ONE-r.level_)/samples ;
 	if (r.step_==0) r.step_=1 ;
 } ;
@@ -441,9 +442,9 @@ void SynthInstrument::startRamp(SynthRamp &r,int attack,bool fromCurrent) {
    Stop, so it starts wherever the envelope happened to be. */
 void SynthInstrument::releaseRamp(SynthRamp &r,int release) {
 	r.target_=0 ;
-	// same curve as attack and decay: 0 is a ~1.5ms fade rather than a
-	// hard cut, so even the shortest release is not a click
-	int samples=(release==0)?64:(1+release*release*8) ;   // .. ~12s
+	// same curve as attack and decay: 0 is the shortest fade rather
+	// than a hard cut, so even an instant release is not a click
+	int samples=(release==0)?DECLICK_FADE_SAMPLES:(1+release*release*8) ;   // .. ~12s
 	r.step_=-(r.level_/samples) ;
 	if (r.step_==0) r.step_=-1 ;
 } ;
@@ -458,9 +459,9 @@ inline void SynthInstrument::stepRamp(SynthRamp &r,fixed sustain,int decay) {
 			r.step_=0 ;
 			if (r.target_==ENV_ONE && sustain<ENV_ONE) {
 				r.target_=sustain ;
-				// decay 0 glides over ~64 samples too — a one-sample
-				// drop to sustain clicks just like an instant attack
-				int samples=(decay==0)?64:(1+decay*decay*4) ;  // .. ~6s
+				// decay 0 glides too: a one-sample drop to sustain
+				// clicks just like an instant attack
+				int samples=(decay==0)?DECLICK_FADE_SAMPLES:(1+decay*decay*4) ;  // .. ~6s
 				r.step_=-((ENV_ONE-sustain)/samples) ;
 				if (r.step_==0) r.step_=-1 ;
 			}
@@ -497,7 +498,20 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	// repeated note re-attacks like a drum should. With glide set,
 	// consecutive notes slide from the old pitch and don't retrigger the
 	// envelope -- the 303 behaviour the parameter is named for.
-	bool wasActive=v.active_||(v.followsNote_&&(glide>0)) ;
+	// One flag was answering two different questions, and once release
+	// 0 became a short fade instead of a hard cut, every note had a
+	// tail and the two answers stopped agreeing.
+	//
+	// "Is there a waveform in the air right now" decides whether this
+	// note has a step to cancel and a level to ramp down from. A tail
+	// counts: it is still being heard.
+	//
+	// "Is the previous NOTE still playing" decides glide and the
+	// filter state. A tail is not a note -- the note it belonged to
+	// already ended. Reading the tail as a live note made a note after
+	// silence glide up from the pitch of the note before it.
+	bool wasSounding=v.active_ ;
+	bool wasActive=(v.active_&&!v.releasing_)||(v.followsNote_&&(glide>0)) ;
 	v.followsNote_=false ;
 
 	// per-voice command state starts from the instrument's settings;
@@ -554,7 +568,7 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	}
 	// glide>0 on a busy channel: 303 style, walk from the old pitch
 
-	if (wasActive) {
+	if (wasSounding) {
 		// A new note over a sounding one resets the phase, so the
 		// oscillator jumps from wherever the old note's wave was to
 		// whatever the new one starts at.
@@ -572,7 +586,12 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 		v.declickPending_=true ;
 	}
 
-	startRamp(v.amp_,FindVariable(SYP_ATTACK)->GetInt(),wasActive) ;
+	// Only the AMPLITUDE envelope carries over from a tail, and only so
+	// the level does not step. Everything that shapes the timbre --
+	// the phase distortion envelope, the operator envelopes -- starts
+	// again, because this is a new note and not a continuation of the
+	// one that just faded out.
+	startRamp(v.amp_,FindVariable(SYP_ATTACK)->GetInt(),wasSounding) ;
 	startRamp(v.mod_,FindVariable(SYP_DCWATK)->GetInt(),wasActive) ;
 	// operator phases reset with the voice, so a retrigger is a clean
 	// attack rather than a note that starts mid-timbre
@@ -585,14 +604,21 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 void SynthInstrument::Stop(int channel) {
 	SynthVoice &v=voice_[channel] ;
 
-	// With no release set the voice is cut where it stands, which is
-	// what this always did and what every existing patch expects.
+	// A voice that is not sounding has nothing to fade.
 	int release=FindVariable(SYP_RELEASE)->GetInt() ;
-	if ((release==0)||(!v.active_)) {
+	if (!v.active_) {
 		v.active_=false ;
 		v.releasing_=false ;
 		return ;
 	}
+
+	// Release 0 used to cut the voice where it stood. releaseRamp
+	// already treats 0 as the shortest fade rather than a stop, for the
+	// same reason attack 0 is a fade, so let it: 1.5ms is far too
+	// short to hear as a release and it is the difference between a
+	// note that ends and a note that stops. It matters most where the
+	// next note starts on the following step, because then the step is
+	// heard as a click on the note coming in.
 
 	// Otherwise both envelopes walk down and the channel keeps
 	// rendering us until IsReleasing goes false.

@@ -1,3 +1,35 @@
+PSPATTERN 0.2.7a
+
+    Note ons are smoother. Three places where a parameter of 0 meant a
+        step rather than the shortest fade:
+
+    The sampler had no fade at all at its defaults. Attack 0, decay 0,
+        full sustain, release 0 is what every plain sample uses, and
+        that combination skipped the envelope entirely and started the
+        note at full level in one sample. The step was the size of
+        whatever the wav opened on. It fades now and then takes itself
+        back out of the per-sample path, so a plain sample still costs
+        nothing to play once the note is under way.
+
+    Release 0 cut the voice where it stood, on both the sampler and the
+        synth. Where one note is followed by the next, that cut lands
+        on the same boundary as the note on, so it is heard as a click
+        on the note coming in rather than on the one that ended. Both
+        fade now.
+
+    The shortest fade is 2.9ms rather than 1.45ms, and it is one
+        constant used by attack, decay and release in both engines, so
+        0 means the same thing everywhere. Still far too short to read
+        as an attack or a release.
+
+    A release tail is no longer mistaken for a sounding note. It was
+        one flag answering two questions, and once every note had a
+        tail the answers stopped agreeing: a note after silence glided
+        up from the pitch of the note before it, and the FM operator
+        envelopes carried over instead of starting again. The
+        amplitude envelope still picks up from the tail, which is the
+        point of it; nothing that shapes the timbre does.
+
 PSPATTERN 0.2.6a
 
     R with a direction moves between screens and does nothing else.
