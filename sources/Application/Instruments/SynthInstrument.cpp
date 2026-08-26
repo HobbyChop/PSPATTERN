@@ -597,6 +597,11 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	if (v.arpRate_==0) v.arpRate_=1 ;
 	v.rtgTicks_=0 ;
 	v.rtgCount_=0 ;
+	v.rtgVolStep_=0 ;
+	v.rtgPitchStep_=0 ;
+	v.cmdGain_=256 ;
+	v.rtgPitchAcc_=0 ;
+	v.transpose_=0 ;
 	v.tickAcc_=0 ;
 	v.tickLen_=tickLength() ;
 
@@ -714,6 +719,8 @@ void SynthInstrument::retrigger(SynthVoice &v) {
 // set the voice's target pitch from an absolute note; glideCoef_
 // decides whether the walk is instant or a slide
 void SynthInstrument::setVoicePitch(SynthVoice &v,int note) {
+	// the transpose rides on top of whatever asked for this pitch
+	note+=v.transpose_ ;
 	if (note<0) note=0 ;
 	if (note>127) note=127 ;
 	v.phaseInc_=noteInc_[note] ;
@@ -749,6 +756,26 @@ void SynthInstrument::serviceTicks(SynthVoice &v,int channel,int samples) {
 		if (v.rtgTicks_) {
 			if (++v.rtgCount_>=v.rtgTicks_) {
 				v.rtgCount_=0 ;
+				/* Each repeat can be quieter and higher than the last,
+				   which is the difference between a machine gun and a
+				   drill. The accumulators are separate from the
+				   voice's own volume and pitch so that the ramp is
+				   undone cleanly by the next note rather than being
+				   baked into the patch. */
+				if (v.rtgVolStep_) {
+					int g=(int)v.cmdGain_+v.rtgVolStep_ ;
+					if (g<0) g=0 ;
+					if (g>256) g=256 ;
+					v.cmdGain_=(unsigned short)g ;
+				}
+				if (v.rtgPitchStep_) {
+					v.rtgPitchAcc_+=v.rtgPitchStep_ ;
+					int n=v.baseNote_+v.rtgPitchAcc_ ;
+					if (n<0) n=0 ;
+					if (n>127) n=127 ;
+					setVoicePitch(v,n) ;
+					lastNote_[channel]=(unsigned char)n ;
+				}
 				retrigger(v) ;
 			}
 		}
@@ -874,7 +901,7 @@ bool SynthInstrument::Render(int channel,fixed *buffer,int size,bool updateTick)
 bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 
 	int wave=FindVariable(SYP_WAVE)->GetInt() ;
-	fixed vol=v.volume_<<7 ;
+	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
 	fixed sustain=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
 	int decay=FindVariable(SYP_DECAY)->GetInt() ;
 	int panL,panR ;
@@ -1050,7 +1077,7 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
 
 	int wave=FindVariable(SYP_PDXWAVE)->GetInt() ;
-	fixed vol=v.volume_<<7 ;
+	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
 	fixed ampSus=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
 	int ampDec=FindVariable(SYP_DECAY)->GetInt() ;
 	fixed dcwSus=sustainFromParam(FindVariable(SYP_DCWSUS)->GetInt()) ;
@@ -1265,7 +1292,7 @@ void SynthInstrument::releaseFmOps(SynthVoice &v) {
 
 bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 
-	fixed vol=v.volume_<<7 ;
+	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
 	fixed sustain=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
 	int decay=FindVariable(SYP_DECAY)->GetInt() ;
 	int panL,panR ;
@@ -1542,7 +1569,7 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 	int modDec=FindVariable(SYP_DCWDEC)->GetInt() ;
 	fixed ampSus=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
 	int ampDec=FindVariable(SYP_DECAY)->GetInt() ;
-	fixed vol=v.volume_<<7 ;
+	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
 	int drive3=v.drive_*3 ;
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
@@ -1916,11 +1943,96 @@ void SynthInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 
 		case I_CMD_RTRG:
 			// bb = ticks between retriggers (00 = off). The drill.
+			// RTGR shapes it; this only says how fast.
 			v.rtgTicks_=value&0xFF ;
 			v.rtgCount_=0 ;
+			v.cmdGain_=256 ;
+			v.rtgPitchAcc_=0 ;
 			if (v.rtgTicks_) {
 				v.tickLen_=tickLength() ;
 				retrigger(v) ;
+			}
+			break ;
+
+		case I_CMD_RTGR:
+			/* The shape of a retrigger: aa is how much the volume
+			   changes each repeat, bb how much the pitch does in
+			   semitones, both signed bytes so 80..FF fall.
+			   
+			   A separate command rather than RTRG's spare byte,
+			   because that byte is only spare on the synth -- the
+			   sampler already reads it as a position offset per
+			   repeat. One command meaning two different things
+			   depending on what is under the cursor is the kind of
+			   thing nobody ever quite remembers.
+			   
+			   Set it in the other command column on the same step as
+			   RTRG, or on an earlier step to shape everything after. */
+			v.rtgVolStep_=(signed char)((value>>8)&0xFF) ;
+			v.rtgPitchStep_=(signed char)(value&0xFF) ;
+			v.cmdGain_=256 ;
+			v.rtgPitchAcc_=0 ;
+			break ;
+
+		case I_CMD_TRSP:
+			/* Signed semitones, held until something changes it. A
+			   table row carrying 0 therefore means "back to the
+			   note", which is what a transpose column of zeroes
+			   should mean. */
+			v.transpose_=(signed char)(value&0xFF) ;
+			setVoicePitch(v,v.baseNote_) ;
+			break ;
+
+		case I_CMD_RAND: {
+			/* aa semitones of pitch scatter, bb of level, both
+			   applied once, now, to the note already sounding --
+			   commands run after the note starts on a step, so this
+			   lands on the voice it is written beside.
+			   
+			   Level only ever goes DOWN. A command that could make a
+			   step louder than the one you set would be a command
+			   that clips a mix you had balanced, and "humanise" has
+			   never meant "sometimes louder than full".
+			   
+			   Pitch goes both ways and is centred, so a spread of 1
+			   is minus one, nothing, or plus one rather than a
+			   consistent lift. */
+			int ps=(value>>8)&0xFF ;
+			int vs=value&0xFF ;
+			if (ps) {
+				v.rng_=v.rng_*1664525u+1013904223u ;
+				int d=(int)((v.rng_>>16)%(unsigned)(2*ps+1))-ps ;
+				int n=v.baseNote_+d ;
+				if (n<0) n=0 ;
+				if (n>127) n=127 ;
+				setVoicePitch(v,n) ;
+				lastNote_[channel]=(unsigned char)n ;
+			}
+			if (vs) {
+				v.rng_=v.rng_*1664525u+1013904223u ;
+				int drop=(int)((v.rng_>>16)%(unsigned)(vs+1)) ;
+				int g=256-drop ;
+				if (g<0) g=0 ;
+				v.cmdGain_=(unsigned short)g ;
+			}
+			break ;
+		}
+
+		case I_CMD_CHRD:
+			/* A chord, on a monophonic channel, is an arpeggio at the
+			   fastest rate there is -- which is also what it is on the
+			   trackers this borrows the idea from. ARPG can already do
+			   it; this saves setting ARPS to 1 every time and reads as
+			   what it is on the step. */
+			v.arpData_=value ;
+			v.arpStep_=0 ;
+			v.arpTick_=0 ;
+			v.arpRate_=1 ;
+			v.arpOn_=(value!=0) ;
+			if (!v.arpOn_) {
+				setVoicePitch(v,v.baseNote_) ;
+			} else {
+				v.tickLen_=tickLength() ;
 			}
 			break ;
 

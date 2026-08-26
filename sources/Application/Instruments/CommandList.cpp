@@ -5,6 +5,10 @@ static FourCC _all[]= {
 	I_CMD_NONE,
 	I_CMD_ARPG,
 	I_CMD_ARPS,
+	I_CMD_CHRD,
+	I_CMD_RTGR,
+	I_CMD_RAND,
+	I_CMD_TRSP,
 	I_CMD_CRSH,
 	I_CMD_DLAY,
 	I_CMD_DRIV,
@@ -63,7 +67,9 @@ int CommandList::AppliesTo(FourCC command) {
 			return CMD_ON_ALL ;
 
 		// the shared musical ones -- MIDI sends them as bend and CCs
-		case I_CMD_PTCH: case I_CMD_ARPG: case I_CMD_ARPS: case I_CMD_LEGA:
+		case I_CMD_TRSP:
+		case I_CMD_PTCH: case I_CMD_ARPG: case I_CMD_ARPS: case I_CMD_CHRD:
+		case I_CMD_LEGA:
 		case I_CMD_PAN_: case I_CMD_FCUT: case I_CMD_FRES:
 		case I_CMD_FLTR:
 			return CMD_ON_ALL ;
@@ -74,6 +80,7 @@ int CommandList::AppliesTo(FourCC command) {
 			return CMD_ON_SAMPLE ;
 
 		// synth only
+		case I_CMD_RTGR: case I_CMD_RAND:
 		case I_CMD_DRIV: case I_CMD_UNIS: case I_CMD_DTUN:
 		case I_CMD_LFOD: case I_CMD_LFOR:
 		case I_CMD_FML1: case I_CMD_FML2: case I_CMD_FML3:

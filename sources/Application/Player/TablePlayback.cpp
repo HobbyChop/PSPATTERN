@@ -183,6 +183,16 @@ void TablePlayback::ProcessStep(TablePlayerChange &tpc) {
 				instrument_->ProcessCommand(channel_,table_->cmd2_[position_[1]],table_->param2_[position_[1]]) ;
 				instrument_->ProcessCommand(channel_,table_->cmd3_[position_[2]],table_->param3_[position_[2]]) ;
 
+				/* The transpose column follows column one's pointer.
+				   The three command columns each keep their own,
+				   because HOP can move them apart, but the transpose
+				   belongs to the ROW -- and column one is the one a
+				   row is read from. Emitted every step including
+				   zero, so that leaving a row blank puts the note
+				   back rather than holding the last shift forever. */
+				instrument_->ProcessCommand(channel_,I_CMD_TRSP,
+					(ushort)(unsigned char)table_->transpose_[position_[0]]) ;
+
 				previous_[0]=position_[0] ;
 				previous_[1]=position_[1] ;
 				previous_[2]=position_[2] ;

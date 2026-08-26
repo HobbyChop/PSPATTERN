@@ -257,6 +257,26 @@ struct SynthVoice {
 	bool arpOn_ ;
 	unsigned char rtgTicks_ ; // RTRG period in ticks (0 = off)
 	unsigned char rtgCount_ ;
+	// RTRG's ramp: how much quieter and how much higher each repeat
+	// is than the one before it. Both signed, both zero by default,
+	// so a plain retrigger is exactly what it always was.
+	signed char rtgVolStep_ ;
+	signed char rtgPitchStep_ ;
+	/* A gain that commands can bend, separate from volume_.
+	   
+	   volume_ is refreshed from the instrument on every block unless a
+	   command has locked it, so anything written there is overwritten
+	   before it can be heard -- and locking it would detach the knob
+	   for the rest of the note. RTGR's ramp and RAND's scatter both
+	   land here instead. 256 is unity. */
+	unsigned short cmdGain_ ;
+	int rtgPitchAcc_ ;
+	/* TRSP, and the table transpose column that emits it. An OFFSET
+	   rather than a pitch, so that it composes with everything else
+	   that moves a note instead of fighting it: setVoicePitch adds it,
+	   which means an arpeggio running underneath a transposed table
+	   row arpeggiates around the transposed note. */
+	signed char transpose_ ;
 	int tickAcc_ ;            // sample counter for tick-rate commands
 	int tickLen_ ;
 } ;

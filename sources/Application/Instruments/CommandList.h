@@ -14,6 +14,19 @@
 #define I_CMD_HOP  MAKE_FOURCC('H','O','P',' ')
 #define I_CMD_LEGA MAKE_FOURCC('L','E','G','A')
 #define I_CMD_RTRG MAKE_FOURCC('R','T','R','G')
+// A chord is an arpeggio you do not have to set the speed for. The
+// channels are monophonic, so this is what a chord CAN be here -- and
+// it is what it is on the trackers this borrows from too.
+#define I_CMD_CHRD MAKE_FOURCC('C','H','R','D')
+// The shape of a retrigger: how much quieter and how much higher each
+// repeat is than the one before it.
+#define I_CMD_RTGR MAKE_FOURCC('R','T','G','R')
+// Move the note off its grid a little, differently every time.
+#define I_CMD_RAND MAKE_FOURCC('R','A','N','D')
+// Shift the note by whole semitones, and keep shifting it. This is
+// what a table's transpose column emits, and it is useful typed into
+// a step on its own.
+#define I_CMD_TRSP MAKE_FOURCC('T','R','S','P')
 #define I_CMD_TMPO MAKE_FOURCC('T','M','P','O')
 #define I_CMD_MDCC MAKE_FOURCC('M','D','C','C')
 #define I_CMD_MDPG MAKE_FOURCC('M','D','P','G')

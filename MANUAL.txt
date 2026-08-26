@@ -235,6 +235,7 @@ parameter as aabb, meaning the first two digits and the last two are
 read separately, or as aaaa when all four are one number.
 
   ARPG  cycle through pitches relative to the note
+  CHRD  a chord: like ARPG but always at tick rate
   CRSH  drive and bit crush
   DLAY  delay the step by bb ticks
   DRIV  post filter drive, vax engine
@@ -264,10 +265,13 @@ read separately, or as aaaa when all four are one number.
   PFIN  pitch fine tune
   PLOF  jump within the sample
   PTCH  slide the pitch, aa is the rate and bb the amount
-  RTRG  retrigger over bb ticks at speed aa
+  RAND  scatter the note, aa semitones of pitch and bb of level
+  RTGR  shape a retrigger, aa volume and bb pitch per repeat
+  RTRG  retrigger every bb ticks
   STOP  stop the song
   TABL  start table bb
   TMPO  set the tempo
+  TRSP  shift the note by bb semitones, and hold it there
   UNIS  unison voices, one to seven, vax engine
   VOLM  slide the volume
 
@@ -277,9 +281,16 @@ straight to the target instead of sliding.
 
 10. TABLES
 
-A table is sixteen rows of three command columns that run alongside a
-note. Use one for anything that has to change over time, such as a
-filter sweep, an arpeggio, or a repeated retrigger.
+A table is sixteen rows of three command columns and a transpose
+column, running alongside a note. Use one for anything that has to
+change over time, such as a filter sweep, an arpeggio, or a repeated
+retrigger.
+
+The transpose column is on the left, in semitones, and shifts the note
+the table is running against. It is an offset rather than a new note,
+so an arpeggio running underneath arpeggiates around the transposed
+pitch instead of cancelling it. A row of -- is no transpose, so leaving
+the column alone changes nothing.
 
 Start a table from a phrase step with the TABL command, or set an
 instrument to run one automatically from its table field.

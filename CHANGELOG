@@ -1,3 +1,41 @@
+PSPATTERN 0.5.0a
+
+    Tables have a transpose column. Sixteen rows of semitones on the
+        left of the three command columns, shifting the note the table
+        is running against. It is an offset rather than a new note, so
+        an arpeggio running underneath arpeggiates around the
+        transposed pitch instead of cancelling it, and a row left at
+        -- changes nothing.
+
+    Projects written before this load with the column at zero, and
+        projects written after it open in an older build with the
+        column ignored. Neither direction needs anything from you.
+
+    Four new commands.
+
+    CHRD abcd is a chord: the same four semitone offsets ARPG takes,
+        always cycled at tick rate, so there is no ARPS to set as
+        well. The channels are monophonic, so this is what a chord can
+        be.
+
+    RTGR aabb is the shape of a retrigger: aa is the volume change per
+        repeat and bb the pitch change in semitones, both signed. Put
+        it in the other command column beside RTRG. Synth only.
+
+    RAND aabb scatters the note it sits beside, aa semitones of pitch
+        either way and bb of level. Level only ever goes down, because
+        a command that could make a step louder than the one you set
+        is a command that clips a mix you had balanced. Synth only.
+
+    TRSP --bb shifts the note by bb semitones and holds it there. This
+        is what the table's transpose column emits, and it is useful
+        typed into a step on its own.
+
+    Opening a project left tables 08 to 7F holding whatever the last
+        project had in them. Only the first eight were being cleared.
+
+    The website has a plain list of everything the program does.
+
 PSPATTERN 0.4.0a
 
     Four palettes instead of one, picked by a single line in

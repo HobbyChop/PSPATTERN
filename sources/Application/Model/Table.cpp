@@ -18,6 +18,7 @@ void Table::Reset() {
 	SYS_MEMSET(param2_,0,sizeof(param2_[0])*TABLE_STEPS) ;
 	SYS_MEMSET(cmd3_,'-',sizeof(cmd3_[0])*TABLE_STEPS) ;
 	SYS_MEMSET(param3_,0,sizeof(param3_[0])*TABLE_STEPS) ;
+	SYS_MEMSET(transpose_,0,sizeof(transpose_[0])*TABLE_STEPS) ;
 } ;
 
 void Table::Copy(const Table &other) {
@@ -27,6 +28,7 @@ void Table::Copy(const Table &other) {
 	SYS_MEMCPY(param2_,other.param2_,sizeof(param2_[0])*TABLE_STEPS) ;
 	SYS_MEMCPY(cmd3_,other.cmd3_,sizeof(cmd3_[0])*TABLE_STEPS) ;
 	SYS_MEMCPY(param3_,other.param3_,sizeof(param3_[0])*TABLE_STEPS) ;
+	SYS_MEMCPY(transpose_,other.transpose_,sizeof(transpose_[0])*TABLE_STEPS) ;
 } ;
 
 bool Table::IsEmpty() {
@@ -50,6 +52,9 @@ bool Table::IsEmpty() {
 		if (param3_[i]!=0) {
 			return false ;
 		} ;
+		if (transpose_[i]!=0) {
+			return false ;
+		} ;
 	}
 	return true ;
 }
@@ -61,7 +66,14 @@ TableHolder::TableHolder():Persistent("TABLES") {
 }
 
 void TableHolder::Reset()  {
-	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+	/* Every table, not the first eight.
+	   
+	   This reset table_[i] for i under SONG_CHANNEL_COUNT while
+	   marking all TABLE_COUNT of them unallocated, so opening a
+	   project left tables 08 to 7F holding whatever the last project
+	   had in them -- invisible until something allocated one and
+	   found it already full of somebody else's commands. */
+	for (int i=0;i<TABLE_COUNT;i++) {
 		table_[i].Reset() ;
 	}
 	for (int i=0;i<TABLE_COUNT;i++) {
@@ -86,6 +98,7 @@ unsigned int TableHolder::Checksum(unsigned int h) {
 		h=checksumBytes(h,t.param2_,sizeof(t.param2_)) ;
 		h=checksumBytes(h,t.cmd3_,sizeof(t.cmd3_)) ;
 		h=checksumBytes(h,t.param3_,sizeof(t.param3_)) ;
+		h=checksumBytes(h,t.transpose_,sizeof(t.transpose_)) ;
 	}
 	return h ;
 } ;
@@ -113,6 +126,8 @@ void TableHolder::SaveContent(TiXmlNode *node) {
 			saveHexBuffer(dataNode,"PARAM2",table.param2_,TABLE_STEPS) ;
 			saveHexBuffer(dataNode,"CMD3",table.cmd3_,TABLE_STEPS) ;
 			saveHexBuffer(dataNode,"PARAM3",table.param3_,TABLE_STEPS) ;
+			saveHexBuffer(dataNode,"TRSP",
+			              (unsigned char *)table.transpose_,TABLE_STEPS) ;
 		}
 	}
 } ;
@@ -165,6 +180,9 @@ void TableHolder::RestoreContent(TiXmlElement *element) {
 				} ;
 				if (!strcmp("PARAM3",value)) {
 					restoreHexBuffer(sub,(unsigned char *)table.param3_,sizeof(table.param3_)) ;
+				} ;
+				if (!strcmp("TRSP",value)) {
+					restoreHexBuffer(sub,(unsigned char *)table.transpose_,sizeof(table.transpose_)) ;
 				} ;
 				
 				for (int i=0; i<16; i++)

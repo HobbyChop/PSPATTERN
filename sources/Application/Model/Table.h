@@ -24,6 +24,17 @@ public:
 	ushort param2_[TABLE_STEPS] ;
 	FourCC cmd3_[TABLE_STEPS] ;
 	ushort param3_[TABLE_STEPS] ;
+	/* Semitones, signed, applied to the note the table is running
+	   alongside. The single most reached for column in a tracker
+	   table and the one thing this had no way to do without spending
+	   a whole command column on it.
+	   
+	   Saved as its own element, so a project written before this
+	   loads with it at zero -- which is no transpose -- and a project
+	   written after it opens in an older build with the element
+	   ignored. The format matches sub-elements by name, so neither
+	   direction needs a version. */
+	signed char transpose_[TABLE_STEPS] ;
 } ; 
 
 class TableHolder: public T_Singleton<TableHolder>,Persistent  {

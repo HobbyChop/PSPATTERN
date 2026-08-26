@@ -323,8 +323,10 @@ void TableView::updateCursor(int dx, int dy) {
 
     col_ += dx;
     row_ += dy;
-    if (col_ > 5)
-        col_ = 5;
+    // 6 is the transpose column: on the right, so that everything
+    // keyed off "0, 2 and 4 are command columns" keeps working
+    if (col_ > 6)
+        col_ = 6;
     if (col_ < 0)
         col_ = 0;
     if (row_ > 15)
@@ -357,6 +359,7 @@ void TableView::updateCursor(int dx, int dy) {
         cmdEdit_.SetInt(*(table.param3_ + row_));
         break;
     };
+    (void)table;
 
     isDirty_ = true;
 };
@@ -497,6 +500,21 @@ void TableView::updateCursorValue(int offset) {
         *(table.param3_ + row_) = cmdEdit_.GetInt();
         lastParam_ = cmdEdit_.GetInt();
         break;
+
+    case 6: {
+        /* Semitones, signed, clamped rather than wrapped. A transpose
+           that rolls from +63 round to -64 because a thumb was held a
+           moment too long is not a feature. */
+        int t = table.transpose_[row_];
+        if (offset == 0x01) t += 1;
+        else if (offset == -0x01) t -= 1;
+        else if (offset == 0x10) t += 12;
+        else if (offset == -0x10) t -= 12;
+        if (t > 63) t = 63;
+        if (t < -64) t = -64;
+        table.transpose_[row_] = (signed char)t;
+        break;
+    }
     }
     if (c) {
         updateData(c, offset, limit, wrap);
@@ -886,7 +904,8 @@ void TableView::DrawView() {
         // grid frame, same treatment as phrase and chain
         AppWindow &app = (AppWindow &)w_;
         GUIPoint a = GetAnchor();
-        app.OpFrame(a._x * 8 - 30, a._y * 8 - 6, 268, 16 * 8 + 12, CD_ROW);
+        // wide enough to take in the transpose column on the left
+        app.OpFrame(a._x * 8 - 62, a._y * 8 - 6, 300, 16 * 8 + 12, CD_ROW);
     }
 
     // Compute song grid location
@@ -1023,6 +1042,36 @@ void TableView::DrawView() {
         hexshort2char(p, buffer);
         DrawString(pos._x, pos._y, buffer, props);
         setTextProps(props, 5, j, true);
+        pos._y++;
+    }
+
+    /* Draw the transpose column.
+    
+       On the LEFT, outside the row numbers, because there is no room
+       on the right: the anchor is column 10 for every view and the
+       third parameter column ends at 39, so the grid already reaches
+       the edge of the screen. Columns 0 to 6 are empty on this screen
+       and nothing else wants them. */
+
+    pos = anchor;
+    pos._x -= 7;
+
+    for (int j = 0; j < 16; j++) {
+        int t = table.transpose_[j];
+        setTextProps(props, 6, j, false);
+        if (t == 0) {
+            // a row that does nothing should look like it
+            DrawString(pos._x, pos._y, " --", props);
+        } else {
+            char tb[5];
+            tb[0] = (t < 0) ? '-' : '+';
+            int a = (t < 0) ? -t : t;
+            tb[1] = '0' + (a / 10);
+            tb[2] = '0' + (a % 10);
+            tb[3] = 0;
+            DrawString(pos._x, pos._y, tb, props);
+        }
+        setTextProps(props, 6, j, true);
         pos._y++;
     }
 
