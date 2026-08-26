@@ -225,3 +225,4 @@ unsigned int PSPSystem::GetMemoryUsage() {
 	struct mallinfo m=mallinfo();	
 	return m.uordblks ;
 }
+

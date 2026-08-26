@@ -1,3 +1,35 @@
+PSPATTERN 0.2.8a
+
+    The song screen has a memory bar where the dsp row was. The dsp
+        figure was already on the title strip, so one of the five rows
+        that panel has was spent saying something the screen already
+        said. The overrun warning moved up there with it, and shows as
+        dsp999! in the mute colour.
+
+    Samples live in RAM because streaming them off the Memory Stick is
+        not viable, so what is left is what decides whether the next
+        one loads, and there was no way to find out until it did not.
+
+    Two changes about where things sit relative to the PSP's 16KB data
+        cache. Neither changes any arithmetic.
+
+    The reverb's twenty four comb and allpass lines were twenty four
+        separate allocations, so where they landed relative to each
+        other was whatever the heap felt like that run. They are one
+        block now, cache line aligned with a line of skew between
+        them.
+
+    The synth's lookup tables are 8.5KB against that same 16KB cache.
+        They live in the PSP's scratchpad now: on chip, not cached,
+        not competing with the audio for lines. Set SCRATCHPADTABLES
+        to 0 in config.xml to put them back.
+
+    Neither effect can be seen in an emulator, which models no cache.
+        Watch the dsp figure on a reverb heavy song on hardware.
+
+    sendfx_test existed and had never been wired up. It runs now, and
+        under ASan.
+
 PSPATTERN 0.2.7a
 
     Note ons are smoother. Three places where a parameter of 0 meant a

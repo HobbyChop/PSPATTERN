@@ -57,6 +57,27 @@ static const int apLen_[NAP]     = { 556, 441, 341, 225 } ;
 #define REVERB_IN_SHIFT 10             /* with the (256-rfb) factor */
 #define REVERB_OUT_NUM  640            /* /256 after the comb sum */
 
+/* The comb and allpass lines live in ONE allocation.
+ *
+ * They were twenty four separate mallocs, so where they landed
+ * relative to each other was whatever the heap felt like that run.
+ * Twenty four independent streams walking twenty four arbitrary
+ * addresses through a 16KB data cache can map onto the same sets and
+ * evict each other every sample, and whether they do is luck rather
+ * than design -- which is a bad thing for the most expensive item in
+ * the mixer to be resting on.
+ *
+ * One block, cache line aligned, with a one line skew per buffer so
+ * consecutive lines do not all begin at the same offset within a set.
+ * The lengths are the Freeverb primes, which are mutually prime by
+ * construction, so their live positions stay spread through the block
+ * rather than marching in step.
+ *
+ * This costs nothing: same bytes, laid out on purpose instead of by
+ * accident. */
+#define REV_LINE      32        /* cache line, bytes */
+#define REV_SKEW      1         /* lines of skew between buffers */
+static short *revBlock_ = 0 ;
 static short *combBuf_[2][NCOMB] ;
 static int    combPos_[2][NCOMB] ;
 static int    combStore_[2][NCOMB] ;    // damping state, 64ths of a sample
@@ -88,34 +109,79 @@ static short *alloc(int n) {
 	return p ;
 }
 
+/* Round a length in shorts up to a whole cache line, then add the
+   skew, so the next buffer starts a line further into the set than
+   this one did. */
+static int lineRound(int shorts, int skewLines) {
+	int bytes = shorts * (int)sizeof(short) ;
+	bytes = ((bytes + REV_LINE - 1) / REV_LINE) * REV_LINE ;
+	bytes += skewLines * REV_LINE ;
+	return bytes / (int)sizeof(short) ;
+}
+
 void Init(int sampleRate) {
 	if (ready_) return ;
 	(void)sampleRate ;
 	dlyL_ = alloc(SENDFX_MAX_DELAY) ;
 	dlyR_ = alloc(SENDFX_MAX_DELAY) ;
+
+	// lengths first, so the block can be sized before anything is
+	// handed an address inside it
 	for (int s = 0 ; s < 2 ; s++) {
 		int off = s ? STEREO_SPREAD : 0 ;
-		for (int i = 0 ; i < NCOMB ; i++) {
+		for (int i = 0 ; i < NCOMB ; i++)
 			combLenA_[s][i] = (combLen_[i] + off) / 2 ;
-			combBuf_[s][i] = alloc(combLenA_[s][i]) ;
-			combPos_[s][i] = 0 ;
-			combStore_[s][i] = 0 ;
-		}
-		for (int i = 0 ; i < NAP ; i++) {
+		for (int i = 0 ; i < NAP ; i++)
 			apLenA_[s][i] = (apLen_[i] + off) / 2 ;
-			apBuf_[s][i] = alloc(apLenA_[s][i]) ;
-			apPos_[s][i] = 0 ;
+	}
+
+	int total = REV_LINE / (int)sizeof(short) ;    // room to align the head
+	for (int s = 0 ; s < 2 ; s++) {
+		for (int i = 0 ; i < NCOMB ; i++)
+			total += lineRound(combLenA_[s][i], REV_SKEW) ;
+		for (int i = 0 ; i < NAP ; i++)
+			total += lineRound(apLenA_[s][i], REV_SKEW) ;
+	}
+	revBlock_ = alloc(total) ;
+
+	if (revBlock_) {
+		// align the head, then walk the block handing out lines
+		unsigned long a = (unsigned long)revBlock_ ;
+		short *p = (short *)((a + REV_LINE - 1) & ~(unsigned long)(REV_LINE - 1)) ;
+		for (int s = 0 ; s < 2 ; s++) {
+			for (int i = 0 ; i < NCOMB ; i++) {
+				combBuf_[s][i] = p ;
+				p += lineRound(combLenA_[s][i], REV_SKEW) ;
+				combPos_[s][i] = 0 ;
+				combStore_[s][i] = 0 ;
+			}
+			for (int i = 0 ; i < NAP ; i++) {
+				apBuf_[s][i] = p ;
+				p += lineRound(apLenA_[s][i], REV_SKEW) ;
+				apPos_[s][i] = 0 ;
+			}
+		}
+	} else {
+		for (int s = 0 ; s < 2 ; s++) {
+			for (int i = 0 ; i < NCOMB ; i++) {
+				combBuf_[s][i] = 0 ; combPos_[s][i] = 0 ;
+				combStore_[s][i] = 0 ;
+			}
+			for (int i = 0 ; i < NAP ; i++) { apBuf_[s][i] = 0 ; apPos_[s][i] = 0 ; }
 		}
 	}
-	ready_ = (dlyL_ && dlyR_) ;
+
+	ready_ = (dlyL_ && dlyR_ && revBlock_) ;
 	SetDelayDivision(division_) ;
 }
 
 void Close() {
 	SAFE_FREE(dlyL_) ; SAFE_FREE(dlyR_) ;
+	// one block, so one free: the per line pointers are interior
+	SAFE_FREE(revBlock_) ;
 	for (int s = 0 ; s < 2 ; s++) {
-		for (int i = 0 ; i < NCOMB ; i++) SAFE_FREE(combBuf_[s][i]) ;
-		for (int i = 0 ; i < NAP ; i++) SAFE_FREE(apBuf_[s][i]) ;
+		for (int i = 0 ; i < NCOMB ; i++) combBuf_[s][i] = 0 ;
+		for (int i = 0 ; i < NAP ; i++) apBuf_[s][i] = 0 ;
 	}
 	SAFE_FREE(dlyAcc_) ; SAFE_FREE(revAcc_) ;
 	accSamples_ = 0 ;

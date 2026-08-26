@@ -312,15 +312,33 @@ private:
 	char name_[16] ;
 
 	static bool tablesBuilt_ ;
-	static unsigned int noteInc_[128] ;
-	static unsigned int lfoInc_[256] ;
-	static short sineTable_[256] ;
-	static short cosTable_[1025] ;
-	static short cutTable_[256] ;   // cutoff param -> SVF f coeff (Q15)
+
+	/* The tables are pointers rather than arrays so they can live
+	   somewhere better than main memory.
+	 *
+	 * Together they are 8.5KB, and the PSP's data cache is 16KB. Left
+	 * where the linker put them they take over half of it and spend
+	 * the rest of the program's time being evicted by the audio
+	 * buffers and pulled back in, which on this machine costs far
+	 * more than the multiply a table is there to avoid.
+	 *
+	 * The PSP also has 16KB of scratchpad: on chip SRAM at a fixed
+	 * address, not backed by main memory and not competing for cache
+	 * lines with anything. 8.5KB fits in it with room to spare, and
+	 * moving them there hands the whole data cache back to the audio.
+	 *
+	 * Everywhere else they point into a plain static block and
+	 * nothing changes. */
+	static unsigned int *noteInc_ ;      /* [128] */
+	static unsigned int *lfoInc_ ;       /* [256] */
+	static short *sineTable_ ;           /* [256] */
+	static short *cosTable_ ;            /* [1025] */
+	static short *cutTable_ ;            /* [256] cutoff param -> SVF f (Q15) */
 	// FM needs a finer table than the 256-entry one the other engines
 	// use: at 8 bits a modulator's own quantisation lands in the
 	// sidebands, which is exactly where it is audible.
-	static short fmSin_[1024] ;
-	static short fmSinD_[1024] ;
+	static short *fmSin_ ;               /* [1024] */
+	static short *fmSinD_ ;              /* [1024] */
+	static void placeTables() ;
 } ;
 #endif

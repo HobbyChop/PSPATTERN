@@ -22,6 +22,11 @@
 #define BATT_WARN_OFF 25
 #define BATT_BLINK_MS 500
 
+// Free megabytes below which the figure turns to the warning colour.
+// One megabyte is a couple of seconds of mono 44.1k: enough to still
+// be told before the load that fails, not so much that it cries wolf.
+#define MEM_LOW_MB 1.0f
+
 
 /****************
  Constructor
@@ -1000,35 +1005,45 @@ void SongView::DrawSidePanel() {
     if (running) scopeTick++;
     app.OpScope(PANEL_X * 8 + 5, 24, 92, 44, running ? scopeTick : 0);
 
-    // --- mix: dsp load, tempo, project, midi, battery --------------
+    // --- mix: memory, tempo, project, midi, battery ----------------
     DrawPanel(PANEL_X, 10, 12, 5, "mix");
-    // A dropout is one block missing its deadline. The figure on the
-    // left of this line is an average smoothed over eight blocks, so a
-    // spike to three hundred per cent moves it a few points and is
-    // gone before anybody looks: a machine can glitch steadily while
-    // this reads twenty. It also used to clamp at 99, so an overrun
-    // could not be shown even when it was being averaged in.
-    //
-    // When a block has recently overrun, show the worst one instead,
-    // with an exclamation mark rather than a per cent sign, in the
-    // mute colour so it reads as a warning at a glance.
+
+    // A dropout is one block missing its deadline. The plain figure is
+    // an average smoothed over eight blocks, so a spike to three
+    // hundred per cent moves it a few points and is gone before
+    // anybody looks: a machine can glitch steadily while it reads
+    // twenty. When a block has recently overrun, the worst one is
+    // shown instead, with an exclamation mark rather than a per cent
+    // sign and in the mute colour, so it reads as a warning at a
+    // glance. That lives on the title strip, which already carries a
+    // dsp figure -- printing it twice on one screen wasted the only
+    // row this panel had spare.
     int dsp = running ? AudioStats::GetDspPercent() : 0;
     int peak = running ? AudioStats::GetDspPeak() : 0;
     bool over = (peak > 100);
-    int shown = over ? peak : dsp;
-    if (shown > 999) shown = 999;
-    SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 11, "dsp", props);
-    app.OpBar(PANEL_TXT * 8 + 26, 11 * 8 + 1, 34,
-              (dsp > 100 ? 100 : dsp) * 34 / 100, false);
-    if (over) {
-        sprintf(buf, "%3d!", shown);
-        SetColor(CD_MUTE);
-    } else {
-        sprintf(buf, "%2d%%", shown);
-        SetColor(CD_HILITE2);
+    int dspShown = over ? peak : dsp;
+    if (dspShown > 999) dspShown = 999;
+
+    // The row it freed. Samples live in RAM because streaming them off
+    // the Memory Stick is not viable on this machine, so what is left
+    // is what decides whether the next sample loads -- and there was
+    // no way to find out until it did not. The bar fills as memory is
+    // taken; the figure beside it is what remains, because that is the
+    // one somebody is about to make a decision with.
+    System *sys = System::GetInstance();
+    unsigned int memUsed = sys->GetMemoryUsage();
+    unsigned int memFree = sys->GetMemoryFree();
+    if (memFree > 0) {
+        unsigned int memTotal = memUsed + memFree;
+        int memPct = (int)((unsigned long long)memUsed * 100 / memTotal);
+        // The label carries the warning, because the row is a bar and
+        // nothing else: there is no figure to turn red.
+        float freeMb = (float)memFree / (1024.0f * 1024.0f);
+        SetColor(freeMb < MEM_LOW_MB ? CD_MUTE : CD_ROW2);
+        DrawString(PANEL_TXT, 11, "mem", props);
+        app.OpBar(PANEL_TXT * 8 + 26, 11 * 8 + 1, 34, memPct * 34 / 100,
+                  false);
     }
-    DrawString(36, 11, buf, props);
 
     int bpm = viewData_->project_->GetTempo();
     SetColor(CD_ROW2);
@@ -1056,7 +1071,6 @@ void SongView::DrawSidePanel() {
     SetColor(CD_HILITE1);
     DrawString(32, 14, buf, props);
 
-    System *sys = System::GetInstance();
     int batt = sys->GetBatteryLevel();
     if (batt >= 0) {
         if (batt > 999) batt = 999;
@@ -1117,13 +1131,24 @@ void SongView::DrawSidePanel() {
     int se = time % 60;
     if (bpm < 0) bpm = 0;
     if (bpm > 999) bpm = 999;
+    // The dsp field is drawn on its own so it can carry its own
+    // colour: clipping and an overrun are both things you want to see
+    // without reading, and neither can be spelled in a single string
+    // shared with the tempo and the clock.
     if (player->Clipped()) {
-        sprintf(buf, "CLIP -- %3dbpm %02d:%02d", bpm, mi, se);
+        sprintf(buf, "CLIP   ");
+        SetColor(CD_MUTE);
+    } else if (over) {
+        sprintf(buf, "dsp%3d!", dspShown);
+        SetColor(CD_MUTE);
     } else {
-        sprintf(buf, "dsp%3d%% %3dbpm %02d:%02d", dsp, bpm, mi, se);
+        sprintf(buf, "dsp%3d%%", dspShown);
+        SetColor(CD_HILITE2);
     }
-    SetColor(CD_HILITE2);
     DrawString(19, 0, buf, props);
+    sprintf(buf, " %3dbpm %02d:%02d", bpm, mi, se);
+    SetColor(CD_HILITE2);
+    DrawString(26, 0, buf, props);
     SetColor(CD_NORMAL);
 }
 

@@ -1,6 +1,7 @@
 #include "SynthInstrument.h"
 #include "CommandList.h"
 #include "Application/Player/SyncMaster.h"
+#include "Application/Model/Config.h"
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -91,13 +92,58 @@ static const char *pdxWaveNames[PWT_LAST]= {
 } ;
 
 bool SynthInstrument::tablesBuilt_=false ;
-unsigned int SynthInstrument::noteInc_[128] ;
-unsigned int SynthInstrument::lfoInc_[256] ;
-short SynthInstrument::sineTable_[256] ;
-short SynthInstrument::cosTable_[1025] ;
-short SynthInstrument::cutTable_[256] ;
-short SynthInstrument::fmSin_[1024] ;
-short SynthInstrument::fmSinD_[1024] ;
+unsigned int *SynthInstrument::noteInc_ = 0 ;
+unsigned int *SynthInstrument::lfoInc_ = 0 ;
+short *SynthInstrument::sineTable_ = 0 ;
+short *SynthInstrument::cosTable_ = 0 ;
+short *SynthInstrument::cutTable_ = 0 ;
+short *SynthInstrument::fmSin_ = 0 ;
+short *SynthInstrument::fmSinD_ = 0 ;
+
+/* Where the tables actually sit. See the header for why.
+ *
+ * On the PSP they go in the scratchpad: 16KB of on chip SRAM at a
+ * fixed address, outside main memory and outside the data cache.
+ * Everywhere else, and on the PSP if the config key says so, they go
+ * in a plain static block and nothing changes.
+ *
+ * The escape hatch is not decoration. Scratchpad is a fixed address
+ * shared with anything else on the machine that decides to use it,
+ * and this is the kind of change whose effect cannot be seen in an
+ * emulator at all -- PPSSPP translates to native code and models no
+ * cache. So it ships able to be turned off from config.xml, without
+ * a toolchain, by anybody who finds it misbehaves.
+ */
+#define SYNTH_TABLE_SHORTS (128*2 + 256*2 + 1024 + 1024 + 1025 + 1 + 256 + 256)
+static short synthTableRam_[SYNTH_TABLE_SHORTS] ;
+
+#ifdef __PSP__
+#define SYNTH_SCRATCHPAD_ADDR 0x00010000
+#define SYNTH_SCRATCHPAD_SIZE (16*1024)
+#endif
+
+void SynthInstrument::placeTables() {
+	if (noteInc_) return ;
+	short *p = synthTableRam_ ;
+#ifdef SYNTH_SCRATCHPAD_ADDR
+	// off only if the key is present AND set to 0
+	const char *v = Config::GetInstance()->GetValue("SCRATCHPADTABLES") ;
+	bool useSpad = !(v && v[0]=='0') ;
+	if (useSpad && (SYNTH_TABLE_SHORTS*(int)sizeof(short))<=SYNTH_SCRATCHPAD_SIZE) {
+		p = (short *)SYNTH_SCRATCHPAD_ADDR ;
+	}
+#endif
+	// The two int tables go first, so everything after them is still
+	// four byte aligned; the odd length of the cosine table is padded
+	// for the same reason.
+	noteInc_   = (unsigned int *)p ; p += 128*2 ;
+	lfoInc_    = (unsigned int *)p ; p += 256*2 ;
+	fmSin_     = p ;                 p += 1024 ;
+	fmSinD_    = p ;                 p += 1024 ;
+	cosTable_  = p ;                 p += 1025 + 1 ;
+	sineTable_ = p ;                 p += 256 ;
+	cutTable_  = p ;                 p += 256 ;
+}
 
 // cosine LUT read, 6-bit linear interpolation
 static inline int cosLookup(const short *table,unsigned int idx,unsigned int frac) {
@@ -358,6 +404,7 @@ bool SynthInstrument::Init() {
 	// float only at table-build time, and only once for the class
 
 	if (!tablesBuilt_) {
+		placeTables() ;
 		for (int i=0;i<128;i++) {
 			double f=440.0*pow(2.0,(i-69)/12.0) ;
 			noteInc_[i]=(unsigned int)(f*4294967296.0/SYNTH_RATE) ;
