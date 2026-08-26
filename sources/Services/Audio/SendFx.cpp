@@ -333,28 +333,27 @@ static inline short clip16(fixed v) {
 	return (short)s ;
 }
 
-bool Return::Render(fixed *buffer, int samplecount) {
-
-	if (!ready_) return false ;
-
-	// Nothing was sent this block, but the lines may still be ringing.
-	// Keep running until they have decayed, or a stab into a long
-	// reverb would be cut off the instant the note ended.
-	// A line that has had nothing put into it for longer than its own
-	// tail has nothing left to say, and running it is pure cost. The
-	// delay's tail is its own length times however many audible hops
-	// the feedback allows; four seconds covers the reverb at any size.
-	if (!dlyFed_) dlyIdle_ += samplecount ;
-	if (!revFed_) revIdle_ += samplecount ;
-	bool runDly = dlyFed_ || dlyIdle_ < (dlyLen_ * 12) ;
-	bool runRev = revFed_ || revIdle_ < (4 * 44100) ;
-	if (!runDly && !runRev) return false ;
-	if (!ensureAcc(samplecount)) return false ;
-	if (!dlyFed_) memset(dlyAcc_, 0, samplecount * 2 * sizeof(fixed)) ;
-	if (!revFed_) memset(revAcc_, 0, samplecount * 2 * sizeof(fixed)) ;
-	if (!runDly) memset(dlyAcc_, 0, samplecount * 2 * sizeof(fixed)) ;
-	if (!runRev) memset(revAcc_, 0, samplecount * 2 * sizeof(fixed)) ;
-
+/* The bank itself: input accumulators and line state in, wet out.
+ *
+ * Split out of Return::Render, which was gating policy and signal
+ * processing in one function. Everything above the split decides
+ * WHETHER to run -- what has been fed, what is still ringing, what
+ * needs zeroing -- and touches globals the audio thread owns.
+ * Everything below is arithmetic over two input buffers and the delay
+ * and comb state, and depends on nothing else.
+ *
+ * That line is where the work has to be cut to move it to the Media
+ * Engine, which is a second Allegrex with its own cache and no
+ * coherency with this one. What crosses to it has to be an explicit,
+ * enumerable set of buffers rather than "whatever the function
+ * happens to reach", and this is that set: two inputs, one output,
+ * the line memory, and the four coefficients snapshotted below so the
+ * other core cannot see them change underneath it.
+ *
+ * Same arithmetic, same order, same output -- this commit moves no
+ * work and changes no sound.                                       */
+static void processBank(fixed *buffer, int samplecount,
+                        bool runDly, bool runRev) {
 	int fb = dlyFb_ ;
 	// 0.70 .. 0.98 of a pass, the useful span: below 0.7 the tail is
 	// gone before you hear it, above 0.98 it stops being a room and
@@ -504,6 +503,32 @@ bool Return::Render(fixed *buffer, int samplecount) {
 		buffer[i * 2]     = i2fp(clip16(clampfx((long long)dOutL + wet[0]))) ;
 		buffer[i * 2 + 1] = i2fp(clip16(clampfx((long long)dOutR + wet[1]))) ;
 	}
+
+}
+
+bool Return::Render(fixed *buffer, int samplecount) {
+
+	if (!ready_) return false ;
+
+	// Nothing was sent this block, but the lines may still be ringing.
+	// Keep running until they have decayed, or a stab into a long
+	// reverb would be cut off the instant the note ended.
+	// A line that has had nothing put into it for longer than its own
+	// tail has nothing left to say, and running it is pure cost. The
+	// delay's tail is its own length times however many audible hops
+	// the feedback allows; four seconds covers the reverb at any size.
+	if (!dlyFed_) dlyIdle_ += samplecount ;
+	if (!revFed_) revIdle_ += samplecount ;
+	bool runDly = dlyFed_ || dlyIdle_ < (dlyLen_ * 12) ;
+	bool runRev = revFed_ || revIdle_ < (4 * 44100) ;
+	if (!runDly && !runRev) return false ;
+	if (!ensureAcc(samplecount)) return false ;
+	if (!dlyFed_) memset(dlyAcc_, 0, samplecount * 2 * sizeof(fixed)) ;
+	if (!revFed_) memset(revAcc_, 0, samplecount * 2 * sizeof(fixed)) ;
+	if (!runDly) memset(dlyAcc_, 0, samplecount * 2 * sizeof(fixed)) ;
+	if (!runRev) memset(revAcc_, 0, samplecount * 2 * sizeof(fixed)) ;
+
+	processBank(buffer, samplecount, runDly, runRev) ;
 
 	dlyFed_ = revFed_ = false ;
 	return true ;

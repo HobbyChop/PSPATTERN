@@ -1,3 +1,34 @@
+PSPATTERN 0.2.9a
+
+    FM costs a sixth less than it did. Four operators at eight voices
+        was 85% of one block on hardware and is 71%. Both halves of
+        that came from measuring on a PSP; nothing on a build host or
+        in an emulator could have shown either.
+
+    The engine was not compute bound and not cache bound. It was
+        spilling: 317 of its 547 memory operations were the compiler
+        shuffling registers to the stack, because four operators of
+        state do not fit in the register file. The operator loop is
+        written out as scalars now instead of looping over arrays,
+        which also drops three dead feedback tests, op0's routing
+        (every algorithm sends it to the output) and op3's incoming
+        modulation slot (nothing in any algorithm feeds op3, so it
+        read a zero every sample).
+
+    An integer division was running once per sample: the carrier sum
+        divided by the carrier count. On this chip div is about
+        thirty five cycles and does not pipeline. The count is 1 to 4
+        and fixed for the whole render, so it is a reciprocal now.
+        Negative sums can land one LSB lower than before.
+
+    The CPU LOAD bench measures the send bus as well as the voices --
+        delay, reverb, both, with the step axis reading as channels
+        sending rather than voices sounding.
+
+    Hardware figures are in docs/PERFORMANCE.md, including the four
+        things that were tried and did not work. The emulator is 1.4
+        to 1.8x optimistic on voices and 1.0 to 1.2x on the send bus.
+
 PSPATTERN 0.2.8a
 
     The song screen has a memory bar where the dsp row was. The dsp

@@ -1,6 +1,7 @@
 #include "DspBench.h"
 #include "Application/Instruments/SynthInstrument.h"
 #include "Services/Audio/Audio.h"
+#include "Services/Audio/SendFx.h"
 #include <string.h>
 
 #ifdef PLATFORM_PSP
@@ -21,10 +22,12 @@ namespace DspBench {
 // Chosen to be the shapes people actually use, not the cheapest
 // settings each engine has: a bare saw tells you nothing about
 // whether a track will fit.
-enum { B_TONE=0, B_TONEF, B_VAX, B_PDX, B_FM2, B_FM4 } ;
+enum { B_TONE=0, B_TONEF, B_VAX, B_PDX, B_FM2, B_FM4,
+       B_DELAY, B_REVERB, B_BOTH } ;
 
 static const char *names_[DSPB_ENGINES]= {
-	"tone","tone+flt","vax x2","pdx","fm 2op","fm 4op"
+	"tone","tone+flt","vax x2","pdx","fm 2op","fm 4op",
+	"delay","reverb","dly+rev"
 } ;
 
 const char *EngineName(int e) {
@@ -126,7 +129,7 @@ void Run(Result &r) {
 	SynthInstrument synth ;
 	synth.Init() ;
 
-	for (int e=0;e<DSPB_ENGINES;e++) {
+	for (int e=0;e<DSPB_VOICE_ROWS;e++) {
 
 		configure(synth,e) ;
 
@@ -172,6 +175,59 @@ void Run(Result &r) {
 			r.load_[e][step]=(short)permille ;
 		}
 	}
+
+	// ---- the send bus -------------------------------------------
+	//
+	// Timed the way the mixer actually drives it: N channels each
+	// accumulating a block into the sends, then one Render of the
+	// bank. Fed real signal rather than silence, because a bank fed
+	// nothing decays to nothing and stops running, which would time
+	// the early out instead of the reverb.
+	// the return is an AudioModule, so the bench needs its own
+	SendFx::Return ret ;
+
+	for (int e=B_DELAY;e<DSPB_ENGINES;e++) {
+
+		int dSend=(e==B_REVERB)?0:200 ;
+		int rSend=(e==B_DELAY)?0:200 ;
+
+		for (int step=0;step<DSPB_STEPS;step++) {
+
+			int senders=VoicesAt(step) ;
+			if (senders>SONG_CHANNEL_COUNT) senders=SONG_CHANNEL_COUNT ;
+
+			SendFx::Flush() ;
+
+			// something with energy across the band, so the damping
+			// filters and the feedback paths all do their work
+			for (int i=0;i<BENCH_FRAMES*2;i++) {
+				voice_[i]=i2fp(((i*2654435761u)>>20)&0x3FFF)-i2fp(0x2000) ;
+			}
+
+			// let the lines fill: an empty reverb is a cheap reverb
+			for (int b=0;b<16;b++) {
+				for (int c=0;c<senders;c++)
+					SendFx::Accumulate(voice_,BENCH_FRAMES,dSend,rSend) ;
+				ret.Render(mix_,BENCH_FRAMES) ;
+			}
+
+			unsigned int worst=0 ;
+			for (int b=0;b<BENCH_BLOCKS;b++) {
+				unsigned int t0=benchMicros() ;
+				for (int c=0;c<senders;c++)
+					SendFx::Accumulate(voice_,BENCH_FRAMES,dSend,rSend) ;
+				ret.Render(mix_,BENCH_FRAMES) ;
+				unsigned int spent=benchMicros()-t0 ;
+				if (spent>worst) worst=spent ;
+			}
+
+			unsigned int permille=worst*1000u/budget ;
+			if (permille>9999) permille=9999 ;
+			r.load_[e][step]=(short)permille ;
+		}
+	}
+	SendFx::Flush() ;
+
 	r.done_=true ;
 }
 

@@ -1278,6 +1278,20 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 		if (dest[i]==FM_OUT && level[i]>0) carriers++ ;
 	}
 	if (carriers==0) carriers=1 ;
+	/* Dividing the carrier sum by how many carriers there are was an
+	   integer division PER SAMPLE. On this chip div is about thirty
+	   five cycles and does not pipeline, which is the single most
+	   expensive instruction in the engine and it was running 44100
+	   times a second per voice.
+	   
+	   carriers is 1 to 4 and fixed for the whole render, so the
+	   reciprocal is known before the loop starts. Exact for one, two
+	   and four; for three it is 21845/65536, which is within an LSB
+	   of a 16 bit sample. The shift floors where the division
+	   truncated toward zero, so a negative sum can land one LSB
+	   lower than it used to -- inaudible, and arguably the better
+	   rounding, since truncation toward zero biases away from it. */
+	const int carrierRecip=(carriers==3)?21845:(65536/carriers) ;
 	// Self-modulation is a feedback loop, not open-loop PM: below a
 	// critical gain it settles back to very nearly a sine, and above
 	// it the tone breaks into a saw and then into noise. Measured,
@@ -1304,12 +1318,49 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 	int low=v.svfLow_ ;
 	int band=v.svfBand_ ;
 
-	unsigned int ph[FM_OPS] ;
-	unsigned int inc[FM_OPS] ;
-	for (int i=0;i<FM_OPS;i++) {
-		ph[i]=v.op_[i].phase_ ;
-		inc[i]=v.op_[i].inc_ ;
-	}
+	/* Scalars, not arrays, and the operator loop below is written out
+	   four times rather than looped.
+	 *
+	 * MIPS cannot index a register file, so an array subscripted by a
+	 * loop variable is a load whatever the optimiser does -- and this
+	 * loop ran four times per sample for every sample of every FM
+	 * voice. Measured against the other three engines it showed up as
+	 * 5.6 memory operations per multiply where they do 2.6 to 3.4:
+	 * the most memory traffic and the fewest multiplies of any engine
+	 * here, on the row that is already 85% of the budget at eight
+	 * voices on hardware.
+	 *
+	 * The compiler will not do this itself. Its own unroll heuristic
+	 * declines on a body this size, and forcing it with a pragma
+	 * moved no work at all -- because fed[dest[i]] is a scatter with
+	 * a runtime index, and one of those pins the whole array in
+	 * memory however much the loop is unrolled around it.
+	 *
+	 * Written out, three other things fall away with it: the
+	 * i==FM_OPS-1 feedback tests are dead in three blocks out of
+	 * four, op0's destination is FM_OUT in every algorithm so it
+	 * needs no routing at all, and nothing in the table ever feeds
+	 * op3, so the fed slot it was reading every sample was always
+	 * zero.                                                        */
+	unsigned int ph0=v.op_[0].phase_,ph1=v.op_[1].phase_ ;
+	unsigned int ph2=v.op_[2].phase_,ph3=v.op_[3].phase_ ;
+	unsigned int inc0=v.op_[0].inc_,inc1=v.op_[1].inc_ ;
+	unsigned int inc2=v.op_[2].inc_,inc3=v.op_[3].inc_ ;
+	const int lvl0=level[0],lvl1=level[1],lvl2=level[2],lvl3=level[3] ;
+	/* opSus and opDec are deliberately NOT scalars. They are read only
+	   where the envelope is still moving, and an operator that has
+	   reached its sustain never goes down that path -- which is most
+	   of most notes. Held as scalars they cost eight registers all
+	   the time to save a fixed offset load almost none of the time,
+	   and this engine spills: 317 of its memory operations are the
+	   compiler shuffling registers to the stack, which is what makes
+	   it the most expensive thing in the mixer.
+
+	   Writing the loop out took it from 85% of the budget to 75% at
+	   eight voices on hardware. This is the same argument applied
+	   again: fewer things live at once, not fewer things done.      */
+	// dest[0] is FM_OUT in every algorithm, so op0 needs no routing
+	const int d1=dest[1],d2=dest[2],d3=dest[3] ;
 	int fb0=v.fbLast_[0],fb1=v.fbLast_[1] ;
 
 	// An operator envelope that has reached its sustain has a
@@ -1317,8 +1368,8 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 	// that. Reading the ramp and recomputing the gain per sample for
 	// four operators is three loads and a multiply each, every
 	// sample, to arrive at the number we had last time.
-	int gain[FM_OPS] ;
-	bool moving[FM_OPS] ;
+	int gain0=0,gain1=0,gain2=0,gain3=0 ;
+	bool mov0=false,mov1=false,mov2=false,mov3=false ;
 
 	int glideRefresh=0 ;
 	fixed *out=buffer ;
@@ -1328,90 +1379,94 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 		if (glideRefresh==0) {
 			glideRefresh=GLIDE_TICK ;
 			glideStep(v,GLIDE_TICK) ;
-			for (int i=0;i<FM_OPS;i++) {
-				inc[i]=(unsigned int)
-					(((unsigned long long)v.curInc_*mulQ16[i])>>16) ;
-				// a ramp can only start moving at a note-on, which is
-				// between blocks, so once per tick is often enough to
-				// notice that one has settled
-				moving[i]=(v.op_[i].env_.step_!=0) ;
-				gain[i]=(level[i]*(int)(v.op_[i].env_.level_>>8))>>8 ;
-			}
+			// a ramp can only start moving at a note-on, which is
+			// between blocks, so once per tick is often enough to
+			// notice that one has settled
+#define FM_REFRESH(N)                                                    \
+			inc##N=(unsigned int)                                                 \
+				(((unsigned long long)v.curInc_*mulQ16[N])>>16) ;                    \
+			mov##N=(v.op_[N].env_.step_!=0) ;                                     \
+			gain##N=(lvl##N*(int)(v.op_[N].env_.level_>>8))>>8 ;
+			FM_REFRESH(0) FM_REFRESH(1) FM_REFRESH(2) FM_REFRESH(3)
+#undef FM_REFRESH
 		}
 		glideRefresh-- ;
 
-		int fed[FM_OPS]={0,0,0,0} ;   // phase modulation waiting for op i
+		// nothing in the table ever routes to op3, so there is no fed3
+		int fed0=0,fed1=0,fed2=0 ;
 		int mix=0 ;
 
-		// 4 down to 1: a modulator is always numbered above what it
-		// feeds, so its output is ready by the time we get there
-		for (int i=FM_OPS-1;i>=0;i--) {
+		/* 4 down to 1: a modulator is always numbered above what it
+		   feeds, so its output is ready by the time we get there.
 
-			// A silent operator contributes nothing to anybody, so
-			// its envelope, its lookup and its multiply are all
-			// wasted -- and a default FM patch has one of the four
-			// at zero. Its phase still has to run, or bringing it in
-			// with FML4 mid-note would land it somewhere arbitrary.
-			if (!level[i]) {
-				ph[i]+=inc[i] ;
-				if (i==FM_OPS-1) { fb1=fb0 ; fb0=0 ; }
-				continue ;
-			}
+		   One operator, given its own phase and its own incoming
+		   modulation. A silent operator contributes nothing to
+		   anybody, so its envelope, its lookup and its multiply are
+		   all wasted -- and a default FM patch has one of the four at
+		   zero. Its phase still has to run, or bringing it in with
+		   FML4 mid-note would land it somewhere arbitrary.
 
-			// gain: level 0..255 against the operator envelope, ending
-			// up Q15 (full level, full envelope ~= 1.0)
-			int g ;
-			if (moving[i]) {
-				stepRamp(v.op_[i].env_,opSus[i],opDec[i]) ;
-				g=(level[i]*(int)(v.op_[i].env_.level_>>8))>>8 ;
-			} else {
-				g=gain[i] ;
-			}
+		   Interpolated: reading the nearest of 1024 entries and
+		   throwing away the other 22 bits of phase measured as
+		   everything-not-the-fundamental sitting at -55dB on a bare
+		   operator. Interpolating the same table takes that to -96,
+		   and it matters more here than anywhere else in the synth
+		   because a modulator's impurity is multiplied into the
+		   carrier's spectrum rather than just added to the output. */
+#define FM_OPERATOR(N,PHOFF,FEDIN)                                       \
+		int o##N=0 ;                                                           \
+		if (lvl##N) {                                                          \
+			int g ;                                                               \
+			if (mov##N) {                                                         \
+				/* opSus and opDec are read only here, so they are not               \
+				   held as scalars: an operator at its sustain never                 \
+				   comes down this path, which is most of most notes. */             \
+				stepRamp(v.op_[N].env_,opSus[N],opDec[N]) ;                          \
+				g=(lvl##N*(int)(v.op_[N].env_.level_>>8))>>8 ;                       \
+			} else {                                                              \
+				g=gain##N ;                                                          \
+			}                                                                     \
+			/* cast BEFORE the shift: three modulators at full level              \
+			   sum past 90000, and shifting that left 18 as a signed              \
+			   int is undefined. Unsigned wrap is what a phase                    \
+			   accumulator wants anyway. */                                       \
+			unsigned int p=ph##N+(PHOFF)+                                         \
+			               (((unsigned int)(FEDIN))<<FM_INDEX_SHIFT) ;            \
+			unsigned int si=(p>>22)&1023 ;                                        \
+			int sv=fmSin_[si]+((fmSinD_[si]*(int)((p>>6)&0xFFFF))>>16) ;          \
+			o##N=(sv*g)>>15 ;                                                     \
+		}                                                                      \
+		ph##N+=inc##N ;
 
-			unsigned int p=ph[i] ;
-			if (i==FM_OPS-1 && fbAmt) {
-				// two-sample average, the standard tamer for a
-				// self-modulating operator: without it the loop turns
-				// into noise well before the control reaches the top
-				int avg=(fb0+fb1)>>1 ;
-				p+=((unsigned int)((avg*fbAmt)>>8))<<FM_FB_SHIFT ;
-			}
-			// cast BEFORE the shift: three modulators at full level
-			// sum past 90000, and shifting that left 18 as a signed
-			// int is undefined. Unsigned wrap is exactly what a phase
-			// accumulator wants anyway.
-			p+=((unsigned int)fed[i])<<FM_INDEX_SHIFT ;
-
-			// Interpolated. Reading the nearest of 1024 entries and
-			// throwing away the other 22 bits of phase is a phase
-			// error of up to half a step, which measured as everything
-			// that is not the fundamental sitting at -55 dB on a bare
-			// operator: the engine matched a no-interpolation
-			// reference to a tenth of a decibel. Interpolating the
-			// same table takes that to -96. It matters more here than
-			// anywhere else in the synth, because a modulator's
-			// impurity is multiplied into the carrier's spectrum
-			// rather than just added to the output.
-			unsigned int si=(p>>22)&1023 ;
-			int s=fmSin_[si]+((fmSinD_[si]*(int)((p>>6)&0xFFFF))>>16) ;
-			int o=(s*g)>>15 ;
-
-			if (i==FM_OPS-1) {
-				fb1=fb0 ;
-				fb0=o ;
-			}
-
-			ph[i]+=inc[i] ;
-
-			int d=dest[i] ;
-			if (d==FM_OUT) {
-				mix+=o ;
-			} else {
-				fed[d]+=o ;
-			}
+		// op3 is the only one that can modulate itself. Two-sample
+		// average, the standard tamer: without it the loop turns into
+		// noise well before the control reaches the top.
+		unsigned int fbOff=0 ;
+		if (fbAmt) {
+			int avg=(fb0+fb1)>>1 ;
+			fbOff=((unsigned int)((avg*fbAmt)>>8))<<FM_FB_SHIFT ;
 		}
+		FM_OPERATOR(3,fbOff,0)
+		fb1=fb0 ; fb0=o3 ;          // zero when the operator is silent
+		if (d3==FM_OUT)   mix+=o3 ;
+		else if (d3==2)   fed2+=o3 ;
+		else if (d3==1)   fed1+=o3 ;
+		else              fed0+=o3 ;
 
-		int smp=mix/carriers ;
+		FM_OPERATOR(2,0,fed2)
+		if (d2==FM_OUT)   mix+=o2 ;
+		else if (d2==1)   fed1+=o2 ;
+		else              fed0+=o2 ;
+
+		FM_OPERATOR(1,0,fed1)
+		if (d1==FM_OUT)   mix+=o1 ;
+		else              fed0+=o1 ;
+
+		FM_OPERATOR(0,0,fed0)
+		mix+=o0 ;                   // dest[0] is FM_OUT in every algo
+#undef FM_OPERATOR
+
+		int smp=(int)(((long long)mix*carrierRecip)>>16) ;
 
 		if (filtered) {
 			// Two passes, exactly as renderTone and renderVax do.
@@ -1445,7 +1500,8 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 		*out++=(fixed)(((long long)sample*panR)>>15) ;
 	}
 
-	for (int i=0;i<FM_OPS;i++) v.op_[i].phase_=ph[i] ;
+	v.op_[0].phase_=ph0 ; v.op_[1].phase_=ph1 ;
+	v.op_[2].phase_=ph2 ; v.op_[3].phase_=ph3 ;
 	v.fbLast_[0]=fb0 ;
 	v.fbLast_[1]=fb1 ;
 	v.svfLow_=low ;

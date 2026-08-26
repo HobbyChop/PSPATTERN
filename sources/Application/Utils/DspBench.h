@@ -16,8 +16,22 @@
    audio will stutter while it runs; that is the price of measuring
    the render path with the render path.                            */
 
-#define DSPB_ENGINES 6      // tone / pdx / vax / fm / sample-ish floor
-#define DSPB_STEPS   4      // 1, 2, 4, 8 voices
+/* Six voice rows, then three for the send bus.
+ *
+ * The bus was the one thing this could not tell you about, which is
+ * an odd gap given it is the most expensive single item in the mixer
+ * -- more than seven saw voices on the build host. Every figure for
+ * it came from a machine that is not a PSP, and it is about to be
+ * moved onto the Media Engine, so a real before number matters more
+ * than usual.
+ *
+ * On the send rows the step axis means channels SENDING rather than
+ * voices, because that is what the accumulate scales with. The bank
+ * itself costs the same whether one channel feeds it or eight, and
+ * seeing those two behaviours separately is the point. */
+#define DSPB_ENGINES 9      // 6 voice shapes + delay / reverb / both
+#define DSPB_VOICE_ROWS 6
+#define DSPB_STEPS   4      // 1, 2, 4, 8 voices, or senders
 
 namespace DspBench {
 
