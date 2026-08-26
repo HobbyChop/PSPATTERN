@@ -511,8 +511,8 @@ void SongView::onStart() {
     // The render control on the project screen sets a project variable, but
     // nothing ever carried it to the mixer -- so "render Stereo" persisted
     // into the save file and START just played the song. Read it here, where
-    // playback actually begins. (MSRM_PLAYBACK/STEREO/STEMS line up with the
-    // project's Off/Stereo/Stems.)
+    // playback actually begins. (MSRM_PLAYBACK/STEREO line up with the
+    // project's Off/Stereo.)
     int renderMode = viewData_->project_->GetRenderMode();
     viewData_->renderMode_ = renderMode;
     if (renderMode > 0 && !player->IsRunning()) {

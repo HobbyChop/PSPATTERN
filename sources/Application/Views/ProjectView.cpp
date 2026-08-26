@@ -294,7 +294,10 @@ void ProjectView::DrawView() {
 
 	// 20 is as wide as these go before the frame meets FILE's at
 	// cell 22; the scale name needs every cell it can get.
-	DrawPanel(1,5,20,4,"SONG") ;
+	// Five rows, not four: tempo, transpose, scale, master, repeat.
+	// repeat was added to the box and the box was not grown with it,
+	// so it was drawn on the bottom border rather than inside it.
+	DrawPanel(1,5,20,5,"SONG") ;
 	DrawPanel(1,12,20,3,"MIX") ;
 	DrawPanel(1,18,20,3,"MIDI") ;
 

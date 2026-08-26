@@ -17,7 +17,6 @@
 enum MixerServiceRenderMode {
     MSRM_PLAYBACK,
     MSRM_STEREO,
-    MSRM_STEMS,
 };
 
 #define MAX_BUS_COUNT 10

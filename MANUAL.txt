@@ -489,8 +489,8 @@ offers to recover the unsaved changes the next time you open the
 project.
 
 Set render to Stereo and press START to write mixdown.wav into the
-project folder while the song plays. Stems writes one file per channel.
-Set it back to Off when you are done, or every play writes a new file.
+project folder while the song plays. Set it back to Off when you are
+done, or every play writes a new file.
 
 
 19. LEVELS

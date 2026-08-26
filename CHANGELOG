@@ -1,3 +1,50 @@
+PSPATTERN 0.3.0a
+
+    The SONG box on the project screen has five rows in it and was
+        drawn four rows tall, so repeat sat on the bottom border
+        instead of inside the box.
+
+    Starting a render no longer stalls the song. The wav header was
+        written as twelve separate calls -- four bytes, two bytes,
+        four bytes -- and on a Memory Stick a write is a card
+        transaction rather than a buffered nothing. Twelve of them
+        landed at the instant the transport started. It is built in
+        memory and written once now. The samples already went through
+        a 32KB buffer; this is the one write that was still doing it
+        the old way.
+
+    Render Stems is gone. Eight files being written at once is 1.4MB
+        a second to a card that does not want it in those pieces, and
+        it never worked on hardware -- the render came out glitched,
+        which is the worst way for a bounce to fail, because it looks
+        like it worked until you listen to it. Stereo is unchanged.
+
+    The send effects were rebuilt underneath, with no change to what
+        they sound like. Everything the delay and reverb touch is one
+        structure now rather than fifteen separate pieces of state,
+        and it reads the knob positions as they were when the block
+        started rather than reading them live -- so moving the reverb
+        size while a block is being processed can no longer change the
+        coefficients halfway through it.
+
+    They can also run a block behind, which is off unless you set
+        DEFERREDFX in config.xml. That exists for testing and there is
+        no reason to turn it on otherwise: it costs a few milliseconds
+        of latency on the wet signal and gives nothing back.
+
+    Why any of that was done: the plan was to move the delay and
+        reverb onto the PSP's second CPU, the Media Engine, which does
+        nothing in a tracker and would have been worth about a third
+        of a block. It is not happening. Half of the Media Engine core
+        function table is unmapped on the PSP-1000 -- 37 of 75 entries
+        against none on the slim and later -- so it would have worked
+        on some machines and not others, and it needs a kernel module
+        to do it.
+
+    The bench measures the send bus as well as the voices, and
+        docs/PERFORMANCE.md has the hardware figures, including the
+        five things that were tried and did not work.
+
 PSPATTERN 0.2.9a
 
     FM costs a sixth less than it did. Four operators at eight voices

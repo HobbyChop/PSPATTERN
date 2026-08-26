@@ -57,6 +57,15 @@ namespace SendFx {
 	// next start
 	void Flush() ;
 
+	/* Run the bank a block behind, which is what a second core doing
+	   the work imposes: its result is not ready until the block after
+	   the one that fed it. One block of latency on the WET path only,
+	   5.8ms at 256 frames -- inaudible on a reverb by construction,
+	   and less than a finger's jitter on a delay. The dry path and
+	   the timing of the notes are untouched. */
+	void SetDeferred(bool on) ;
+	bool Deferred() ;
+
 	// The wet return. Owned by MixerService, inserted last into the
 	// master so it is summed after every bus has had its say.
 	class Return : public AudioModule {

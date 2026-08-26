@@ -22,7 +22,6 @@ bool MixerService::Init() {
     out_ = 0;
 	switch (mode_) {
     case MSRM_STEREO:
-    case MSRM_STEMS:
         out_ = new DummyAudioOut();
         break;
     default:
@@ -37,6 +36,19 @@ bool MixerService::Init() {
 	// Insert appends, and the master renders its children in order,
 	// so the return runs after every bus has had a chance to feed it.
 	SendFx::Init(44100);
+
+	/* Run the delay and reverb a block behind, on this core, with
+	   nothing else changed. That is exactly the timing a second CPU
+	   doing the work would impose, without the second CPU -- so if a
+	   song sounds right with this on, the protocol is not what to
+	   suspect when the engine goes in, and if it sounds wrong, the
+	   engine was never the problem. Two variables landing together is
+	   how a week gets spent debugging the wrong one.
+
+	   Read here rather than inside SendFx, which is a DSP module and
+	   whose test should not have to link the filesystem to run. */
+	const char *deferFx = Config::GetInstance()->GetValue("DEFERREDFX") ;
+	if (deferFx && deferFx[0]=='1') SendFx::SetDeferred(true) ;
 	master_.Insert(sendReturn_);
 
 	bool result = false;
@@ -68,13 +80,6 @@ void MixerService::initRendering(MixerServiceRenderMode mode) {
     case MSRM_STEREO:
         out_->SetFileRenderer("project:mixdown.wav");
         break;
-    case MSRM_STEMS:
-        for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
-            char buffer[1024];
-            sprintf(buffer, "project:channel%d.wav", i);
-            bus_[i].SetFileRenderer(buffer);
-        }
-        break;
     }
 }
 
@@ -86,13 +91,6 @@ void MixerService::Close() {
 		master_.Empty() ;
 		SendFx::Close() ;
 
-		switch(mode_) {
-        case MSRM_STEMS:
-        case MSRM_STEREO:
-            break;
-        default:
-            break;
-        }
     }
    for (int i=0;i<MAX_BUS_COUNT;i++) {
 	   bus_[i].Empty() ;
@@ -210,9 +208,6 @@ void MixerService::toggleRendering(bool enable) {
     // the writer closes, every render came out zero bytes.
     if (!enable) {
         out_->EnableRendering(false);
-        for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
-            bus_[i].EnableRendering(false);
-        }
         return;
     }
 
@@ -223,12 +218,6 @@ void MixerService::toggleRendering(bool enable) {
     case MSRM_STEREO:
         initRendering(MSRM_STEREO);
         out_->EnableRendering(enable);
-        break;
-    case MSRM_STEMS:
-        initRendering(MSRM_STEMS);
-        for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
-            bus_[i].EnableRendering(enable);
-        };
         break;
     }
 }

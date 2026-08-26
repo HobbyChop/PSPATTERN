@@ -3,9 +3,8 @@
 #include "Services/Audio/Audio.h"
 #include "System/Console/Trace.h"
 
-// 32 KB a file. Eight stems is a quarter of a megabyte of buffer,
-// which the PSP can spare, against writes that arrive 64 times less
-// often and are the size a flash card actually wants.
+// 32 KB. Against writes that arrive 64 times less often than they did
+// and are the size a flash card actually wants.
 #define WAV_PENDING_SHORTS (16 * 1024)
 
 WavFileWriter::WavFileWriter(const char *path)
@@ -16,52 +15,46 @@ WavFileWriter::WavFileWriter(const char *path)
     file_ = FileSystem::GetInstance()->Open(filePath.GetPath().c_str(), "wb");
     if (file_) {
 
-        // RIFF chunk
+        /* The 44 byte header, built in memory and written once.
+         *
+         * It used to be twelve separate Write calls -- four bytes, two
+         * bytes, four bytes -- and on a Memory Stick a write is a card
+         * transaction, not a buffered nothing. Twelve of them land at
+         * the instant the transport starts, which is why starting a
+         * render paused the song for a moment before it moved.
+         *
+         * The rest of the writing was already fixed: samples go
+         * through a 32KB buffer so the card sees them in lumps it
+         * wants. This is the same argument applied to the one write
+         * that was left doing it the old way.
+         */
+        const unsigned int rate = Audio::GetInstance()->GetSampleRate();
+        unsigned char h[44];
+        unsigned char *p = h;
 
-        unsigned int chunk;
-        chunk = Swap32(0x46464952);
-        file_->Write(&chunk, 1, 4);
-        unsigned int size;
-        size = 0; // to be filled later
-        file_->Write(&size, 1, 4);
+        #define PUT32(v) { unsigned int _v=(v);                            *p++=(unsigned char)(_v);                            *p++=(unsigned char)(_v>>8);                            *p++=(unsigned char)(_v>>16);                            *p++=(unsigned char)(_v>>24); }
+        #define PUT16(v) { unsigned short _v=(unsigned short)(v);                            *p++=(unsigned char)(_v);                            *p++=(unsigned char)(_v>>8); }
+        #define PUTTAG(a,b,c,d) { *p++=a; *p++=b; *p++=c; *p++=d; }
 
-        // WAVE chunk
+        PUTTAG('R','I','F','F')
+        PUT32(0)                 // filled in by Close
+        PUTTAG('W','A','V','E')
+        PUTTAG('f','m','t',' ')
+        PUT32(16)                // fmt chunk size
+        PUT16(1)                 // PCM
+        PUT16(2)                 // stereo
+        PUT32(rate)
+        PUT32(rate * 4)          // byte rate
+        PUT16(4)                 // block align
+        PUT16(16)                // bits per sample
+        PUTTAG('d','a','t','a')
+        PUT32(0)                 // filled in by Close
 
-        chunk = Swap32(0x45564157);
-        file_->Write(&chunk, 1, 4);
-        chunk = Swap32(0x20746D66);
-        file_->Write(&chunk, 1, 4);
-        size = Swap32(16);
-        file_->Write(&size, 1, 4);
+        #undef PUT32
+        #undef PUT16
+        #undef PUTTAG
 
-        unsigned short ushort;
-        ushort = Swap16(1); // compression
-        file_->Write(&ushort, 1, 2);
-        ushort = Swap16(2); // nChannels
-        file_->Write(&ushort, 1, 2);
-        unsigned int sampleRate = Swap32(Audio::GetInstance()->GetSampleRate());
-        file_->Write(&sampleRate, 1, 4);
-
-        unsigned int byteRate =
-            Swap32(4 * Audio::GetInstance()->GetSampleRate());
-        file_->Write(&byteRate, 1, 4);
-
-        ushort = Swap16(4); //  blockalign
-        file_->Write(&ushort, 1, 2);
-
-        ushort = Swap16(16); // bitPerSample
-        file_->Write(&ushort, 1, 2);
-
-        // data subchunk
-
-        chunk = Swap32(0x61746164);
-        file_->Write(&chunk, 1, 4);
-
-        // This wrote `chunk` again, so every rendered wav carried the
-        // "data" tag twice and no data size at all -- the field Close
-        // comes back to fill in was never there.
-        size = 0; // to be updated later
-        file_->Write(&size, 1, 4);
+        file_->Write(h, 1, 44);
     };
 };
 
