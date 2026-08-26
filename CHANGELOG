@@ -1,3 +1,25 @@
+PSPATTERN 0.3.1a
+
+    The DSP figure no longer shoots past 100 while rendering. It was
+        not lying about the time, but it was calling it the wrong
+        thing: the wav writer's flush happens inside the block being
+        measured, because the tap that feeds it sits in the mixer's
+        render. A 32KB write to a Memory Stick takes tens of
+        milliseconds against a block budget of about six, so the block
+        it lands on really did take that long -- and nothing was wrong,
+        because the prebuffer covers it and the song plays straight
+        through.
+
+    A meter labelled dsp should say how close the DSP is to its
+        deadline. Card I/O is not that, and showing it as if it were
+        teaches people to ignore the number, which is worse than not
+        having one. The writer times its own flush now and that time
+        comes back off the total.
+
+    Subtracted, not hidden: if a write ever gets slow enough to outlast
+        the prebuffer, that is audible, and it is audible in the usual
+        way rather than as a figure nobody trusts.
+
 PSPATTERN 0.3.0a
 
     The SONG box on the project screen has five rows in it and was

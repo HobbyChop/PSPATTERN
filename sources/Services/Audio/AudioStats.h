@@ -14,6 +14,27 @@ namespace AudioStats {
 	void BeginBlock() ;
 	void EndBlock(short *interleaved,int frames,bool interlaced) ;
 
+	/* Time spent inside the block that was not DSP.
+	 *
+	 * The wav writer's flush happens inside the measured window,
+	 * because the tap that feeds it sits in the mixer's render. A
+	 * 32KB write to a Memory Stick takes tens of milliseconds against
+	 * a block budget of about six, so the block it lands on measures
+	 * several hundred per cent and the peak hold latches it -- while
+	 * nothing is actually wrong, because the prebuffer covers it and
+	 * the song plays through without a glitch.
+	 *
+	 * A meter labelled dsp should say how close the DSP is to its
+	 * deadline. Card I/O is not that, and reporting it as if it were
+	 * teaches people to ignore the number, which is worse than not
+	 * having one. So the writer declares its own time and it comes
+	 * back off the total.
+	 *
+	 * It is subtracted, not hidden: if a write ever gets slow enough
+	 * to outlast the prebuffer, that IS audible, and it is audible in
+	 * the usual way rather than as a figure nobody trusts. */
+	void ExcludeMicros(unsigned int us) ;
+
 	// UI side
 	int GetDspPercent() ;
 

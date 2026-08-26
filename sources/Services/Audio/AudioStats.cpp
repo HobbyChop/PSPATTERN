@@ -34,9 +34,13 @@ static int peakHold_=0 ;
 // about a second and a half at 641 frames a block
 #define DSP_PEAK_HOLD 100
 static unsigned int blockStart_=0 ;
+static unsigned int excluded_=0 ;
+
+void ExcludeMicros(unsigned int us) { excluded_+=us ; }
 
 void BeginBlock() {
 	blockStart_=statsMicros() ;
+	excluded_=0 ;
 }
 
 void EndBlock(short *buf,int frames,bool interlaced) {
@@ -45,6 +49,8 @@ void EndBlock(short *buf,int frames,bool interlaced) {
 
 	// dsp: render micros vs the block's realtime budget, smoothed
 	unsigned int spent=statsMicros()-blockStart_ ;
+	// whatever the block spent not doing DSP -- see ExcludeMicros
+	spent=(spent>excluded_)?(spent-excluded_):0 ;
 	unsigned int budget=(unsigned int)frames*10000u/441u ; // us at 44.1k
 	if (budget) {
 		int pct=(int)(spent*100u/budget) ;

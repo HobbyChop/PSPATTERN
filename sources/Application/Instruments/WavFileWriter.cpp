@@ -1,7 +1,19 @@
 #include "WavFileWriter.h"
 #include <string.h>
 #include "Services/Audio/Audio.h"
+#include "Services/Audio/AudioStats.h"
 #include "System/Console/Trace.h"
+
+#ifdef PLATFORM_PSP
+#include <pspkernel.h>
+static unsigned int writeMicros() { return sceKernelGetSystemTimeLow(); }
+#else
+#include <time.h>
+static unsigned int writeMicros() {
+    return (unsigned int)((unsigned long long)clock() * 1000000u /
+                          CLOCKS_PER_SEC);
+}
+#endif
 
 // 32 KB. Against writes that arrive 64 times less often than they did
 // and are the size a flash card actually wants.
@@ -117,10 +129,23 @@ void WavFileWriter::AddBuffer(fixed *bufferIn, int size) {
     sampleCount_ += size;
 };
 
+/* Timed, and the time handed to the DSP meter to take back off its
+   total.
+   
+   This runs inside the audio block, because the tap that feeds it
+   sits in the mixer's render. A 32KB write to a Memory Stick takes
+   tens of milliseconds against a block budget of about six, so
+   without this the block it lands on reads several hundred per cent
+   and the peak hold latches it -- while nothing is actually wrong,
+   the prebuffer covers it and the song plays straight through. A
+   meter labelled dsp that spends a render pinned at 300 because of a
+   card write is a meter people learn to ignore. */
 void WavFileWriter::flush() {
     if (!file_ || !pending_ || pendingUsed_ == 0)
         return;
+    unsigned int t0 = writeMicros();
     file_->Write(pending_, 2, pendingUsed_);
+    AudioStats::ExcludeMicros(writeMicros() - t0);
     pendingUsed_ = 0;
 };
 
