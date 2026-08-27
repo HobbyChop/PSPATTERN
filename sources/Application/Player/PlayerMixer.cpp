@@ -10,6 +10,7 @@
 #include "System/System/System.h"
 #include <math.h>
 #include <stdlib.h>
+#include "Services/Audio/MasterEq.h"
 
 PlayerMixer::PlayerMixer() {
 
@@ -135,6 +136,12 @@ void PlayerMixer::Update(Observable &o,I_ObservableData *d) {
   ms->SetPregain(project_->GetPregain());
   ms->SetSoftclip(project_->GetSoftclip(), project_->GetSoftclipGain());
   ms->SetMasterVolume(project_->GetMasterVolume());
+  /* Pushed every tick like the rest of the master settings. Cheap:
+     SetBand only recomputes whether ANY band is off flat, and the EQ
+     itself does nothing at all until one is. */
+  for (int b = 0; b < MASTER_EQ_BANDS; b++) {
+      ms->SetEqBand(b, project_->GetEqBand(b));
+  }
   clipped_=ms->Clipped();
 } ;
 

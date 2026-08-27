@@ -14,6 +14,9 @@
 #include <math.h>
 #include <string.h>
 #include "Services/Midi/MidiService.h"
+#include "Services/Audio/Audio.h"
+#include "Application/Model/Config.h"
+#include <stdlib.h>
 
 // Private constructor - Singleton
 
@@ -27,6 +30,7 @@ Player::Player() {
     lastSongPos_ = 0;
     mode_=PM_SONG;
     rng_=0x1234567u ;
+    armed_=false ;
 	sequencerMode_=SM_SONG;
 	lastPercentage_=0;
 	retrigAllImmediate_=false;
@@ -191,6 +195,10 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
 
 void Player::Stop() {
 
+    // Nothing that stops should still be waiting to start.
+    armed_=false ;
+
+
     mixer_->Lock();
 
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
@@ -214,6 +222,13 @@ char *Player::GetPlayedNote(int channel) {
 
 char *Player::GetPlayedOctive(int channel) {
     return mixer_->GetPlayedOctive(channel);
+}
+
+InstrumentType Player::GetChannelInstrumentType(int channel) {
+	if (channel<0||channel>=SONG_CHANNEL_COUNT) return IT_LAST ;
+	I_Instrument *i=mixer_->GetInstrument(channel) ;
+	if (!i) i=mixer_->GetLastInstrument(channel) ;
+	return i?i->GetType():IT_LAST ;
 }
 
 char *Player::GetPlayedInstrument(int channel) {
@@ -411,7 +426,27 @@ void Player::OnStartButton(PlayMode origin,unsigned int from,bool startFromPrevi
 }
 
 // Handles start on song screen
-void Player::OnSongStartButton(unsigned int from,unsigned int to,bool requestStop,bool forceImmediate) {
+void Player::OnSongStartButton(unsigned int from,unsigned int to,bool requestStop,bool forceImmediate,bool fromSync) {
+
+    /* In Follow the leader owns the transport, so a local press cannot
+       mean "start now" -- that would free-run beside the leader
+       instead of with it. It means "wait", and the leader's start byte
+       is what releases it. Pressing again while waiting gives up.
+
+       Stopping is still immediate and still local: a song you want
+       stopped should stop when you say so, leader or no leader. */
+    if (!fromSync && !requestStop && !isRunning_ && project_ && project_->GetMidiSync()!=0) {
+        armed_=!armed_ ;
+        return ;
+    }
+    if (fromSync) {
+        armed_=false ;
+        /* The leader's start is the one moment the two clocks are known
+           to agree, so it is where the loop is zeroed. The project's
+           tempo seeds it; the loop corrects from there. */
+        clockSync_.Reset((float)project_->GetTempo()) ;
+        clockSync_.SetLeadMs(syncLeadMs()) ;
+    }
 
     switch(GetSequencerMode()) {
 
@@ -495,6 +530,57 @@ void Player::OnSongStartButton(unsigned int from,unsigned int to,bool requestSto
             break;
         }
 }
+
+bool Player::IsArmed() { return armed_ ; }
+
+/* How far ahead of the received clock the song has to run to be
+   heard in time with the leader.
+
+   Two parts, and only one of them is knowable from in here.
+
+   The audio buffer is: whatever the player decides now is heard
+   bufferSize x preBuffer samples later, which is 35ms at the defaults
+   and is the larger half of the problem. That much is measured.
+
+   The rest is not. How long a clock byte takes to cross USB and get
+   picked up by the pump, and what the leader's own output latency is,
+   are both outside this program. MIDISYNCOFFSET is the trim for them:
+   milliseconds, signed, positive to play earlier.
+
+   Read once per start rather than per tick -- it cannot change while
+   a song runs, and a config lookup per clock byte would be silly. */
+float Player::syncLeadMs() {
+
+	float lead=0.0f ;
+
+	Audio *audio=Audio::GetInstance() ;
+	if (audio) {
+		int rate=audio->GetSampleRate() ;
+		int frames=audio->GetAudioBufferSize()*audio->GetAudioPreBufferCount() ;
+		if (rate>0 && frames>0) {
+			lead=1000.0f*float(frames)/float(rate) ;
+		}
+	}
+
+	const char *trim=Config::GetInstance()->GetValue("MIDISYNCOFFSET") ;
+	if (trim) lead+=float(atoi(trim)) ;
+
+	// Beyond a beat or so this is not a latency any more.
+	if (lead<-500.0f) lead=-500.0f ;
+	if (lead>500.0f) lead=500.0f ;
+	return lead ;
+}
+
+void Player::OnMidiClock() {
+    // Clocks before the song starts have nothing to be compared
+    // against; the count is zeroed at the leader's start anyway.
+    if (!isRunning_) return ;
+    clockSync_.OnLeaderTick() ;
+}
+
+bool Player::IsClockLocked() { return clockSync_.Locked() ; }
+
+void Player::CancelArm() { armed_=false ; }
 
 bool Player::IsRunning() { return isRunning_; }
 
@@ -585,11 +671,28 @@ void Player::Update(Observable &o,I_ObservableData *d) {
 
 	if (isRunning_) {
         SyncMaster *sync = SyncMaster::GetInstance();
-        sync->SetTempo(project_->GetTempo());
+        /* Following: the loop owns the tempo, and it is a float,
+           because whole beats per minute are too coarse a step to hold
+           a phase with. Otherwise the project's own tempo stands. */
+        bool following = project_->GetMidiSync() != 0;
+        if (following) {
+            sync->SetTempoFine(clockSync_.Tempo());
+            // The screen should say what is actually being played, but
+            // only settle on a whole number -- writing every wobble of
+            // the loop into the project would thrash the display.
+            int shown = (int)(clockSync_.Tempo() + 0.5f);
+            if (clockSync_.Locked() && shown != project_->GetTempo()) {
+                project_->SetTempo(shown);
+            }
+        } else {
+            sync->SetTempo(project_->GetTempo());
+        }
 
         if (!firstPlayCycle_) {
             Groove::GetInstance()->Trigger();
             sync->NextSlice();
+            // Our half of the count the loop compares.
+            if (following) clockSync_.OnPlayerTick();
             triggerLiveChains_ = false;
             if (retrigAllImmediate_) {
 				for (int i=0;i<SONG_CHANNEL_COUNT;i++) {

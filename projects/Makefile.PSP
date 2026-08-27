@@ -3,7 +3,17 @@
 DEFINES := \
 	-DPLATFORM_$(PLATFORM) \
 	-DCPP_MEMORY \
-	-DNDEBUG
+	-DNDEBUG \
+	-DPSP_VFPU_EQ \
+	-DPSP_FDN_REVERB \
+	-DPSP_VFPU_REVERB
+# The VFPU stack, device-validated: the master EQ runs its one-pole
+# ladder four bands to a lane; the reverb is a VFPU-native FDN (its
+# feedback matrix a single vtfm4.q) at half rate in place of the
+# Freeverb comb bank. The audio thread carries VFPU context (confirmed
+# on hardware), which is what makes this safe to enable here. Other
+# platforms keep the scalar EQ and the comb reverb -- the code paths
+# stay guarded, this only flips them on for the PSP that ships.
 
 TARGET=lgpt
 

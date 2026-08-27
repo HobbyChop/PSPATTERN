@@ -28,9 +28,23 @@ PSPUsbMidiInDevice::~PSPUsbMidiInDevice() {
 
 void PSPUsbMidiInDevice::onPacket(unsigned char *pkt) {
 
-	// channel voice only: the mapping engine has no use for
-	// realtime/sysex (clock slave is not wired upstream either)
 	int cin=pkt[0]&0x0F ;
+
+	/* Single-byte realtime: clock, start, continue, stop.
+
+	   These used to be dropped here, on the grounds that the mapping
+	   engine has no use for them and the clock slave was not wired up.
+	   The clock slave HAS been wired up on the other side the whole
+	   time -- MidiNoteInput dispatches F8, FA, FB and FC and acts on
+	   all four -- so this filter was the reason Follow did nothing on
+	   a PSP: the bytes never got past the driver. */
+	if (cin==0x0F) {
+		MidiMessage rt(pkt[1],0,0) ;
+		onDriverMessage(rt) ;
+		return ;
+	}
+
+	// channel voice; system common and sysex are still of no use here
 	if (cin<0x8||cin>0xE) return ;
 
 	MidiMessage msg(pkt[1],pkt[2],pkt[3]) ;

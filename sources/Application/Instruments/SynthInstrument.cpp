@@ -1101,6 +1101,9 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 	return true ;
 } ;
 
+// How often PDX recomputes its phase-distortion warp. See renderPdx.
+#define PDX_REFRESH 8
+
 bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
 
 	int wave=FindVariable(SYP_PDXWAVE)->GetInt() ;
@@ -1120,8 +1123,28 @@ bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
 	unsigned int phase=v.phase_ ;
 	unsigned int inc=v.curInc_ ;
 
-	// warp state, recomputed every 32 samples from the DCW envelope
-	// (two divisions per refresh, nothing per sample)
+	/* Warp state, recomputed every PDX_REFRESH samples from the DCW
+	   envelope (two divisions per refresh, nothing per sample).
+
+	   This was 32, and 32 is audible on the attack. A DCW attack of 0
+	   is a 128 sample fade, so the whole attack was crossed in four
+	   recomputes -- four treads, and the biggest of them put a step
+	   12.7% of full scale wide at exactly sample 128, nearly 17dB
+	   above anything the note does once it has settled. It measured as
+	   a click because it is one: the waveSHAPE jumping, not the
+	   amplitude, which is why chasing the amplitude envelope never
+	   found it.
+
+	   At 8 the same attack gets sixteen treads, and the excess falls
+	   from +20.1dB to +11.9dB. Going finer than 8 changes nothing --
+	   measured at 4, the figure is identical -- because what is left
+	   is the DCW envelope's own speed, not the staircase. A 128 sample
+	   shape sweep IS a percussive attack; that part is the patch, not
+	   a defect.
+
+	   The extra cost is two divisions per eight samples instead of per
+	   thirty two -- about 8k more divisions a second, which on this
+	   chip is under a tenth of one percent. */
 	unsigned int k=32768,slope1=65536,slope2=65536,resoMul=65536 ;
 	int refresh=0 ;
 
@@ -1129,13 +1152,13 @@ bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
 	for (int i=0;i<size;i++) {
 
 		if (refresh==0) {
-			refresh=32 ;
+			refresh=PDX_REFRESH ;
 			int mod=0 ;
 			if (lfoDest!=SLD_OFF && lfoDepth) {
-				v.lfoPhase_+=lfoIncV*32 ;
+				v.lfoPhase_+=lfoIncV*PDX_REFRESH ;
 				mod=(sineTable_[v.lfoPhase_>>24]*lfoDepth)>>15 ;
 			}
-			glideStep(v,32) ;   // this refresh covers 32 samples
+			glideStep(v,PDX_REFRESH) ;   // this refresh covers that many
 			inc=v.curInc_ ;
 			if (lfoDest==SLD_PITCH && mod) {
 				inc=(unsigned int)((long long)inc+((long long)inc*mod)/557056) ;

@@ -64,6 +64,17 @@ namespace SendFx {
 	   and less than a finger's jitter on a delay. The dry path and
 	   the timing of the notes are untouched. */
 	void SetDeferred(bool on) ;
+	/* WHO runs the bank, as opposed to WHEN. Never true unless the
+	   Media Engine has been proved to work on this machine. */
+	void SetMeDriving(bool on) ;
+	bool MeDriving() ;
+#ifndef __PSP__
+	int FlushCountForTest() ;
+	void ResetFlushLogForTest() ;
+	bool WasFlushedForTest(const void *p) ;
+	const void *WetAccForTest(int which) ;
+	const void *BankForTest() ;
+#endif
 	bool Deferred() ;
 
 	// The wet return. Owned by MixerService, inserted last into the

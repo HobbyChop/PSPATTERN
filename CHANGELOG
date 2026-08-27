@@ -1,3 +1,365 @@
+PSPATTERN 0.11.0a
+
+    The audio DSP moved onto the VFPU. The PSP's vector unit sat idle
+        while the mixer strained on the main core; three of the
+        heaviest stages now run on it, which is where the headroom for
+        this release comes from.
+
+    The reverb is a new engine. The old eight-comb Freeverb bank fought
+        the vector unit -- mismatched line lengths, serial chains, and
+        a quantisation tail that never fully decayed -- so it was
+        replaced with a four-line Feedback Delay Network, whose 4x4
+        feedback matrix is a single vtfm4.q instruction. It is a
+        denser, cleaner reverb, structurally cheaper than the comb bank
+        even before the vector unit, and it runs at half rate the same
+        way the old bank did. Reverb load fell from about 19% of a
+        block to 15%.
+
+    The master EQ runs on the VFPU. Its ten-band one-pole ladder now
+        processes four bands to a lane, capping the cost of a heavy
+        sculpt -- the case the difference form made expensive. The
+        sound is unchanged: the float ladder tracks the fixed EQ to a
+        single 16-bit LSB across every setting.
+
+    The soft clipper is a branchless block, ready for the same
+        treatment. It folds the standard-cubic curve's in-range and
+        saturated cases into one expression and lands on the identical
+        int16 -- no default build's sound moves.
+
+    The display stops freezing under high DSP. The scope and the meters
+        and the ability to navigate all live on the main thread, and
+        the audio render -- an SDL worker thread -- outranked it, so a
+        heavy block starved the UI. The render now round-robins with
+        the main thread at an equal priority; the audio buffer's lead
+        absorbs the interleaving and the sound is not put at risk.
+
+    The audio thread stopped calling malloc. Every block used to
+        allocate a buffer on the way into the pool and free it on the
+        way out, taking the heap lock on the one path that must not
+        stall. The pool hands blocks back for reuse now; after the
+        first lap it touches the heap not at all.
+PSPATTERN 0.10.1a
+
+    A ten band master graphic EQ, on the mixer screen. One stage, on
+        the summed output ahead of the clipper -- not per instrument.
+        The bands are the same complementary one-pole set PSPECTRA
+        uses, so flat truly passes the signal through untouched, and
+        bands you have not moved cost nothing: bass and treble carved
+        together runs two filters, not nine. X+O resets a band, and
+        the readout speaks decibels.
+
+    Each mixer strip says what kind of instrument it is carrying --
+        sampler, tone, VA, PDX, FM, drum -- so a screen of eight bars
+        no longer needs the song page open beside it to know who is
+        who.
+
+    The tearing in the mixer bars is fixed. The repaint now waits for
+        the vertical blank before the pixels are copied, not before
+        they are drawn, which is the difference between waiting for
+        the crossing and waiting near it.
+
+    The audio thread no longer touches the heap. Every block used to
+        malloc on the way into the buffer pool and free on the way
+        out, and the heap lock those calls take is shared with
+        everything else that allocates -- so a song load, a memory
+        probe or an autosave on the other thread could stall the
+        audio callback mid-block. The pool now hands blocks back for
+        reuse instead; after the first lap it allocates nothing at
+        all. This changes no measurement and removes a class of rare,
+        unreproducible ticks.
+
+    Groundwork, inaudible: the send effects are partitioned behind a
+        tested hand-over protocol, so the day a second core is proved
+        safe to use, the delay and reverb can move onto it as a change
+        in one place.
+
+PSPATTERN 0.10.0a
+
+    The tracker ships with headroom now. Every default in the gain
+        chain was exactly unity, so the first thing a new user met was
+        the ceiling: one voice measured -9.1 dBFS, TWO channels fit,
+        and THREE clipped.
+
+    The master fader defaults to 75, which its fourth-power taper makes
+        -10.00 dB exactly. Eight channels now land at -1.1 dBFS. Only
+        new projects start there -- every project already saved carries
+        its own master value and keeps it.
+
+    The sampler was six decibels hot, and it was the engine rather than
+        the drums. A full scale sample at stock settings reached -3.04
+        dBFS where every synth engine reached -9.1: the sampler's
+        DEFAULT sat at full scale while the synth's sat at half. The
+        loudest baked drum measured -3.31 dBFS, so two on the same step
+        clipped. Four fit now, and the kits themselves are untouched.
+
+    The note-on click is fixed. The channel's declick was armed exactly
+        backwards -- set only when the channel was already idle, and
+        left clear whenever there was actually a step to smooth. The
+        sampler's note-on transient falls from 43.8dB above its own
+        steady state to 14.6dB, and an instrument change on a channel
+        from a step a third of full scale wide to one thirtieth of it.
+
+    The sampler grew the declick the synth has had for a while, and
+        PDX stopped recomputing its phase distortion warp in four
+        treads across a note-on.
+
+    Mute, solo and the faders ramp. Every gain change used to be a hard
+        step between blocks -- a discontinuity every 5.8ms whenever a
+        control moved.
+
+    The meters read in decibels. They were linear in amplitude, which
+        was survivable only while everything ran at the ceiling; once
+        the headroom arrived a synth at full blast drew a tenth of the
+        bar. A voice at -9.1 dBFS draws 71 pixels of 88 now instead of
+        30.
+
+    Channel bars are read after the channel's own gain, so the mixer
+        controls move them. A bar no longer freezes at its last peak
+        when its channel goes quiet, and meter fall is no longer tied
+        to frame rate.
+
+    The "sum" figure is now "sat NN%": how much of the moment the
+        master sum spent pinned at the top. Zero means the mix fits.
+        The old figure claimed to be the bus sum before the fader and
+        could never print more than 1.00x however hot the mix was.
+
+    Autosave never runs during playback. It used to hold off for two
+        minutes and then write anyway, which meant a Memory Stick write
+        -- and an audible dropout -- at the two minute mark, in a music
+        program, while you were listening.
+
+    The drum kit is baked once. It was rebuilt on every song load and
+        thrown away on every song close, about a megabyte of heap churn
+        per load to arrive at the bytes that had just been freed.
+
+PSPATTERN 0.9.0a
+
+    The note-on click, found and fixed. It was never a fade that was
+        too short: the channel's declick was armed exactly backwards.
+
+    The channel keeps a measured step corrector -- on a note start it
+        takes the jump between the last sample it emitted and the first
+        sample of the new block, cancels it, and decays that away over
+        about 0.7ms. It was armed by StopInstrument, which returns
+        early the moment the outgoing instrument is releasing. Release
+        0 has been a 128 sample fade since the earlier declick work, so
+        "releasing" is true straight after stopping anything that was
+        still sounding.
+
+    So the flag was left CLEAR whenever there was a step to smooth, and
+        SET only when the channel was already idle and both sides of
+        the join were zero. The correction ran where nothing needed
+        correcting and stood down where the click was. It is armed on
+        every note start now, which is safe because it measures the
+        real jump: a note starting near where the last one ended gets a
+        correction of nearly nothing.
+
+    The sampler's note-on transient falls from 43.8dB above its own
+        steady state to 14.6dB. An instrument change on a channel falls
+        from a step a third of full scale wide to one thirtieth of that.
+
+    The sampler also had no declick of its own, which the synth has had
+        for a while. Its new note already faded in from zero; what it
+        never handled was the note it replaced, cut dead wherever its
+        waveform stood. It measures and decays that step now.
+
+    PDX had a second transient, unrelated. It recomputed its phase
+        distortion warp every 32 samples, so a note-on crossed the mod
+        envelope in four treads and put a step 12.7% of full scale wide
+        at exactly sample 128. At a refresh of 8 that is gone. What is
+        left is the mod envelope itself -- the warp starts at full and
+        decays, and with the warp amount at zero there is no transient
+        at all. That is what phase distortion sounds like.
+
+    The meters mean something now.
+
+    Channel bars were read before the channel's own gain, so nothing
+        the mixer could do moved them: turn the gain up and the master
+        bar rose while the strip responsible sat still. They are read
+        after it now. The master fader is deliberately left out of
+        them, because a channel bar answers what a strip is sending,
+        not what survives the master.
+
+    A bar froze at its last peak when its channel went quiet, because
+        the peaks were only written on blocks that had audio and the
+        decay only pulls a bar down when the new peak is lower.
+
+    Meter fall was tied to frame rate again. The elapsed-time helper
+        resets its own clock when asked, and the mixer asked twice a
+        frame, so the decay always saw about a millisecond and fell one
+        pixel per repaint.
+
+    The master fader now acts BEFORE the buses are summed. The
+        accumulator saturates once two full scale sources are in it, so
+        a fader applied after the sum was attenuating audio that had
+        already been flattened -- it changed how loud the damage was
+        and removed none of it.
+
+    The "sum" figure on the mixer title strip is now "sat NN%": how
+        much of the moment the master sum spent pinned at the top. The
+        old figure claimed to be the bus sum before the fader and was
+        wrong twice over -- it was read after the sum, so moving the
+        fader made it silently include the fader, and the accumulator
+        clamps every partial add so it could never print more than
+        1.00x however hot the mix was.
+
+    No package ships demo songs any more, in any mode.
+
+PSPATTERN 0.8.3a
+
+    Following an external clock is early now, on purpose.
+
+    0.8.2a locked the two clocks together and that was still not the
+        same as the two being heard together. What gets aligned is the
+        moment the tracker decides a tick. What anyone hears is that
+        tick coming out of the audio buffer 35ms later at the default
+        settings, on top of however long the clock byte took to
+        arrive. So a perfectly locked song sat perfectly late.
+
+    The loop targets a lead rather than zero phase: the song runs
+        early by the size of its own audio buffer, which it can
+        measure, so the sound lands on time. MIDISYNCOFFSET in
+        config.xml trims the rest -- milliseconds, signed, positive
+        plays earlier -- because the leader's own output latency and
+        the USB input path are not knowable from in here.
+
+    The lead is held in milliseconds and converted using the current
+        tempo, since a tick is shorter at 160 than at 90. Kept in
+        ticks it would have gone out by more the faster the song ran.
+
+    Fixed, and it was a fault in 0.8.2a: the loop hunted instead of
+        settling. Tick counts are whole numbers and the lead is not --
+        35ms at 120bpm is 1.68 ticks -- so the raw phase error could
+        never reach zero, and integrating it swung the tempo about
+        1.5% for ever. The integral is fed a smoothed error now.
+        Averaging recovers what is below the quantiser: the loop
+        dithers between the two nearest whole positions and the mean
+        of that dither is the true fractional offset.
+
+    The gains were then measured rather than guessed, against how far
+        the audio ends up from the leader in milliseconds. A faster
+        proportional term wins on that even though the tempo readout
+        wobbles more, which is the right trade for a sequencer.
+
+    Fixed: deep clone cleared the L bit after testing the R one, a
+        leftover from moving shortcuts off R. The R bit stayed set, so
+        the view dropped straight back into clone mode on the way out
+        of a deep clone.
+
+    The manual had two CLONING sections that named different buttons.
+        Both describe what the program does now.
+
+PSPATTERN 0.8.2a
+
+    Following an external clock now locks to the leader's POSITION,
+        not just a guess at its speed.
+
+    What it did before: time the gap between quarter notes, turn that
+        into a whole number of beats per minute, smooth it, write it to
+        the project tempo. That is an estimate of how fast the leader
+        is going and says nothing about where it is, so a song that
+        came in at the wrong moment stayed at the wrong moment for
+        good. Three things made it worse. Whole beats per minute is a
+        0.78% step at 128, which is 62ms of drift across an eight
+        second phrase. The timestamps came from a pump that sleeps up
+        to 20ms and hands over whatever arrived in a burst. And the
+        smoothing added a bar of lag to any real change.
+
+    What it does now: one MIDI clock is exactly one tracker tick, both
+        being twenty four to the quarter note, so the leader's clocks
+        and our own slices are the same unit and are simply counted
+        against each other. The difference between the counts is the
+        phase error in ticks, and counting is exact even when the
+        timing of the bytes is not -- a burst cannot lose a count.
+
+    A PI loop closes that error. The proportional half pulls a gap out
+        quickly, the integral half is what learns the tempo, since a
+        standing phase error is precisely what a wrong tempo produces.
+        The loop is zeroed on the leader's start byte, the one moment
+        the two clocks are known to agree.
+
+    Tempo is a float on the way in now. The sample counts underneath
+        always were; only the way in was rounded to whole beats.
+
+    The bpm figure on the song screen is coloured while following: the
+        play colour once locked, the mute colour while still chasing.
+        A leader that never lets it lock is now something you can see
+        rather than only hear.
+
+    tools/run_clocksync_test.sh runs the loop against a simulated
+        leader: same tempo, unknown tempo, a song that came in eight
+        ticks late, a tempo change mid song, and a leader that stops
+        sending.
+
+PSPATTERN 0.8.1a
+
+    Follow mode works at all now, and works the way a piece of MIDI
+        gear in external sync works.
+
+    Every realtime byte was being thrown away by the PSP's MIDI input
+        driver. onPacket kept USB-MIDI code index 0x8 to 0xE, channel
+        voice, on the grounds that the mapping engine had no use for
+        realtime and the clock slave "is not wired upstream either".
+        It had been wired upstream the whole time: MidiNoteInput
+        dispatches F8, FA, FB and FC and acts on all four. Nothing ever
+        reached it, so Follow neither took a tempo nor answered a
+        transport on hardware.
+
+    On Follow, START no longer starts the song. It arms it, and the
+        bottom row reads "waiting for midi start" until the leader's
+        start byte arrives. Pressing START again gives up the wait. A
+        leader's stop while waiting cancels it too.
+
+    Which is the point of a slave transport: a local start in Follow
+        used to begin playing immediately, beside the leader rather
+        than with it, and at whatever the leader's tempo happened to
+        have nudged the song to.
+
+    Stop stays immediate and stays local. A song you want stopped
+        should stop when you say so.
+
+    The waiting line is drawn on every screen, not just the one that
+        started it, because the leader can come in while you are
+        editing a phrase. It does not blink: only the song and mixer
+        screens repaint on a timer, so anywhere else a blink would stop
+        on whichever phase it caught.
+
+PSPATTERN 0.8.0a
+
+    The song screen says whether the adapter is really there.
+
+    The mid row read the configured device name out of the config file,
+        so it printed PSPMIDI with nothing plugged in. The one line on
+        screen that looked like it answered "is my adapter working"
+        always said yes.
+
+    It has three answers now, because the two failures need different
+        ones: the device name when an adapter is connected, "no cable"
+        when the driver is loaded and nothing is answering it, and
+        "no drv" in the warning colour when usbmidi.prx never loaded at
+        all -- which no cable will fix. It updates while you work, so
+        you can plug the adapter in and watch it change.
+
+    pspUsbMidiConnected() had been declared, stubbed and wired to the
+        kernel module since the link was written, and nothing had ever
+        called it. It is polled a few times a second rather than every
+        frame, since it is a syscall and that panel repaints constantly.
+
+    Corrected, and it was wrong in both directions before this: the
+        tracker DOES send MIDI clock. Twenty four pulses to the quarter
+        note, with start and stop when the transport moves, on by
+        default, no setting to enable. The feature list had claimed it
+        does not, and the MIDI section had been rewritten to agree.
+
+    MIDISENDSYNC turns it off, for a rig where something else is the
+        master and two clocks would fight. That key was documented
+        nowhere; it is in the manual, on the site and commented in the
+        shipped config.xml now.
+
+    The manual also still described the song screen panel as showing
+        DSP load. That moved to the title strip in 0.2.8a and the
+        memory bar took its place.
+
 PSPATTERN 0.7.0a
 
     Two commands, both of them things LSDJ has had for years and this

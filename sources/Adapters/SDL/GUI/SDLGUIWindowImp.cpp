@@ -9,6 +9,9 @@
 #include "Application/Utils/char.h"
 #include <assert.h>
 #include "UIFramework/BasicDatas/GUIEvent.h"
+#ifdef PLATFORM_PSP
+#include <pspdisplay.h>
+#endif
 
 #ifdef _SHOW_GP2X_
  #include <SDL/SDL_image.h>
@@ -695,6 +698,28 @@ void SDLGUIWindowImp::Flush()
     // blit partial updates on resource constrained platforms
     if ((!framebuffer_)&&(updateCount_!=0))
     {
+#ifdef PLATFORM_PSP
+        /* Wait for the vertical blank before the copy.
+
+           There is no double buffering here -- BUFFERED is defined for
+           the handhelds that have it and not for the PSP, so SDL_Flip
+           is never called and this UpdateRects writes straight into the
+           framebuffer the display is scanning out. Anything that moves
+           tears, which in practice means the meters, because they are
+           the only thing changing every frame.
+
+           This has to be HERE and not earlier in the frame. The first
+           attempt waited before the panels were drawn, which is before
+           the ops are computed but well before they are written -- by
+           the time the copy actually happened the beam had moved on and
+           the tearing was unchanged. What matters is when the WRITE
+           lands, not when the drawing is decided.
+
+           It costs about two thirds of a millisecond against a 16ms
+           frame and locks the copy to the panel instead of letting it
+           drift. Audio is on its own thread and does not care. */
+        sceDisplayWaitVblankStart();
+#endif
         if (updateCount_<MAX_OVERLAYS)
         {
             SDL_UpdateRects(screen_,updateCount_, updateRects_);

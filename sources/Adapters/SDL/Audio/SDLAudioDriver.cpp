@@ -1,5 +1,8 @@
 #include "SDLAudioDriver.h"
 #include <string.h>
+#ifdef __PSP__
+#include <pspthreadman.h>
+#endif
 #include "Services/Midi/MidiService.h"
 #include "Services/Time/TimeService.h"
 #include "System/Console/Trace.h"
@@ -16,6 +19,18 @@ SDLAudioDriverThread::SDLAudioDriverThread(SDLAudioDriver *driver) {
 };
 
 bool SDLAudioDriverThread::Execute() {
+#ifdef __PSP__
+    // Drop to the main thread's priority so the render round-robins
+    // with the UI instead of starving it during a heavy block. The
+    // audio buffer's lead absorbs the interleaving; the SDL output
+    // callback that feeds the DAC is a separate, higher thread and is
+    // untouched. See PSPmain.cpp for the whole reasoning.
+    {
+        extern int g_pspMainThreadPriority;
+        sceKernelChangeThreadPriority(sceKernelGetThreadId(),
+                                      g_pspMainThreadPriority);
+    }
+#endif
     while (!shouldTerminate()) {
         semaphore_->Wait();
         driver_->OnNewBufferNeeded();
@@ -186,9 +201,10 @@ void SDLAudioDriver::OnChunkDone(Uint8 *stream, int len) {
                 bufferSize_ - bufferPos_ + pool_[poolPlayPosition_].size_;
             bufferPos_ = 0;
 
-            SYS_FREE(pool_[poolPlayPosition_].buffer_);
+            // Hand the block back to the pool rather than freeing it,
+            // so the audio thread does no heap work per block.
+            ReleaseBuffer(poolPlayPosition_);
 
-            pool_[poolPlayPosition_].buffer_ = 0;
             poolPlayPosition_ = (poolPlayPosition_ + 1) % SOUND_BUFFER_COUNT;
             if (thread_)
                 thread_->Notify();

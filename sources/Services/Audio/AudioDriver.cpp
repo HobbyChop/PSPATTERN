@@ -18,14 +18,20 @@ bool AudioDriver::Init() {
    for (int i=0;i<SOUND_BUFFER_COUNT;i++) {
      pool_[i].buffer_=0 ;
      pool_[i].size_=0 ;
+     spare_[i]=0 ;
+     spareSize_[i]=0 ;
    } ;
-   isPlaying_=false;	 
+   isPlaying_=false;
 
    return InitDriver() ;
 }
 
 void AudioDriver::Close() {
 	CloseDriver() ;
+	for (int i=0;i<SOUND_BUFFER_COUNT;i++) {
+		SAFE_FREE(spare_[i]) ;
+		spareSize_[i]=0 ;
+	} ;
 };
 
 bool AudioDriver::Start() {
@@ -66,12 +72,40 @@ void AudioDriver::AddBuffer(short *buffer,int samplecount) {
   return ;
   }	
 
-  pool_[poolQueuePosition_].buffer_=(char*) ((short *)SYS_MALLOC(len)) ;
+  // Reuse the block this slot handed back last time round if it is
+  // still big enough. The block size only moves by a frame or two
+  // between ticks, so after the first pass through the pool this stops
+  // touching the heap at all.
 
-  SYS_MEMCPY(pool_[poolQueuePosition_].buffer_,(char *)buffer,len) ;
-  pool_[poolQueuePosition_].size_=len ;
-  poolQueuePosition_=(poolQueuePosition_+1)%SOUND_BUFFER_COUNT ;
+  int q=poolQueuePosition_ ;
+
+  if (spare_[q]&&spareSize_[q]<len) {
+     SAFE_FREE(spare_[q]) ;
+     spareSize_[q]=0 ;
+  } ;
+
+  if (spare_[q]) {
+     pool_[q].buffer_=spare_[q] ;
+     spare_[q]=0 ;
+  } else {
+     pool_[q].buffer_=(char*) ((short *)SYS_MALLOC(len)) ;
+     spareSize_[q]=len ;
+  } ;
+
+  SYS_MEMCPY(pool_[q].buffer_,(char *)buffer,len) ;
+  pool_[q].size_=len ;
+  poolQueuePosition_=(q+1)%SOUND_BUFFER_COUNT ;
 	hasData_=true ;
+}
+
+void AudioDriver::ReleaseBuffer(int index) {
+  if (spare_[index]) {
+     // Should not happen: a slot holds either a queued buffer or a
+     // spare, never both. Free rather than leak if it ever does.
+     SYS_FREE(spare_[index]) ;
+  } ;
+  spare_[index]=pool_[index].buffer_ ;
+  pool_[index].buffer_=0 ;
 }
 
 void AudioDriver::OnNewBufferNeeded() {

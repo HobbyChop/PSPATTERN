@@ -7,6 +7,7 @@
 #include "Services/Audio/AudioDriver.h"
 #include "Services/Midi/MidiService.h"
 #include "System/Console/Trace.h"
+#include <math.h>
 
 MixerService::MixerService() : out_(0), sync_(0), isRendering_(false) {
     mode_ = MSRM_PLAYBACK;
@@ -50,6 +51,8 @@ bool MixerService::Init() {
 	const char *deferFx = Config::GetInstance()->GetValue("DEFERREDFX") ;
 	if (deferFx && deferFx[0]=='1') SendFx::SetDeferred(true) ;
 	master_.Insert(sendReturn_);
+	// only the master counts saturation; the buses run the plain loop
+	master_.SetTrackRawSum(true);
 
 	bool result = false;
 	if (out_) {
@@ -134,13 +137,28 @@ unsigned int MixerService::GetMasterPeakLevel() const {
     return master_.GetOutputPeakLevel();
 }
 
-unsigned int MixerService::GetPreFaderSum() {
-    // master_'s peak is captured after the buses are summed and before
-    // the fader, which is exactly the figure wanted here
-    unsigned int lv = master_.GetPeakLevel();
-    unsigned int l = (lv >> 16) & 0xFFFF, r = lv & 0xFFFF;
-    unsigned int m = (l > r) ? l : r;
-    return (m << 8) / 32767;          // 0x100 == full scale
+/* How much of the last block the master sum spent held at the rail,
+   0..100.
+
+   This replaces a figure that claimed to be "the bus sum before the
+   fader". It was wrong in two ways at once. It read a peak taken after
+   the sum, so when the fader moved to a pre-sum gain it silently began
+   including the fader and reported the opposite of what it promised.
+   And the accumulator clamps every partial add, so the value it read
+   could never exceed full scale -- the readout could only ever print
+   1.00x however hot the mix was, while its own header said "a normal
+   mix runs over 1.0 here".
+
+   How far over the top a mix went is not recoverable once the sum has
+   been clamped. How OFTEN it is clamped is, and it answers the same
+   question honestly: 0 means the mix fits, anything climbing means it
+   does not and the fader has work to do. */
+unsigned int MixerService::GetSaturationPercent() {
+    unsigned int hits = master_.GetSaturatedSamples();
+    unsigned int total = master_.GetSaturatedTotal();
+    if (!total) return 0;
+    if (hits > total) hits = total;
+    return (hits * 100) / total;
 }
 
 bool MixerService::TakeMasterClipLatch() {
@@ -190,8 +208,26 @@ void MixerService::SetSoftclip(int clip, int gain) {
     master_.SetSoftclip(clip, gain);
 }
 
+void MixerService::SetEqBand(int band, int value) {
+    // Only the master carries the EQ. The buses each own an inert one.
+    master_.SetEqBand(band, value);
+}
+
 void MixerService::SetMasterVolume(int attn) {
     master_.SetMasterVolume(attn);
+    /* Also pushed in as a PRE-sum gain, which is where a master fader
+       has to act here. The buses are summed into a 32 bit accumulator
+       that saturates once two full scale sources are in it, so a fader
+       applied after the sum is attenuating audio that has already been
+       flat-topped -- it changes how loud the damage is and removes
+       none of it. Applied on the way in, it buys real headroom.
+
+       Same fourth-power taper the fader always had, so the control
+       feels exactly as it did. The send return is a child of the
+       master like any bus, so it scales with them and the wet/dry
+       balance holds. */
+    float damp = powf((float)attn / 100.0f, 4.0f);
+    master_.SetPreSumGain(fl2fp(damp));
 }
 
 int MixerService::GetPlayedBufferPercentage() {

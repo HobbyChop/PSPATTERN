@@ -20,6 +20,19 @@
 #define VAR_SCALE 			MAKE_FOURCC('S', 'C', 'A', 'L')
 #define VAR_RENDER MAKE_FOURCC('R', 'N', 'D', 'R')
 #define VAR_MIDISYNC MAKE_FOURCC('M', 'S', 'Y', 'N')
+/* The ten master EQ bands, EQ0..EQ9. Saved by name like every other
+   project variable, so a song written before the EQ existed simply has
+   no entry for them and loads flat. */
+#define VAR_EQ0 MAKE_FOURCC('E', 'Q', '0', ' ')
+#define VAR_EQ1 MAKE_FOURCC('E', 'Q', '1', ' ')
+#define VAR_EQ2 MAKE_FOURCC('E', 'Q', '2', ' ')
+#define VAR_EQ3 MAKE_FOURCC('E', 'Q', '3', ' ')
+#define VAR_EQ4 MAKE_FOURCC('E', 'Q', '4', ' ')
+#define VAR_EQ5 MAKE_FOURCC('E', 'Q', '5', ' ')
+#define VAR_EQ6 MAKE_FOURCC('E', 'Q', '6', ' ')
+#define VAR_EQ7 MAKE_FOURCC('E', 'Q', '7', ' ')
+#define VAR_EQ8 MAKE_FOURCC('E', 'Q', '8', ' ')
+#define VAR_EQ9 MAKE_FOURCC('E', 'Q', '9', ' ')
 
 #define PROJECT_NUMBER "1"
 #define PROJECT_RELEASE "6"
@@ -55,6 +68,8 @@ public:
   int GetSoftclip();
   int GetSoftclipGain();
   int GetPregain();
+  int GetEqBand(int band);
+  void SetEqBand(int band,int value);
   int GetRenderMode();
   // 0 = ignore an external clock, 1 = follow it
   int GetMidiSync();

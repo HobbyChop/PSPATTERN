@@ -12,6 +12,10 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include "Application/Instruments/I_Instrument.h"
+#include "Services/Audio/MasterEq.h"
+#include "Application/Model/Project.h"
+#include <math.h>
 
 #define MIXER_STRIP_COL(i) (3 + (i) * 4)
 #define MIXER_VAL_ROW 15
@@ -23,6 +27,12 @@
 #define MIXER_CHAN_ROWS 6
 #define MIXER_ROW_COUNT 10
 #define MIXER_FX_ROW 23
+/* Below the send line, the master EQ: ten bands on one line, walked
+   left and right exactly as the sends are. It belongs to no channel,
+   so like the sends it ignores the column. */
+#define MIXER_EQ_BASE MIXER_ROW_COUNT
+#define MIXER_ROW_TOTAL (MIXER_ROW_COUNT + MASTER_EQ_BANDS)
+#define MIXER_EQ_ROW 25
 // Where a channel counts as "a large share of the mix", as a fraction
 // of full scale. -6dBFS lit six channels out of eight on the demo,
 // which is TRUE -- six loud channels is exactly why that mix sums to
@@ -80,13 +90,19 @@ void MixerView::updateCursor(int dx,int dy) {
     //
     // Below they behave as what they look like: one row, walked with
     // left and right.
-    bool onSends = (mixerRow_ >= MIXER_CHAN_ROWS);
+    bool onSends = (mixerRow_ >= MIXER_CHAN_ROWS &&
+                    mixerRow_ < MIXER_EQ_BASE);
+    bool onEq = (mixerRow_ >= MIXER_EQ_BASE);
 
     if (dy != 0) {
-        if (onSends) {
+        if (onEq) {
+            // the EQ is the bottom line: up returns to the sends, down
+            // wraps round to the top of the channel grid
+            mixerRow_ = (dy < 0) ? MIXER_CHAN_ROWS : 0;
+        } else if (onSends) {
             // vertically the whole send line is a single row: up goes
-            // back to the channel grid, down wraps to the top of it
-            mixerRow_ = (dy < 0) ? (MIXER_CHAN_ROWS - 1) : 0;
+            // back to the channel grid, down carries on to the EQ
+            mixerRow_ = (dy < 0) ? (MIXER_CHAN_ROWS - 1) : MIXER_EQ_BASE;
         } else if (dy < 0) {
             // Row 0 is the bus, which is drawn, saved, and read by
             // PlayerMixer to route the channel -- it just had no way to
@@ -103,6 +119,14 @@ void MixerView::updateCursor(int dx,int dy) {
     }
 
     if (dx != 0) {
+        if (onEq) {
+            int b = (mixerRow_ - MIXER_EQ_BASE) + dx;
+            if (b < 0) b = 0;
+            if (b > MASTER_EQ_BANDS - 1) b = MASTER_EQ_BANDS - 1;
+            mixerRow_ = MIXER_EQ_BASE + b;
+            isDirty_ = true;
+            return;
+        }
         if (onSends) {
             int f = (mixerRow_ - MIXER_CHAN_ROWS) + dx;
             if (f < 0) f = 0;
@@ -240,9 +264,25 @@ void MixerView::processNormalButtonMask(unsigned int mask) {
         }
     } else if (mask & EPBM_B) {
         if (mask & EPBM_A) {
-            // B + A = cut: reset volume to full
-            Mixer::GetInstance()->SetChannelVolume(viewData_->mixerCol_, 0xFF);
-            isDirty_ = true;
+            /* X + O resets whatever the cursor is on.
+
+               It only ever reset the channel volume before, wherever
+               you were standing -- so on the EQ line it quietly
+               changed a fader on some channel instead. */
+            if (mixerRow_ >= MIXER_EQ_BASE) {
+                int b = mixerRow_ - MIXER_EQ_BASE;
+                viewData_->project_->SetEqBand(b, MASTER_EQ_FLAT);
+                isDirty_ = true;
+                char notifBuf[48];
+                sprintf(notifBuf, "        EQ %4s: flat",
+                        MasterEq::BandName(b));
+                SetNotification(notifBuf);
+            } else if (mixerRow_ < MIXER_CHAN_ROWS) {
+                // reset volume to full
+                Mixer::GetInstance()->SetChannelVolume(viewData_->mixerCol_,
+                                                       0xFF);
+                isDirty_ = true;
+            }
         }
     } else if (mask & EPBM_A) {
         if (mixerRow_ == 3) {
@@ -341,6 +381,52 @@ void MixerView::processNormalButtonMask(unsigned int mask) {
                 isDirty_ = true;
                 char notifBuf[40];
                 sprintf(notifBuf, "               Bus: %d", bus);
+                SetNotification(notifBuf);
+            }
+        } else if (mixerRow_ >= MIXER_EQ_BASE) {
+            /* The master EQ. Up and down move a band by 8 of its 127
+               steps, left and right by one -- the same shape the send
+               settings use, so the two lines behave alike.
+
+               64 is flat. The band gain is v*v*8, so the control is
+               fine near the middle where a decibel matters and coarse
+               at the ends where it does not. */
+            int b = mixerRow_ - MIXER_EQ_BASE;
+            int step = 0;
+            if (mask & EPBM_UP) step = 8;
+            if (mask & EPBM_DOWN) step = -8;
+            if (mask & EPBM_RIGHT) step = 1;
+            if (mask & EPBM_LEFT) step = -1;
+            if (step != 0) {
+                Project *proj = viewData_->project_;
+                int next = proj->GetEqBand(b) + step;
+                if (next < 0) next = 0;
+                if (next > MASTER_EQ_MAX) next = MASTER_EQ_MAX;
+                proj->SetEqBand(b, next);
+                isDirty_ = true;
+                char notifBuf[48];
+                /* Decibels, which is what an EQ speaks.
+
+                   This used to read out a percentage of the CONTROL
+                   value, which is a number about the knob rather than
+                   about the sound: one step below flat printed "-1%"
+                   when it is a quarter of a decibel, and the top of
+                   the range printed "+98%" for +11.9dB. It also could
+                   not say "flat" -- it said "+0%", which reads like
+                   another number rather than the thing you were
+                   looking for. */
+                if (next == 0) {
+                    sprintf(notifBuf, "        EQ %4s: off",
+                            MasterEq::BandName(b));
+                } else if (next == MASTER_EQ_FLAT) {
+                    sprintf(notifBuf, "        EQ %4s: flat",
+                            MasterEq::BandName(b));
+                } else {
+                    double db = 20.0 * log10(((double)next * next * 8.0) /
+                                             32768.0);
+                    sprintf(notifBuf, "        EQ %4s: %+.1f dB",
+                            MasterEq::BandName(b), db);
+                }
                 SetNotification(notifBuf);
             }
         } else if (mixerRow_ >= MIXER_CHAN_ROWS) {
@@ -540,6 +626,33 @@ void MixerView::DrawView() {
         }
         DrawString(c + 1, 2, head, props);
 
+        /* What KIND of instrument this strip is carrying.
+
+           A mixer that shows eight identical numbered strips makes you
+           remember which is the drums and which is the bass. One
+           character beside the number says it: y for a synth, s for a
+           sampler, m for MIDI, and a dash for a channel that has not
+           played anything yet.
+
+           Lowercase on purpose -- the channel number is the strip's
+           name and should stay the loud thing; this sits beside it as
+           a note, not a second heading. It follows the LAST instrument
+           played rather than the sounding one, so it does not blink
+           off in the gaps between notes. */
+        if (i < 8) {
+            InstrumentType it = player->GetChannelInstrumentType(i);
+            char tc[2] = {'-', 0};
+            switch (it) {
+            case IT_SYNTH:  tc[0] = 'y'; break;
+            case IT_SAMPLE: tc[0] = 's'; break;
+            case IT_MIDI:   tc[0] = 'm'; break;
+            default:        tc[0] = '-'; break;
+            }
+            SetColor(tc[0] == '-' ? CD_ROW : CD_ROW2);
+            DrawString(c + 2, 2, tc, props);
+            SetColor(CD_NORMAL);
+        }
+
         if (i == 8) {
             SetColor(CD_ROW2);
             DrawString(c + 1, MIXER_MUTE_ROW, "st", props);
@@ -640,6 +753,40 @@ void MixerView::DrawView() {
         SetColor(CD_NORMAL);
     }
 
+    /* The master EQ, ten bands on one line under the sends.
+
+       Two characters a band, which is all there is room for across
+       forty columns: a bar character standing for how far the band is
+       from flat rather than a number, because ten numbers in a row is
+       a table and what you want to read here is a SHAPE. Flat draws as
+       a dash on the centre line, cut draws low, boost draws high. */
+    {
+        Project *proj = viewData_->project_;
+        SetColor(CD_ROW2);
+        DrawString(0, MIXER_EQ_ROW, "eq", props);
+        for (int b = 0; b < MASTER_EQ_BANDS; b++) {
+            int x = 4 + b * 3;
+            int v = proj->GetEqBand(b);
+            // five states either side of flat is as much as one
+            // character can honestly carry
+            const char *g;
+            if (v == MASTER_EQ_FLAT)      g = "--";
+            else if (v > MASTER_EQ_FLAT + 40) g = "^^";
+            else if (v > MASTER_EQ_FLAT + 12) g = "' ";
+            else if (v > MASTER_EQ_FLAT)      g = ". ";
+            else if (v < MASTER_EQ_FLAT - 40) g = "vv";
+            else if (v < MASTER_EQ_FLAT - 12) g = ", ";
+            else                              g = "_ ";
+            bool cursor = (mixerRow_ == MIXER_EQ_BASE + b);
+            props.invert_ = cursor;
+            SetColor(cursor ? CD_HILITE2
+                            : (v == MASTER_EQ_FLAT ? CD_ROW : CD_HILITE1));
+            DrawString(x, MIXER_EQ_ROW, g, props);
+            props.invert_ = false;
+        }
+        SetColor(CD_NORMAL);
+    }
+
     // (no note readout here - the meters show channel activity)
     EnableNotification();
 
@@ -671,6 +818,17 @@ void MixerView::DrawVuBars() {
     GUITextProperties props;
     bool running = player->IsRunning();
 
+    /* Read the elapsed time ONCE.
+
+       VuElapsedMs resets its own 'last' on every call, so asking it
+       twice in one pass gives the second caller about 0ms. That was
+       happening here: the hold timers took one reading and the decay
+       took another, so the decay always saw ~1ms, and at 1ms the
+       integer truncation in UpdateVuBarHeights makes the fall exactly
+       one pixel per repaint -- ballistics tied to frame rate, which is
+       the thing VuMeterUtil says was removed. */
+    int vuMs = VuElapsedMs();
+
     // Read peak levels for all 9 channels
     float peakLevelsL[9];
     float peakLevelsR[9];
@@ -682,11 +840,23 @@ void MixerView::DrawVuBars() {
     } else {
         MixerService *ms = MixerService::GetInstance();
 
-        // Channels 0-7: Read pre-volume peaks
+        /* Channels 0-7: the bus peak AFTER its own gain.
+
+           This used to read the pre-gain peak, which meant no control
+           the user can reach moved a channel bar: pregain is the bus's
+           own volume and is applied after that tap, so turning it up
+           made the master bar rise while the strip that caused it sat
+           still. A meter you cannot move with the fader above it is
+           the thing that reads as "no mixer behaves like this".
+
+           The master fader is deliberately NOT folded in here. On a
+           desk the master fader moves the master meter and leaves the
+           channel meters alone, because a channel meter answers "what
+           is this strip sending", not "what is left of it". */
         for (int i = 0; i < 8; i++) {
             MixBus *bus = ms->GetMixBus(i);
             if (bus) {
-                uint32_t level = bus->GetPreMasterVolumePeakLevel();
+                uint32_t level = bus->GetPeakLevel();
                 peakLevelsL[i] = (float)((level >> 16) & 0xFFFF) / 32767.0f;
                 peakLevelsR[i] = (float)(level & 0xFFFF) / 32767.0f;
             } else {
@@ -694,7 +864,10 @@ void MixerView::DrawVuBars() {
             }
         }
 
-        // Channel 8 (Master): Read post-volume peaks
+        // Channel 8 (Master): the finished output, after the sum of
+        // every bus plus the effects return, and after both clippers.
+        // It is a SUM, so it routinely reads higher than any single
+        // strip -- eight strips at 0.35 make 2.8 before the clipper.
         uint32_t masterLevel = ms->GetMasterPeakLevel();
         peakLevelsL[8] = (float)((masterLevel >> 16) & 0xFFFF) / 32767.0f;
         peakLevelsR[8] = (float)(masterLevel & 0xFFFF) / 32767.0f;
@@ -710,7 +883,7 @@ void MixerView::DrawVuBars() {
     // reach for. The master showing CLIP while every channel looked
     // fine was not a meter fault; the channels simply had no light.
     {
-        int held = VuElapsedMs();
+        int held = vuMs;
         MixerService *ms = MixerService::GetInstance();
         for (int i = 0; i < 9; i++) {
             bool hot = false;
@@ -755,7 +928,7 @@ void MixerView::DrawVuBars() {
     // there was a single step between "loud" and "at the ceiling",
     // so the last thing a meter should be good at -- showing you how
     // close you are -- was the thing it could not show.
-    int vuMs = VuElapsedMs();
+    // (vuMs is read once at the top of this function -- see there.)
     UpdateVuBarHeights(vuBarHeightsL_, displayHeightsL, peakLevelsL, 9,
                        vuMs, 88);
     UpdateVuBarHeights(vuBarHeightsR_, displayHeightsR, peakLevelsR, 9,
@@ -785,15 +958,18 @@ void MixerView::DrawVuBars() {
         // ui = repaints per second. It should sit at UIFRAMERATE
         // (60 by default); if it does not, the panel work is costing
         // more than the frame budget on this hardware.
-        // How much the buses add up to before the master fader, and
-        // what the fader is set to. Over 1.0 is normal and is what
-        // the fader is for; it is only a problem when the fader
-        // cannot pull it back, and now you can see which it is.
-        unsigned int sum = running
-            ? MixerService::GetInstance()->GetPreFaderSum() : 0;
+        /* sat = the share of the last block the master sum spent
+           pinned at the rail. 0 means the mix fits. Anything climbing
+           means the buses are adding up to more than the accumulator
+           can hold and the sound is being squared off before the
+           fader or the clipper ever see it -- which is exactly the
+           state that makes a mix sound crushed while every channel
+           strip still looks reasonable. */
+        unsigned int sat = running
+            ? MixerService::GetInstance()->GetSaturationPercent() : 0;
         int master = viewData_->project_->GetMasterVolume();
-        sprintf(buf, "sum%d.%02dx m%3d dsp%2d%%", sum >> 8,
-                ((sum & 0xFF) * 100) >> 8, master, dsp > 99 ? 99 : dsp);
+        sprintf(buf, "sat%2d%% m%3d dsp%2d%%", sat > 99 ? 99 : sat,
+                master, dsp > 99 ? 99 : dsp);
     }
     SetColor(CD_HILITE2);
     DrawString(19, 0, buf, props);

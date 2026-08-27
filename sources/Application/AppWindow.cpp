@@ -2083,11 +2083,25 @@ void AppWindow::autoSaveTick() {
         return;
     }
 
-    // Hold off while the player is running -- a Memory Stick write can
-    // take longer than the audio buffer lasts. But only for so long:
-    // people leave playback running for hours.
-    if (Player::GetInstance()->IsRunning() &&
-        ((now - _dirtySince) < AUTOSAVE_FORCE_MS)) {
+    /* Never while the player is running. Not "not for two minutes" --
+       never.
+
+       A Memory Stick write can take longer than the audio buffer
+       lasts, so an autosave during playback is an audible dropout.
+       This used to hold off only until AUTOSAVE_FORCE_MS and then
+       write anyway, on the reasoning that people leave playback
+       running for hours and their work should not sit unsaved that
+       whole time. The reasoning is sound and the conclusion was
+       wrong: the answer to "they might play for hours" is not to
+       glitch the audio at the two minute mark, in a music program,
+       while they are listening to the thing they are making.
+
+       Nothing is lost by waiting. The transport stops eventually, and
+       the next tick after it does saves within a few seconds -- the
+       quiet and idle debounces above are six and ten seconds, not
+       minutes. Manual save is still there for anyone who wants it
+       sooner. */
+    if (Player::GetInstance()->IsRunning()) {
         return;
     }
 

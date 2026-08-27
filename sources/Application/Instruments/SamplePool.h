@@ -67,6 +67,10 @@ protected:
   int loadSample(const char *path);
   int loadSoundFont(const char *path);
   int getIndexOf(const char *path);
+  /* The baked kit is identical every time it is made, so it is made
+     ONCE and kept across project loads. Without this it was baked on
+     every project open and thrown away on every project close. */
+  bool drumsBaked_;
   int count_;
   char *names_[MAX_PIG_SAMPLES];
   SoundSource *wav_[MAX_PIG_SAMPLES];

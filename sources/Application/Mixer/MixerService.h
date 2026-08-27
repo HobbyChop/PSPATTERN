@@ -47,12 +47,12 @@ public:
     void SetSendFxParams(int division,int feedback,int size,int damp);
     unsigned int GetMasterPeakLevel() const;
     bool TakeMasterClipLatch();
-    // What the buses add up to BEFORE the master fader, as a fraction
-    // of full scale in 8.8 fixed point (0x100 == full scale). A normal
-    // mix runs over 1.0 here and the fader brings it down; this is the
-    // number that says how much work the fader is doing, which is the
-    // one thing the mixer could not show.
-    unsigned int GetPreFaderSum();
+    // What share of the last block the master sum spent pinned at the
+    // rail, 0..100. Zero means the mix fits; anything rising means it
+    // is being squared off in the accumulator and the fader has work
+    // to do. See the implementation for why this is not a "how far
+    // over" figure -- that number is not recoverable here.
+    unsigned int GetSaturationPercent();
 
     virtual void Update(Observable &o, I_ObservableData *d);
 
@@ -63,6 +63,7 @@ public:
     void SetPregain(int);
     void SetSoftclip(int, int);
     void SetMasterVolume(int);
+    void SetEqBand(int band,int value);
     void SetRenderMode(int);
     bool IsRendering();
     int GetPlayedBufferPercentage() ;

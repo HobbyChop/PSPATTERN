@@ -65,6 +65,28 @@ public:
     fixed lastOut_[2];
     fixed click_[2];
     bool declickPending_;
+
+    /* The gain actually being emitted, in Q23, ramped toward its
+       target across one block.
+
+       Q23 and not Q15 for a reason that bites silently otherwise: a
+       one-step fader move is 1/255, which in Q15 is a delta of 128,
+       and 128 spread over a 256 sample block truncates to a step of
+       ZERO. The ramp would stall at the old value and never arrive.
+       Eight more fractional bits fixes it, and costs nothing -- the
+       multiply is the same single MIPS mult, just a different
+       compile-time shift.
+
+       This has to record what was EMITTED, not the previous target,
+       because three paths leave a block without passing through the
+       gain stage: the strip loop is skipped entirely at unity, a
+       muted channel emits nothing, and the declick tail can be the
+       only thing rendered. lastOut_ cannot stand in for it -- a
+       sample of zero is consistent with any gain at all. */
+    int curGain23_;
+    // Snap instead of ramping: a note start must not have the
+    // outgoing note's velocity decaying across its attack.
+    bool gainSnap_;
 };
 
 #endif

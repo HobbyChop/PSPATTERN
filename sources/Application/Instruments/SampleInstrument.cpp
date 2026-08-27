@@ -179,6 +179,13 @@ void SampleInstrument::OnStart() {
 	tableState_.Reset() ;
 } ;
 
+/* Bound for the sampler's measured declick, matching the synth's
+   DECLICK_MAX for the same reason: the correction is set outright,
+   once, to exactly the step it cancels, and a sample can legitimately
+   jump from one rail to the other. A tighter bound leaves part of the
+   step uncorrected. */
+#define SMP_DECLICK_MAX (i2fp(32767))
+
 bool SampleInstrument::Start(int channel,unsigned char midinote,bool cleanstart)
 {
 	// Look if we're dirty & need to update this instrument's data
@@ -195,6 +202,14 @@ bool SampleInstrument::Start(int channel,unsigned char midinote,bool cleanstart)
   // Get Rendering params for current voice & fill init data
 
   renderParams *rp=renderParams_+channel ;
+
+  /* Arm the measured declick. The note that was sounding here is about
+     to be replaced wherever its waveform stood, and the incoming note
+     starts from zero, so the join is a step the size of the outgoing
+     note. The first rendered sample measures it against lastOut_ and
+     cancels exactly that much. Costs nothing when the voice was
+     already silent, because then the step is zero. */
+  rp->declickPending_=true ;
 
   rp->midiNote_=midinote ;
   
@@ -661,10 +676,36 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 		// before it simply could not be, and the fader has room in both
 		// directions.
 		//
+		// THE DIVISOR IS 256 NOW, AND THAT ARGUMENT IS WHY, NOT WHY NOT.
+		//
+		// The goal above -- default in the middle, 6dB of lift above it
+		// -- is right and is kept exactly. What 128 also did, and did not
+		// intend, was put the sampler's DEFAULT at full scale while the
+		// synth's default sits at half. Measured: a full scale sample at
+		// stock settings reaches -3.04 dBFS where every synth engine
+		// reaches -9.1. Six decibels of engine imbalance, for the same
+		// number written in the same field.
+		//
+		// It showed up as drums. The loudest baked drum measured -3.31
+		// dBFS, so TWO on the same step summed to +1.6 and clipped, while
+		// eight synth channels still fit. The kit was not too loud; the
+		// engine under it was.
+		//
+		// 256 keeps the shape and moves the range: 0x80 is 0.5, matching
+		// the synth exactly, and 0xFF is still a clean 6dB above the
+		// default. The fader still has room in both directions and quiet
+		// material can still be lifted -- the lift did not go anywhere,
+		// it just no longer starts from the ceiling.
+		//
+		// This does re-level existing songs that use samples, by 6dB. It
+		// is a deliberate call taken while the tracker is still in
+		// testing, on the grounds that every day it ships wrong is
+		// another song written around the wrong number.
+		//
 		// Attenuate keeps the old scale deliberately: it is the filter
 		// compensation, it belongs in 0..1, and doubling it would be a
 		// silent gain change nobody asked for.
-		fixed volscale=fl2fp(1.0f/128.0f) ;
+		fixed volscale=fl2fp(1.0f/256.0f) ;
 		fixed attnscale=fl2fp(1.0f/255.0f) ;
 		fixed volfactor=fp_mul(rp->volume_,volscale) ;
 
@@ -1095,6 +1136,32 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 
 				s2=fp_mul(s2,fixedpanl) ;
 				t2=fp_mul(t2,fixedpanr) ;
+
+				/* Measured declick, same shape as the synth's:
+				   cancel the step once, then decay at >>5 (~0.7ms). */
+				if (rp->declickPending_) {
+					rp->declickPending_=false ;
+					fixed jl=rp->lastOutL_-s2 ;
+					fixed jr=rp->lastOutR_-t2 ;
+					if (jl>SMP_DECLICK_MAX) jl=SMP_DECLICK_MAX ;
+					if (jl<-SMP_DECLICK_MAX) jl=-SMP_DECLICK_MAX ;
+					if (jr>SMP_DECLICK_MAX) jr=SMP_DECLICK_MAX ;
+					if (jr<-SMP_DECLICK_MAX) jr=-SMP_DECLICK_MAX ;
+					rp->clickL_=jl ;
+					rp->clickR_=jr ;
+				}
+				if (rp->clickL_) {
+					s2+=rp->clickL_ ;
+					rp->clickL_-=(rp->clickL_>>5) ;
+					if (rp->clickL_>-32 && rp->clickL_<32) rp->clickL_=0 ;
+				}
+				if (rp->clickR_) {
+					t2+=rp->clickR_ ;
+					rp->clickR_-=(rp->clickR_>>5) ;
+					if (rp->clickR_>-32 && rp->clickR_<32) rp->clickR_=0 ;
+				}
+				rp->lastOutL_=s2 ;
+				rp->lastOutR_=t2 ;
 
 				*result++=s2 ;
 				*result++=t2 ;

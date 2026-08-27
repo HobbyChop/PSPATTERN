@@ -107,10 +107,29 @@ int setupCallbacks(void) {
 	return thid;
 }
 
-int main(int argc,char *argv[]) 
+/* The main thread's priority, captured once at startup.
+
+   The audio render runs on an SDL worker thread, and SDL creates its
+   workers ABOVE the main thread. So a heavy block would render at a
+   priority the main thread cannot preempt, and while it ran the main
+   thread -- which handles input and paints the scope and the meters --
+   got no slices at all. That is the UI freezing under high DSP.
+
+   The render thread reads this and drops itself to match, so the two
+   round-robin instead: the main thread keeps its slices for input and
+   drawing, and the audio buffer's lead (six blocks pre-buffered)
+   absorbs the render being interleaved. The SDL output callback that
+   actually feeds the DAC is a different thread and stays above both,
+   so the sound is not at risk from this. See SDLAudioDriver.cpp. */
+extern "C" { int g_pspMainThreadPriority = 0x20 ; }
+
+int main(int argc,char *argv[])
 {
 
 	setupCallbacks();
+
+	// Capture our own priority before any worker thread starts.
+	g_pspMainThreadPriority = sceKernelGetThreadCurrentPriority() ;
 
 	/* The power switch is left alone: suspend is handled in
 	   powerCallback / PSPHandleResume. (Earlier builds held

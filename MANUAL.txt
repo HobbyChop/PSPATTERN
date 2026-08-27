@@ -89,11 +89,30 @@ Hold O and press up or down to place a chain. The tracker plays down the
 rows. A channel with a blank cell at row zero never starts, so start
 every channel you want to hear at row zero.
 
-The panel on the right shows the DSP load, the tempo, the project name,
-the MIDI device and the battery. The scope above it draws the master
-output.
+The panel on the right shows how much memory the project is using, the
+tempo, the project name, the MIDI adapter and the battery. The scope
+above it draws the master output, one trace per channel. The DSP figure
+is on the title strip at the top, not in this panel.
 
 L and X mutes the channel under the cursor.
+
+IS THE ADAPTER WORKING
+
+The mid row on that panel answers it, and there are three answers:
+
+  PSPMIDI    an adapter is connected and ready
+  no cable   the driver is loaded, nothing is answering it
+  no drv     usbmidi.prx did not load at all
+
+The two failures need different fixes, which is why they read
+differently. "no cable" is what it says: check the lead, the adapter and
+any hub. "no drv" means the driver never started, so no cable will help
+-- usbmidi.prx is missing from beside the EBOOT, or another plugin has
+taken the slot it needs. See the file list above for where the prx
+belongs.
+
+The row updates on its own while you work, so you can plug the adapter
+in with the tracker running and watch it change.
 
 BOOKMARKS
 
@@ -236,13 +255,14 @@ many times as you like.
 
 CLONING
 
-On the song and chain screens, X then R followed by O then R copies what
-is under the cursor into a free slot and puts the copy there. The
-original is left alone, so a chain can be varied without disturbing
-every other place it is used.
+On the song and chain screens, hold R and press O to copy what is under
+the cursor into a free slot and put the copy there. The original is
+left alone, so a chain can be varied without disturbing every other
+place it is used.
 
-On the song screen a second O then R goes deeper: it clones the phrases
-inside the chain as well, so nothing the copy contains is shared with
+On the song screen a second O, with R still held, goes deeper: it
+clones the phrases inside the chain as well, so nothing the copy
+contains is shared with
 what it came from.
 
 INTERPOLATE
@@ -267,9 +287,8 @@ command whose digits mean separate things, such as an arp shape.
 
 CLONING
 
-Hold X and press L, then keep holding and press O with L. Whatever is
-under the cursor is duplicated to the next free number and the cursor
-is repointed at the copy.
+Hold R and press O. Whatever is under the cursor is duplicated to the
+next free number and the cursor is repointed at the copy.
 
   Song screen        the chain under the cursor
   Chain screen       the phrase under the cursor
@@ -547,6 +566,70 @@ right walk between them. Up from that line returns to the strips.
 The master has a drive control, a clipper with several modes, and a
 gain switch.
 
+THE MASTER EQ
+
+Under the send effects is a line of ten bands, octave spaced from about
+40Hz to the top. It shapes the whole mix, not one channel, which is why
+it sits with the sends rather than on a strip.
+
+  left, right      move between bands
+  O and up/down    move a band in eights
+  O and left/right move a band by one
+  X and O          set the band under the cursor back to flat
+
+Flat is the middle and is where every band starts. While every band is
+flat the EQ is skipped entirely and costs nothing at all, so leaving it
+alone is free.
+
+It is a tone shaper rather than a surgical EQ: the bands overlap, so
+lifting one moves its neighbours a little too. Moving one band costs
+two filters, and a shape that changes only in a couple of places costs
+the same -- what it charges for is the number of places the curve
+changes, not the number of bands you have touched.
+
+WHAT EACH STRIP IS CARRYING
+
+Beside each channel number is one letter saying what kind of instrument
+that strip last played:
+
+  y    a synth
+  s    a sampler
+  m    MIDI
+  -    nothing has played on this channel yet
+
+It follows the last instrument rather than the sounding one, so it does
+not blink off in the gaps between notes.
+
+READING THE METERS
+
+There are nine bars. The eight on the left are the channels; the one on
+the right is the master.
+
+The master bar is the only one showing a SUM, so it routinely reads
+higher than any single channel, and that is not a fault. Eight channels
+at a third of full scale each add up to more than twice full scale.
+Every mixer behaves this way; it is why parts have to come down as the
+track count goes up.
+
+The channel bars are taken after that channel's own gain, so the mixer
+controls move them. The master fader deliberately does not move them --
+a channel bar answers "what is this strip sending", not "what is left
+of it after the master".
+
+The figure on the title strip reads
+
+  sat NN%
+
+which is how much of the last moment the master sum spent pinned at the
+top. Zero means the mix fits. Anything climbing means the channels are
+adding up to more than the mixer can hold, and the sound is being
+squared off before the fader or the clipper ever see it. That is the
+state where a mix sounds crushed while every channel strip still looks
+perfectly reasonable, so it is worth a glance when something sounds
+wrong and you cannot see why.
+
+Bring it back to zero by turning channels down, or the master, or both.
+
 
 17. THE PROJECT SCREEN
 
@@ -564,6 +647,66 @@ gain switch.
 
 The file column has load, save, save as, two compaction tools, and a
 render switch.
+
+MIDI CLOCK
+
+The tracker sends MIDI clock whenever it plays, twenty four pulses to
+the quarter note as the standard asks, with a start when the transport
+starts and a stop when it stops. Gear plugged into the adapter follows
+the tracker with nothing to switch on. To silence it, add
+
+  <MIDISENDSYNC value="NO"/>
+
+to config.xml beside the EBOOT.
+
+The sync setting above is the other direction: on Follow the tracker
+takes its tempo from an incoming clock instead of running its own.
+Following is opt in, because a stray clock byte from a device you left
+plugged in should not take the transport away from you.
+
+On Follow the leader owns the transport, so START does not start the
+song. It arms it: the bottom row reads
+
+  waiting for midi start
+
+and the song begins when the leader does. Press START again while it
+waits to give up. Stopping is still immediate and still yours -- a song
+you want stopped stops when you say so, leader or not.
+
+This is what a piece of MIDI gear in external sync does, and it is the
+only way to come in with the leader rather than free running beside
+it.
+
+While following, the bpm figure on the song screen is coloured: the
+play colour once the tracker has locked to the leader, the mute colour
+while it is still catching up. It should lock within a bar or two if
+the song's own tempo is near the leader's, and inside about seven bars
+if it is a long way off. If it stays in the mute colour the leader's
+clock is not arriving cleanly.
+
+The tempo shown is the leader's, not the one saved with the song.
+
+SYNC OFFSET
+
+Locking the two clocks together is not the same as the two being
+heard together. What gets aligned is the moment the tracker decides a
+tick; what you hear is that tick coming out of the audio buffer some
+time later -- 35ms at the default buffer settings. The tracker
+therefore runs early by the size of its own buffer, which it knows,
+so that the sound lands on time.
+
+What it cannot know is the rest of the chain: how long a clock byte
+takes to reach it, and what your own gear's output latency is. If it
+still sits early or late against the leader, trim it with
+
+  <MIDISYNCOFFSET value="10"/>
+
+in config.xml. The value is milliseconds and it is signed. A positive
+number plays earlier, a negative number plays later. Change it by five
+or ten at a time; a tick at 120bpm is only 21ms.
+
+Making the audio buffer smaller reduces the latency it is correcting
+for in the first place, at the usual cost.
 
 
 18. SAVING AND RENDERING

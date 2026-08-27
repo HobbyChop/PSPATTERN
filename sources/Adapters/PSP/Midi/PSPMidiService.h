@@ -8,5 +8,12 @@ public:
 	PSPMidiService() ;
 	~PSPMidiService() ;
 	virtual void buildDriverList() ;
+	virtual MidiLinkState GetLinkState() ;
+private:
+	// pspUsbMidiConnected is a syscall into the kernel module and the
+	// panel that asks repaints every UI frame, so the answer is held
+	// for a moment rather than fetched sixty times a second.
+	unsigned long lastPoll_ ;
+	MidiLinkState lastState_ ;
 } ;
 #endif

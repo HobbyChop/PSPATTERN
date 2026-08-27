@@ -2,6 +2,7 @@
 #include "Application/Instruments/CommandList.h"
 #include "Application/Utils/HelpLegend.h"
 #include "System/Console/Trace.h"
+#include "System/System/System.h"
 #include "Application/Player/Player.h"
 #include "Application/Utils/char.h"
 #include "Application/AppWindow.h"
@@ -184,6 +185,25 @@ void View::DrawHintBar(const char *hints) {
     // two of them overwriting each other.
     if (notificationLive()) return;
     GUITextProperties props;
+
+    /* A song armed in Follow is waiting for the leader's start byte,
+       and that is worth saying on every screen rather than only on the
+       one that started it -- you can be editing a phrase when the
+       leader comes in.
+
+       Drawn steadily rather than blinking. Only the song and mixer
+       screens repaint on a timer, so anywhere else a blink would stop
+       on whichever phase it happened to catch -- and half the time
+       that is the dim one, which reads as an ordinary hint. The value
+       colour separates it from the hints without needing motion. */
+    Player *player = Player::GetInstance();
+    if (player && player->IsArmed()) {
+        SetColor(CD_HILITE2);
+        DrawString(1, 29, "waiting for midi start", props);
+        SetColor(CD_NORMAL);
+        return;
+    }
+
     SetColor(CD_ROW2);
     DrawString(1, 29, hints, props);
     SetColor(CD_NORMAL);

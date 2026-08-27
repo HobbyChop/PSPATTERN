@@ -49,6 +49,13 @@ I_Iterator<MidiInDevice> *MidiService::GetInIterator() {
 
 void MidiService::SelectDevice(const std::string &name) { deviceName_ = name; };
 
+/* A host-OS MIDI stack hands out ports that exist; there is no cable to
+   ask about. So "a device is selected" is the whole of what this side
+   can honestly report. The PSP override knows more and says more. */
+MidiLinkState MidiService::GetLinkState() {
+    return deviceName_.size() ? MLS_READY : MLS_NODRIVER;
+}
+
 bool MidiService::Start() {
     currentPlayQueue_ = 0;
     currentOutQueue_ = 0;

@@ -18,6 +18,7 @@ SyncMaster::SyncMaster() {
 	beatCount_=0 ;
 	playSampleCount_=0.0f ;
 	tickSampleCount_=0.0f ;
+	fineTempo_=120.0f ;
 }
 
 void SyncMaster::Start() {
@@ -31,10 +32,17 @@ void SyncMaster::Stop() {
 void SyncMaster::SetTempo(int tempo) {
 	// every expression below divides by this
 	if (tempo<1) tempo=1 ;
-	tempo_=tempo ;
+	SetTempoFine(float(tempo)) ;
+}  ;
+
+void SyncMaster::SetTempoFine(float tempo) {
+	if (tempo<1.0f) tempo=1.0f ;
+	fineTempo_=tempo ;
+	// what the screen and everything else reads, still whole
+	tempo_=int(tempo+0.5f) ;
 	int driverRate=Audio::GetInstance()->GetSampleRate() ;
-    playSampleCount_=60.0f*driverRate*2.0f/tempo_/8.0f/float(AUDIO_SLICES_PER_STEP)  ;
-	tickSampleCount_=60.0f*driverRate*2.0f/tempo_/8.0f/float(AUDIO_SLICES_PER_STEP)*tableRatio_  ;
+    playSampleCount_=60.0f*driverRate*2.0f/fineTempo_/8.0f/float(AUDIO_SLICES_PER_STEP)  ;
+	tickSampleCount_=60.0f*driverRate*2.0f/fineTempo_/8.0f/float(AUDIO_SLICES_PER_STEP)*tableRatio_  ;
 }  ;
 
 int SyncMaster::GetTempo() {

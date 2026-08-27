@@ -16,6 +16,7 @@
 
 #include "ProjectDatas.h"
 #include <math.h>
+#include "Services/Audio/MasterEq.h"
 
 Project::Project()
 :Persistent("PROJECT")
@@ -24,11 +25,54 @@ tempoNudge_(0)
 {
     WatchedVariable *tempo = new WatchedVariable("tempo", VAR_TEMPO, 138);
     this->Insert(tempo);
-    Variable *masterVolume = new Variable("master", VAR_MASTERVOL, 100, 100);
+    /* 75, not 100, and the number is not arbitrary.
+
+       The fader's taper is (v/100)^4, so 75 is 0.75^4 = 0.3164, which
+       is -10.00 dB exactly. That is the headroom this tracker needs
+       and did not have: measured, one voice at default settings peaks
+       at -9.1 dBFS, so TWO channels fit and THREE already exceed full
+       scale. Eight ask the master for +8.4 dB with a fifth of their
+       samples past the clamp. The loudest baked drum is -3.31 dBFS, so
+       two drums on one step made +1.6 dB. Nothing anywhere in the
+       chain attenuated on purpose -- every default was exactly unity,
+       and the first thing a new user met was the ceiling.
+
+       At -10 dB the eight-channel case lands at -1.6 dBFS and two
+       drums at -7.3. It is not enough for eight simultaneous full
+       scale drums, which is the right place to stop: past that the
+       user should be turning something down, and now they have room
+       to hear that they need to.
+
+       Why the fader rather than a hidden shift in the summing loop:
+       this number is visible, adjustable, and above all it MIGRATES
+       FOR FREE. SaveContent writes every variable by name, so every
+       project already on a memory stick carries its own master value
+       and keeps it. Only new projects start here. A shift in the mix
+       path would have re-levelled every song ever saved with nothing
+       stored that the loader could divide back out.
+
+       The same reasoning is why the baked drum kits are NOT being
+       renormalised, though they are the loudest thing in the tree: a
+       kit is generated at boot, so there is no stored value to undo,
+       and quieting it would silently change every song that used it
+       with no way back. */
+    Variable *masterVolume = new Variable("master", VAR_MASTERVOL, 75, 100);
     this->Insert(masterVolume) ;
     Variable *pregain =
         new Variable("pregain", VAR_PREGAIN, 100, 200);
     this->Insert(pregain);
+    /* Ten master EQ bands. 64 is flat, which is where they all start,
+       so a project that never touches the EQ costs nothing: the whole
+       stage is skipped while every band is flat. */
+    static const FourCC eqIds[MASTER_EQ_BANDS] = {
+        VAR_EQ0, VAR_EQ1, VAR_EQ2, VAR_EQ3, VAR_EQ4,
+        VAR_EQ5, VAR_EQ6, VAR_EQ7, VAR_EQ8, VAR_EQ9 };
+    static const char *eqNames[MASTER_EQ_BANDS] = {
+        "eq0","eq1","eq2","eq3","eq4","eq5","eq6","eq7","eq8","eq9" };
+    for (int b = 0; b < MASTER_EQ_BANDS; b++) {
+        this->Insert(new Variable(eqNames[b], eqIds[b],
+                                  MASTER_EQ_FLAT, MASTER_EQ_MAX));
+    }
     Variable *softclip =
         new Variable("softclip", VAR_SOFTCLIP, softclipStates, 5, 0);
     this->Insert(softclip);
@@ -137,6 +181,28 @@ int Project::GetPregain() {
     Variable *v = FindVariable(VAR_PREGAIN);
     NAssert(v);
 	return v->GetInt();
+}
+
+static FourCC eqVarId(int band) {
+    static const FourCC ids[MASTER_EQ_BANDS] = {
+        VAR_EQ0, VAR_EQ1, VAR_EQ2, VAR_EQ3, VAR_EQ4,
+        VAR_EQ5, VAR_EQ6, VAR_EQ7, VAR_EQ8, VAR_EQ9 };
+    if (band < 0 || band >= MASTER_EQ_BANDS) return VAR_EQ0;
+    return ids[band];
+}
+
+int Project::GetEqBand(int band) {
+    Variable *v = FindVariable(eqVarId(band));
+    NAssert(v);
+    return v->GetInt();
+}
+
+void Project::SetEqBand(int band, int value) {
+    Variable *v = FindVariable(eqVarId(band));
+    NAssert(v);
+    if (value < 0) value = 0;
+    if (value > MASTER_EQ_MAX) value = MASTER_EQ_MAX;
+    v->SetInt(value);
 }
 
 int Project::GetRenderMode() {

@@ -18,6 +18,8 @@ PlayerChannel::PlayerChannel(int index) {
 	mixBus_=0 ;
 	busIndex_=-1 ;
     volume_ = i2fp(1);
+    curGain23_ = (1<<23);
+    gainSnap_ = true;
     hpfPrevInput_[0] = hpfPrevInput_[1] = i2fp(0);
     hpfPrevOutput_[0] = hpfPrevOutput_[1] = i2fp(0);
     hpfAlpha_ = i2fp(0);
@@ -45,13 +47,30 @@ void PlayerChannel::StartInstrument(I_Instrument *instr,unsigned char note,bool 
    // previous one already ended.
    bool followsOwnNote=(instr_==instr)&&(!releasing_) ;
 
-   // StopInstrument flags the cut; the jump it leaves behind is
-   // measured and smoothed when the next block renders
+   /* Arm the declick for EVERY note start, not just the ones that
+      follow silence.
+
+      This used to lean on StopInstrument to arm it, and StopInstrument
+      only does so when the outgoing instrument has no release stage --
+      it returns early the moment IsReleasing is true. But release 0 is
+      a 128-sample fade, not an instant cut, so IsReleasing is true
+      straight after Stop for anything that was still sounding. The
+      flag was therefore left clear at exactly the moment there was a
+      step to smooth, and set only when the channel was already idle
+      and both sides of the join were zero. Precisely inverted: the
+      correction ran where nothing needed correcting and stood down
+      where the click was.
+
+      Arming it unconditionally is safe because applyDeclick measures
+      the real jump (lastOut_ minus the first sample of the block). A
+      note that happens to start near the level the last one ended at
+      gets a correction of nearly zero and costs nothing. */
    if (instr_) {
       StopInstrument() ;
-   } else {
-      declickPending_=true ;   // first note after silence still steps
    }
+   declickPending_=true ;
+   // A new note takes its velocity immediately. See curGain23_.
+   gainSnap_=true ;
    if (followsOwnNote) {
       instr->NoteFollowsNote(index_) ;
    }
@@ -141,7 +160,36 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
    // and picks up where it left off when it comes back; the next
    // note-on resyncs it either way, because notes are started by the
    // player and not by the instrument.
-   if (muted_) {
+   /* Muted and already silent -- the cheap path, and the reason
+      soloing a channel to find what is overloading the machine costs
+      nothing. A muted channel with no instrument can never ramp down
+      because it never renders, so it is declared silent here rather
+      than waiting for a fade that will not happen. */
+   if (muted_ && (curGain23_==0 || !instr_)) {
+       curGain23_=0 ;
+       /* Nothing is rendered while muted, so as far as everything
+          downstream is concerned this channel's last output was
+          SILENCE. Record that, and arm the corrector.
+
+          It used to just return, leaving lastOut_ holding whatever
+          the channel was at when the mute landed. On the way back the
+          corrector then measured against that stale level and
+          "corrected" toward a value the converter had not seen for as
+          long as the mute lasted -- reproducing the pre-mute sample as
+          a step instead of removing one. Measured worst case over a
+          full cycle of mute phases: 18.1% of full scale.
+
+          Radium makes the general form of this point: mute and solo
+          are not switches there, they are a gain ramped to zero, and
+          nothing in its graph is ever allowed to change level in one
+          step. We cannot ramp what we are not rendering -- the early
+          return is what makes muting cheap, and soloing a channel to
+          find what is overloading the machine depends on it -- but we
+          can at least tell the truth about where the signal was, so
+          the way back is smoothed rather than snapped. */
+       lastOut_[0]=0 ;
+       lastOut_[1]=0 ;
+       declickPending_=true ;
        return false ;
    }
 
@@ -171,10 +219,44 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
          // values that do not change for the length of the block.
          const bool doHpf = (hpfMode_ != 0);
          const bool doLpf = (lpfFreq_ != 0);
-         const fixed chanGain = (velocity_ == i2fp(1))
-                                    ? volume_
-                                    : fp_mul(volume_, velocity_);
-         const bool doGain = (chanGain != i2fp(1));
+         /* The fader ramps; the note snaps.
+
+            Every gain change here used to be a hard step: chanGain was
+            hoisted out of the loop, so a fader move, a mute or a solo
+            changed level between one block and the next -- a
+            discontinuity every 5.8ms whenever a control moved.
+
+            The ramp is exactly ONE BLOCK long, which is MilkyTracker's
+            shape and it is chosen rather than inherited: a ramp that
+            always completes at the block boundary needs no split loop
+            and no per-sample branch, and the stale-target hazard --
+            correcting toward a value that was never emitted -- cannot
+            arise, because the target is always reached before the next
+            one arrives. Schism's "free once the ramp is done" then
+            falls out of the outer guard rather than an inner split.
+
+            Velocity is deliberately NOT ramped. It is set immediately
+            before the note starts, so ramping the combined gain would
+            scale a new note's first milliseconds by the OUTGOING
+            note's velocity -- softening every attack, and re-treating
+            a step applyDeclick already measures and cancels. */
+         const fixed velGain = (velocity_ == i2fp(1))
+                                   ? volume_
+                                   : fp_mul(volume_, velocity_);
+         // Q15 -> Q23. See curGain23_: at Q15 a one-step fader move
+         // spread over a block truncates to a step of zero.
+         const int targetGain23 = muted_ ? 0 : (int)(velGain << 8);
+         if (gainSnap_) {
+             curGain23_ = targetGain23;
+             gainSnap_ = false;
+         }
+         const int gainStep = (samplecount > 0)
+                                  ? (targetGain23 - curGain23_) / samplecount
+                                  : 0;
+         const int gainUnity = (1 << 23);
+         const bool doGain = (curGain23_ != gainUnity) ||
+                             (targetGain23 != gainUnity);
+         int g23 = curGain23_;
 
          if (doHpf || doLpf || doGain) {
              const fixed one_minus_alpha = fp_sub(i2fp(1), lpfAlpha_);
@@ -205,14 +287,20 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
                  }
 
                  if (doGain) {
-                     l = fp_mul(l, chanGain);
-                     r = fp_mul(r, chanGain);
+                     l = (fixed)(((long long)l * g23) >> 23);
+                     r = (fixed)(((long long)r * g23) >> 23);
+                     g23 += gainStep;
                  }
 
                  buffer[idx] = l;
                  buffer[idx + 1] = r;
              }
          }
+         /* Whatever happened above, the block ends at the target: the
+            ramp is one block long by construction. Assigning rather
+            than trusting the accumulator also absorbs the truncation
+            in gainStep, so the gain cannot drift away over time. */
+         curGain23_ = targetGain23;
 
          applyDeclick(buffer, samplecount);
 
@@ -327,4 +415,15 @@ void PlayerChannel::Reset() {
   lpfPrevOutput_[0] = lpfPrevOutput_[1] = i2fp(0);
   lpfAlpha_ = i2fp(0);
   lpfFreq_ = 0;
+  /* Reset the gain and declick state too. This did not, so a channel
+     carried its fader, its velocity, its last emitted sample and a
+     half-decayed click correction across a project load into a song
+     that had said nothing about any of them. */
+  volume_ = i2fp(1);
+  velocity_ = i2fp(1);
+  curGain23_ = (1 << 23);
+  gainSnap_ = true;
+  lastOut_[0] = lastOut_[1] = 0;
+  click_[0] = click_[1] = 0;
+  declickPending_ = false;
 };

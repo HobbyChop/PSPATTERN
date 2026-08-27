@@ -13,6 +13,23 @@
 
 #define MIDI_MAX_BUFFERS 20
 
+/* What the MIDI hardware is actually doing.
+
+   The song screen used to read the configured device NAME out of the
+   config file and print that, which said "PSPMIDI" whether or not
+   anything was plugged in -- a settings echo dressed as a status
+   readout, which is worse than no readout at all.
+
+   The two failures are worth telling apart, because they are the first
+   question in every support case: a driver that never loaded is a file
+   missing beside the EBOOT or a plugin conflict, while a driver that
+   loaded and sees nothing is a cable. */
+enum MidiLinkState {
+    MLS_NODRIVER,   // no MIDI driver at all: nothing can be sent, ever
+    MLS_WAITING,    // driver is there, no adapter answering
+    MLS_READY,      // an adapter is connected
+};
+
 class MidiService : public T_Factory<MidiService>,
                     public T_SimpleList<MidiOutDevice>,
                     public I_Observer {
@@ -67,6 +84,12 @@ class MidiService : public T_Factory<MidiService>,
     //! build the list of available drivers
 
     virtual void buildDriverList() = 0;
+
+  public:
+    /* Platforms that can tell say so. The default is the honest answer
+       for a build whose MIDI is whatever the host OS exposes: if a
+       device is selected it is as connected as this side can know. */
+    virtual MidiLinkState GetLinkState();
 
   private:
     void flushOutQueue();

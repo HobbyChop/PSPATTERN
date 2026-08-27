@@ -19,6 +19,7 @@ SamplePool::SamplePool() {
 		wav_[i]=NULL ;
 	} ;
 	count_=0 ;
+	drumsBaked_=false ;
 } ;
 
 SamplePool::~SamplePool() {
@@ -63,11 +64,22 @@ void SamplePool::bakeDrums() {
 }
 
 void SamplePool::Reset() {
-	count_=0 ;
-	for (int i=0;i<MAX_PIG_SAMPLES;i++) {
+	/* Keep the baked kit; drop everything that came from the project.
+
+	   The kit is synthesised, deterministic and identical every time,
+	   so re-making it on every project close and open was pure work:
+	   twenty four drums torn down and built again to arrive at exactly
+	   the bytes that were just freed. It also churned about a megabyte
+	   of the heap per song load, on a machine with 32.
+
+	   Only entries at or above DRUMKIT_TOTAL came from this project's
+	   samples folder, because bakeDrums always fills from zero. */
+	int keep=drumsBaked_?DRUMKIT_TOTAL:0 ;
+	for (int i=keep;i<MAX_PIG_SAMPLES;i++) {
 		SAFE_DELETE(wav_[i]) ;
 		SAFE_FREE(names_[i]) ;
 	} ;
+	count_=keep ;
 	SoundFontManager::GetInstance()->Reset() ;
 } ;
 
@@ -82,13 +94,23 @@ unsigned int SamplePool::Load() {
 
 	count_=0 ;
 
-    // The baked kit goes in first and unconditionally: it is the only
-    // thing a project can rely on being there. A song that uses it
-    // opens on a machine with nothing on the memory stick, which is
-    // what makes it possible to ship a demo at all.
-    report("drum kit",0,DRUMKIT_TOTAL);
-    bakeDrums();
-    report("drum kit",DRUMKIT_TOTAL,DRUMKIT_TOTAL);
+    /* The baked kit goes in first: it is the only thing a project can
+       rely on being there. A song that uses it opens on a machine with
+       nothing on the memory stick, which is what makes it possible to
+       ship a demo at all.
+
+       Baked once, then kept. Reset leaves the kit in place, so on
+       every load after the first there is nothing to do but say where
+       the samples start. If a previous bake ran out of memory part way
+       through, drumsBaked_ stays false and the next load tries again. */
+    if (drumsBaked_) {
+        count_=DRUMKIT_TOTAL ;
+    } else {
+        report("drum kit",0,DRUMKIT_TOTAL);
+        bakeDrums();
+        drumsBaked_=(count_>=DRUMKIT_TOTAL) ;
+        report("drum kit",DRUMKIT_TOTAL,DRUMKIT_TOTAL);
+    }
 
     Path sampleDir("samples:");
 

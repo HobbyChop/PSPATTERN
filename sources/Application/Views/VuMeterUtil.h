@@ -44,6 +44,40 @@ inline int VuElapsedMs() {
     return (int)d;
 }
 
+/* The bottom of the meter, in dB below full scale.
+
+   The bars were LINEAR in amplitude, which is a scale on which almost
+   nothing useful happens: half of the 88 pixels are spent on the top
+   6 dB, and everything from a quiet part to a loud one crowds into the
+   bottom third. It was survivable only while the tracker had no
+   headroom and everything ran at the ceiling. Once the master default
+   moved to -10 dB and the sampler stopped being 6 dB hot, a synth at
+   full blast drew a tenth of the bar and the meter stopped saying
+   anything at all.
+
+   Every real meter is logarithmic for this reason. 48 dB across 88
+   pixels is 1.83 px per dB: a 1 dB move is visible, a 10 dB move is a
+   fifth of the bar, and the range still reaches quiet enough to show a
+   tail decaying.
+
+   Note this also changes the FALL. The decay below runs on pixel
+   heights, so on a dB scale it becomes a constant dB-per-second
+   fallback -- which is how meters have always behaved, and closer to
+   right than the constant fraction-of-amplitude it was before. */
+#define VU_FLOOR_DB (-48.0f)
+
+inline int VuLevelToPixels(float peak, int fullScale) {
+    if (peak <= 0.0f) return 0;
+    // 20*log10 in one logf; log10(x) = logf(x) * 0.4342945f
+    float db = 20.0f * 0.4342945f * logf(peak);
+    if (db >= 0.0f) return fullScale;
+    if (db <= VU_FLOOR_DB) return 0;
+    int px = (int)(fullScale * (1.0f - db / VU_FLOOR_DB));
+    if (px > fullScale) px = fullScale;
+    if (px < 0) px = 0;
+    return px;
+}
+
 /**
  * UpdateVuBarHeights:
  *   Apply slew rate decay to VU bar heights.
@@ -67,8 +101,7 @@ inline void UpdateVuBarHeights(int *vuBarHeights, int *displayHeights,
         // and far too few for one drawn out of 88 pixels: at eight,
         // a peak of 0.99 and a peak of 0.87 are the same bar, and
         // everything between "loud" and "clipping" is one step.
-        int newBarHeight = (int)(peakLevels[i] * fullScale);
-        if (newBarHeight > fullScale) newBarHeight = fullScale;
+        int newBarHeight = VuLevelToPixels(peakLevels[i], fullScale);
 
         if (newBarHeight > vuBarHeights[i]) {
             vuBarHeights[i] = newBarHeight;  // Instant rise to peak

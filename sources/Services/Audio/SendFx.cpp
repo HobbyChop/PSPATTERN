@@ -1,8 +1,18 @@
 #include "SendFx.h"
 #include "System/System/System.h"
 #include <string.h>
+#ifdef PSP_FDN_REVERB
+#include "FdnReverb.h"
+#endif
 
 namespace SendFx {
+
+#ifdef PSP_FDN_REVERB
+// The VFPU-native reverb, in place of the Freeverb comb bank when this
+// build opts in. Its controls track SetReverbSize/Damp alongside the
+// old ones so a flip of the flag needs no other change.
+static FdnReverb fdn_ ;
+#endif
 
 // ---- the accumulators -------------------------------------------
 // Interleaved stereo, one block long. Buses add into these; the
@@ -217,6 +227,9 @@ void Init(int sampleRate) {
 	(void)sampleRate ;
 	BK.dlyL_ = alloc(SENDFX_MAX_DELAY) ;
 	BK.dlyR_ = alloc(SENDFX_MAX_DELAY) ;
+#ifdef PSP_FDN_REVERB
+	fdn_.Init() ; fdn_.SetSize(revSize_) ; fdn_.SetDamp(revDamp_) ;
+#endif
 
 	// lengths first, so the block can be sized before anything is
 	// handed an address inside it
@@ -278,6 +291,9 @@ void Close() {
 		for (int i = 0 ; i < NAP ; i++) BK.apBuf_[s][i] = 0 ;
 	}
 	SAFE_FREE(BK.dlyAcc_) ; SAFE_FREE(BK.revAcc_) ; SAFE_FREE(BK.wet_) ;
+#ifdef PSP_FDN_REVERB
+	fdn_.Close() ;
+#endif
 	accSamples_ = 0 ;
 	ready_ = false ;
 }
@@ -290,6 +306,24 @@ void Close() {
    either way -- flipping this makes the return run a block behind
    while still processing on this core, which is exactly the timing
    the ME will impose, and the test asks for that. */
+/* Hand the bank to a second core.
+
+   Kept apart from SetDeferred on purpose. Deferral is a TIMING
+   decision -- run the sends a block behind -- and it is exercised and
+   tested without any second core in sight. This is the separate
+   question of WHO does the work, and it must never be true unless the
+   Media Engine has actually been proved to work on this machine.
+
+   Nothing sets it yet. The detection that would is not written, and
+   until it is, the honest value is false. */
+void SetMeDriving(bool on) {
+	if (on == meDriving_) return ;
+	meDriving_ = on ;
+	wetReset() ;
+}
+
+bool MeDriving() { return meDriving_ ; }
+
 void SetDeferred(bool on) {
 	if (on == deferred_) return ;
 	deferred_ = on ;
@@ -318,6 +352,9 @@ void Flush() {
 	BK.revPhase_ = 0 ;
 	BK.revHeld_[0] = BK.revHeld_[1] = 0 ;
 	BK.revIn_[0] = BK.revIn_[1] = 0 ;
+#ifdef PSP_FDN_REVERB
+	fdn_.Flush() ;
+#endif
 }
 
 // ---- parameters --------------------------------------------------
@@ -352,8 +389,16 @@ void SetDelayDivision(int d) {
 	division_ = d ; recalcDelay() ;
 }
 void SetDelayFeedback(int f) { dlyFb_ = f < 0 ? 0 : (f > 250 ? 250 : f) ; }
-void SetReverbSize(int s)    { revSize_ = s < 0 ? 0 : (s > 255 ? 255 : s) ; }
-void SetReverbDamp(int d)    { revDamp_ = d < 0 ? 0 : (d > 255 ? 255 : d) ; }
+void SetReverbSize(int s)    { revSize_ = s < 0 ? 0 : (s > 255 ? 255 : s) ;
+#ifdef PSP_FDN_REVERB
+	fdn_.SetSize(revSize_) ;
+#endif
+}
+void SetReverbDamp(int d)    { revDamp_ = d < 0 ? 0 : (d > 255 ? 255 : d) ;
+#ifdef PSP_FDN_REVERB
+	fdn_.SetDamp(revDamp_) ;
+#endif
+}
 
 bool Active() { return dlyFed_ || revFed_ ; }
 
@@ -494,8 +539,42 @@ static inline void pullIn(void *p, int bytes) {
 	if (p) sceKernelDcacheInvalidateRange(p, bytes) ;
 }
 #else
-static inline void pushOut(void *, int) {}
+/* Off the PSP there is no second cache to reconcile, so these do
+   nothing to the data -- but they still RECORD what was handed over.
+
+   Cache coherency between two cores is the class of bug that cannot
+   be found by listening: forget to write back the Bank and the ME
+   reads a stale filter coefficient, which sounds like nothing at all
+   until it sounds like a howl an hour later on somebody else's
+   machine. The protocol can be checked on a host even though the
+   hardware cannot, so it is. */
+struct FlushRec { const void *p ; int bytes ; } ;
+static FlushRec flushLog_[16] ;
+static int flushCount_ = 0 ;
+static inline void pushOut(void *p, int bytes) {
+	if (p && flushCount_ < 16) {
+		flushLog_[flushCount_].p = p ;
+		flushLog_[flushCount_].bytes = bytes ;
+		flushCount_++ ;
+	}
+}
 static inline void pullIn(void *, int) {}
+#endif
+
+#ifndef __PSP__
+/* For the host test of the coherency protocol. */
+int FlushCountForTest() { return flushCount_ ; }
+void ResetFlushLogForTest() { flushCount_ = 0 ; }
+bool WasFlushedForTest(const void *p) {
+	for (int i = 0 ; i < flushCount_ ; i++) {
+		if (flushLog_[i].p == p) return true ;
+	}
+	return false ;
+}
+const void *WetAccForTest(int which) {
+	return which ? (const void *)BK.revAcc_ : (const void *)BK.dlyAcc_ ;
+}
+const void *BankForTest() { return (const void *)&BK ; }
 #endif
 
 static void processBank(fixed *buffer, int samplecount) {
@@ -511,6 +590,12 @@ static void processBank(fixed *buffer, int samplecount) {
 	const int keep = BK.keep_ ;
 	const bool runDly = BK.runDly_ ;
 	const bool runRev = BK.runRev_ ;
+
+#ifdef PSP_FDN_REVERB
+	// Load the FDN's matrix and state into VFPU registers once for the
+	// whole block, so the per-sample core reloads none of it.
+	if (runRev) fdn_.BeginVfpuBlock() ;
+#endif
 
 	for (int i = 0 ; i < samplecount ; i++) {
 
@@ -550,6 +635,36 @@ static void processBank(fixed *buffer, int samplecount) {
 		rIn[1] = clampfx((long long)BK.revAcc_[i * 2 + 1] + (dOutR >> 2)) ;
 
 		fixed wet[2] = { 0, 0 } ;
+#ifdef PSP_FDN_REVERB
+// The FDN runs at 1/2^REV_RATE_SHIFT of the sample rate: 1 is half rate
+// (the comb bank's trick -- a tail has almost nothing up high, so the
+// hold is inaudible), 2 is quarter rate, which halves the reverb again
+// at the cost of a duller, coarser tail. The input is averaged over the
+// held samples so the level does not change with the rate.
+#ifndef REV_RATE_SHIFT
+#define REV_RATE_SHIFT 1
+#endif
+#define REV_RATE_DIV (1 << REV_RATE_SHIFT)
+		if (runRev) {
+			// Accumulate the held samples' average, run the FDN once
+			// per group. The lines are not shortened to compensate, so
+			// the room grows with the rate -- dial size down if it
+			// matters. 0.3 sets the return level.
+			BK.revIn_[0] += rIn[0] >> REV_RATE_SHIFT ;
+			BK.revIn_[1] += rIn[1] >> REV_RATE_SHIFT ;
+			if (++BK.revPhase_ >= REV_RATE_DIV) {
+				BK.revPhase_ = 0 ;
+				float outL, outR ;
+				fdn_.ProcessOne(fp2fl(BK.revIn_[0]), fp2fl(BK.revIn_[1]),
+				                outL, outR) ;
+				BK.revHeld_[0] = fl2fp(outL * 0.3f) ;
+				BK.revHeld_[1] = fl2fp(outR * 0.3f) ;
+				BK.revIn_[0] = BK.revIn_[1] = 0 ;
+			}
+			wet[0] = BK.revHeld_[0] ;
+			wet[1] = BK.revHeld_[1] ;
+		}
+#else
 		if (runRev) {
 		// collect both samples, run the bank on every second one
 		BK.revIn_[0] += rIn[0] >> 1 ;
@@ -644,6 +759,7 @@ static void processBank(fixed *buffer, int samplecount) {
 		}
 		}
 		}
+#endif
 
 		// The return is just another child of the master, so it has
 		// to obey the same rule every bus does: never hand upstream
@@ -654,6 +770,9 @@ static void processBank(fixed *buffer, int samplecount) {
 		buffer[i * 2 + 1] = i2fp(clip16(clampfx((long long)dOutR + wet[1]))) ;
 	}
 
+#ifdef PSP_FDN_REVERB
+	if (runRev) fdn_.EndVfpuBlock() ;   // write the resident state back
+#endif
 }
 
 /* Give the block to whoever is running the bank.

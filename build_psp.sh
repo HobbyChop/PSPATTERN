@@ -17,7 +17,10 @@ cd "$(dirname "$0")"
 SRC_WIN="$(pwd)"            # /c/Users/... in Git Bash
 DST_WSL="/mnt${SRC_WIN}"    # /mnt/c/Users/...
 
-tar -cf - --exclude=.git --exclude=dist . | wsl -e bash -c '
+# games/ holds a multi-GB local game collection and samples/ the raw
+# audio work -- neither is a build input, and streaming them over the
+# WSL pipe stalls the build. Exclude them explicitly.
+tar -cf - --exclude=.git --exclude=dist --exclude=games --exclude=samples . | wsl -e bash -c '
   set -e
   rm -rf /root/pt && mkdir -p /root/pt && tar -xf - -C /root/pt
   cd /root/pt/projects

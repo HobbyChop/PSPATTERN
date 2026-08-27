@@ -24,38 +24,22 @@ void MidiNoteInput::SetProject(Project *project) {
    set a tempo from, so the interval is measured a whole quarter at a
    time and then smoothed again -- a clock that wobbles by a millisecond
    should not make the song lurch. */
+/* One clock byte.
+
+   This used to time the gap between quarter notes, turn it into a
+   whole number of beats per minute and write that to the project. Two
+   things were wrong with it. It measured the leader's SPEED and never
+   its POSITION, so a song that came in late stayed late for ever. And
+   the timestamps came from a pump that sleeps up to 20ms and hands
+   over whatever arrived in a burst, so the measurement was noisy
+   before it was rounded to a whole beat per minute.
+
+   Counting is exact where timing is not, so the count goes to the
+   player, which holds it against its own slices. */
 void MidiNoteInput::onClock() {
 
 	if ((!project_)||(project_->GetMidiSync()==0)) return ;
-
-	if (++clockCount_<24) return ;
-	clockCount_=0 ;
-
-	unsigned long now=System::GetInstance()->GetClock() ;
-	unsigned long last=lastQuarterMs_ ;
-	lastQuarterMs_=now ;
-	if (last==0) return ;               // first quarter: nothing to measure
-
-	unsigned long elapsed=now-last ;
-	if ((elapsed<60)||(elapsed>2000)) { // 30..1000bpm; anything else is a glitch
-		return ;
-	}
-
-	int bpm=(int)(60000/elapsed) ;
-	if (bpm<30) bpm=30 ;
-	if (bpm>400) bpm=400 ;
-
-	// weighted toward the running value so one late byte cannot lurch
-	// the song, but a real tempo change still arrives within a bar
-	if (smoothedBpm_==0) {
-		smoothedBpm_=bpm ;
-	} else {
-		smoothedBpm_=(smoothedBpm_*3+bpm)/4 ;
-	}
-
-	if (smoothedBpm_!=project_->GetTempo()) {
-		project_->SetTempo(smoothedBpm_) ;
-	}
+	Player::GetInstance()->OnMidiClock() ;
 } ;
 
 void MidiNoteInput::onStart(bool fromTop) {
@@ -64,9 +48,13 @@ void MidiNoteInput::onStart(bool fromTop) {
 	lastQuarterMs_=0 ;
 	Player *player=Player::GetInstance() ;
 	if (player->IsRunning()) return ;
-	// Continue resumes where the song sits; Start goes back to the top.
-	// Start means from the beginning; Continue resumes where it sits.
-	player->OnSongStartButton(0,SONG_CHANNEL_COUNT-1,false,fromTop) ;
+	/* fromSync: this IS the leader's start, so it starts the song
+	   rather than arming it to wait for one.
+
+	   fromTop is passed on but the two are not yet told apart -- both
+	   begin at the cursor. Resuming where a stopped song sat would
+	   mean remembering that position, which nothing does yet. */
+	player->OnSongStartButton(0,SONG_CHANNEL_COUNT-1,false,fromTop,true) ;
 } ;
 
 void MidiNoteInput::onStop() {
@@ -77,6 +65,10 @@ void MidiNoteInput::onStop() {
 	if (player->IsRunning()) {
 		player->Stop() ;
 	}
+	// A leader that stops while we are still waiting to start cancels
+	// the wait, rather than leaving the song armed for a start that
+	// already came and went.
+	player->CancelArm() ;
 } ;
 
 void MidiNoteInput::Attach() {

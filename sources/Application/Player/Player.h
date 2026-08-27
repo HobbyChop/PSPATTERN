@@ -7,6 +7,7 @@
 #include "Application/Views/BaseClasses/ViewEvent.h"
 #include "PlayerMixer.h"
 #include "SyncMaster.h"
+#include "ClockSync.h"
 
 enum PlayerEventType {
 	PET_START,
@@ -74,7 +75,20 @@ public:
 
     void OnStartButton(PlayMode origin, unsigned int from,
                        bool startFromLastPos, unsigned char chainPos);
-    void OnSongStartButton(unsigned int from,unsigned int to,bool requestStop,bool forceImmediate) ;
+    /* fromSync marks a press that came from the leader's transport
+       rather than from the buttons. In Follow the two mean opposite
+       things: a button arms the song to wait, the leader's start is
+       what releases it. */
+    void OnSongStartButton(unsigned int from,unsigned int to,bool requestStop,bool forceImmediate,bool fromSync=false) ;
+
+    /* Waiting for the leader to start. Only ever true in Follow. */
+    bool IsArmed() ;
+    void CancelArm() ;
+
+    /* The leader's clock byte. Counted against our own slices;
+       the difference is the phase error the loop closes. */
+    void OnMidiClock() ;
+    bool IsClockLocked() ;
 
     bool IsRunning();
     bool Clipped() ;
@@ -107,6 +121,12 @@ public:
 	char *GetPlayedNote(int channel) ;
 	char *GetPlayedOctive(int channel) ;
 	char *GetPlayedInstrument(int channel) ;
+	/* What KIND of instrument this channel is playing, for the
+	   mixer strip. The LAST instrument rather than the currently
+	   sounding one, so the indicator says what the channel is
+	   rather than blinking off in the gaps between notes.
+	   Returns IT_LAST when the channel has played nothing. */
+	InstrumentType GetChannelInstrumentType(int channel) ;
 
 	// info
 	int GetPlayedBufferPercentage() ;
@@ -174,6 +194,11 @@ protected:
 	// rather than one per channel, so two channels asking the same
 	// question on the same step do not get the same answer.
 	unsigned int rng_ ;
+	// armed: a start was asked for locally and the transport is
+	// holding until the leader's start byte arrives.
+	bool armed_ ;
+	ClockSync clockSync_ ;
+	float syncLeadMs() ;
 	bool rollStepMaybe(int channel,unsigned char phrase,int pos) ;
 	unsigned int timeToStart_[SONG_CHANNEL_COUNT] ;
 

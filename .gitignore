@@ -55,3 +55,12 @@ content/
 
 # scratch output from the patch audit harness
 tools/_*.txt
+
+# Tester projects are working material, not source
+testers/
+
+# Correspondence, not source. Never publish.
+response/**
+
+# Local game collection copied in for review; never commit or ship.
+games/

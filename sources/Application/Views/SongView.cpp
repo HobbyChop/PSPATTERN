@@ -15,6 +15,7 @@
 #include <sstream>
 #include <stdlib.h>
 #include <string>
+#include "Services/Midi/MidiService.h"
 
 // Low battery warning: enter below ON, leave above OFF, and blink
 // twice a second on the wall clock rather than once per repaint.
@@ -690,7 +691,10 @@ void SongView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
     if (canDeepClone_ && (mask & EPBM_A) && (mask & EPBM_R)) {
         deepClonePosition();
-        mask &= (0xFFFF - (EPBM_A | EPBM_L));
+        // R, not L: this tests R and has to consume R. Clearing L left
+        // the R bit standing, which put the view straight back into
+        // clone mode on the way out of a deep clone.
+        mask &= (0xFFFF - (EPBM_A | EPBM_R));
         canDeepClone_ = false;
     }
     if (clipboard_.active_) {
@@ -1112,7 +1116,16 @@ void SongView::DrawSidePanel() {
     SetColor(CD_ROW2);
     DrawString(PANEL_TXT, 12, "bpm", props);
     sprintf(buf, "%3d", bpm);
-    SetColor(CD_HILITE2);
+    /* Following an external clock, the tempo is not ours to set and
+       the useful question is whether we have caught it yet. Play
+       colour once the loop is holding, mute colour while it is still
+       chasing -- so a tempo that will not settle is visible instead of
+       being something you have to hear. */
+    if (viewData_->project_->GetMidiSync() != 0 && running) {
+        SetColor(player->IsClockLocked() ? CD_PLAY : CD_MUTE);
+    } else {
+        SetColor(CD_HILITE2);
+    }
     DrawString(36, 12, buf, props);
 
     SetColor(CD_ROW2);
@@ -1127,12 +1140,40 @@ void SongView::DrawSidePanel() {
     sprintf(buf, "%7s", name);
     DrawString(32, 13, buf, props);
 
+    /* What the adapter is doing, not what the config file was told.
+       This row printed the configured device name, which read PSPMIDI
+       with nothing plugged in -- so the one place on screen that looked
+       like it answered "is my adapter working" always said yes. */
     SetColor(CD_ROW2);
     DrawString(PANEL_TXT, 14, "mid", props);
-    const char *ctrl = Config::GetInstance()->GetValue("MIDICTRLDEVICE");
-    sprintf(buf, "%7s", ctrl ? ctrl : "none");
-    SetColor(CD_HILITE1);
-    DrawString(32, 14, buf, props);
+    MidiService *midi = MidiService::GetInstance();
+    MidiLinkState mls = midi ? midi->GetLinkState() : MLS_NODRIVER;
+    const char *midTxt;
+    ColorDefinition midCol;
+    switch (mls) {
+    case MLS_READY: {
+        // Named rather than "ready": with more than one driver around,
+        // which one answered is the useful half of the good news.
+        const char *ctrl = Config::GetInstance()->GetValue("MIDICTRLDEVICE");
+        midTxt = ctrl ? ctrl : "ready";
+        midCol = CD_HILITE1;
+        break;
+    }
+    case MLS_WAITING:
+        // The driver is fine and nothing is answering it: a cable.
+        midTxt = "no cable";
+        midCol = CD_ROW;
+        break;
+    default:
+        // Nothing loaded. Worth the warning colour, because unlike the
+        // cable this will not fix itself by plugging something in.
+        midTxt = "no drv";
+        midCol = CD_MUTE;
+        break;
+    }
+    sprintf(buf, "%8s", midTxt);
+    SetColor(midCol);
+    DrawString(31, 14, buf, props);
 
     int batt = sys->GetBatteryLevel();
     if (batt >= 0) {

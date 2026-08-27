@@ -93,6 +93,18 @@ struct renderParams {
 	LogSpeedRamp pfin_ ;
 	Arp arp_ ;
 	Vibrato vibrato_ ;
+	/* Measured declick, per voice, stereo -- the same thing
+	   SynthInstrument has had and the sampler never did.
+
+	   The new note already fades in from zero. What it does not do is
+	   deal with the note it replaced, which is cut dead wherever its
+	   waveform stood: a step the size of the OUTGOING note's level, on
+	   every retrigger. Measuring that step against the last sample
+	   actually emitted and decaying it away reconstructs the tail the
+	   cut removed. */
+	fixed lastOutL_, lastOutR_ ;
+	fixed clickL_, clickR_ ;
+	bool declickPending_ ;
 
 	bool couldClick_ ;
 
