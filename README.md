@@ -95,6 +95,12 @@ This is a modified version of LittleGPTracker. The original authors are
 not responsible for it. It derives from the work of Marc Nostromo, with
 feature work from the djdiskmachine fork.
 
+The Media Engine audio offload is original work by HobbyChop. The send
+effects, a feedback delay and an FDN reverb, run on the PSP's second
+Allegrex core; it builds on mcidclan's `psp-media-engine-custom-core`
+library (MIT), vendored under `third_party/me-core/`. See the `NOTICE`
+file for the full attribution.
+
 `usbmidi.prx` is a separate work, the kernel driver for the PSP-MIDI
 adapter. It is not part of this program and communicates with it only
 through the system call interface. It is distributed alongside for
