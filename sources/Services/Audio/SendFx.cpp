@@ -56,10 +56,16 @@ static int    accSamples_ = 0 ;
 static fixed  wetRing_[WET_RING_FRAMES * 2] ;
 static int    wetRead_ = 0 ;
 static int    wetFill_ = 0 ;
+#ifdef PSP_ME_OFFLOAD
+static bool   mePrimePending_ = false ;   // lay down wet lead on the first ME block
+#endif
 
 static void wetReset() {
 	wetRead_ = 0 ; wetFill_ = 0 ;
 	memset(wetRing_, 0, sizeof(wetRing_)) ;
+#ifdef PSP_ME_OFFLOAD
+	mePrimePending_ = true ;
+#endif
 }
 
 static bool   deferred_ = false ;
@@ -222,6 +228,9 @@ static int lineRound(int shorts, int skewLines) {
 	return bytes / (int)sizeof(short) ;
 }
 
+#ifdef PSP_ME_OFFLOAD
+extern "C" void PSPME_SetDelayLines(short *dlyL, short *dlyR, int maxLen) ;
+#endif
 void Init(int sampleRate) {
 	if (ready_) return ;
 	(void)sampleRate ;
@@ -278,6 +287,11 @@ void Init(int sampleRate) {
 	}
 
 	ready_ = (BK.dlyL_ && BK.dlyR_ && revBlock_) ;
+#ifdef PSP_ME_OFFLOAD
+	// the second core drives the delay lines directly; give it their
+	// addresses (it aliases them uncached and uses them itself)
+	if (ready_) PSPME_SetDelayLines(BK.dlyL_, BK.dlyR_, SENDFX_MAX_DELAY) ;
+#endif
 
 	SetDelayDivision(division_) ;
 }
@@ -332,9 +346,18 @@ void SetDeferred(bool on) {
 
 bool Deferred() { return deferred_ ; }
 
+#ifdef PSP_ME_OFFLOAD
+extern "C" void sceKernelDcacheWritebackRange(const void *p, unsigned int size) ;
+#endif
 void Flush() {
 	if (BK.dlyL_) memset(BK.dlyL_, 0, SENDFX_MAX_DELAY * sizeof(short)) ;
 	if (BK.dlyR_) memset(BK.dlyR_, 0, SENDFX_MAX_DELAY * sizeof(short)) ;
+#ifdef PSP_ME_OFFLOAD
+	// the ME reads the delay lines uncached; push the zeros to RAM now or
+	// it replays stale delay content at the top of every take
+	if (BK.dlyL_) sceKernelDcacheWritebackRange(BK.dlyL_, SENDFX_MAX_DELAY * sizeof(short)) ;
+	if (BK.dlyR_) sceKernelDcacheWritebackRange(BK.dlyR_, SENDFX_MAX_DELAY * sizeof(short)) ;
+#endif
 	for (int s = 0 ; s < 2 ; s++) {
 		for (int i = 0 ; i < NCOMB ; i++) {
 			if (BK.combBuf_[s][i])
@@ -389,14 +412,24 @@ void SetDelayDivision(int d) {
 	division_ = d ; recalcDelay() ;
 }
 void SetDelayFeedback(int f) { dlyFb_ = f < 0 ? 0 : (f > 250 ? 250 : f) ; }
+#ifdef PSP_ME_OFFLOAD
+extern "C" void PSPME_ReverbSize(int s) ;
+extern "C" void PSPME_ReverbDamp(int d) ;
+#endif
 void SetReverbSize(int s)    { revSize_ = s < 0 ? 0 : (s > 255 ? 255 : s) ;
 #ifdef PSP_FDN_REVERB
 	fdn_.SetSize(revSize_) ;
+#endif
+#ifdef PSP_ME_OFFLOAD
+	PSPME_ReverbSize(revSize_) ;
 #endif
 }
 void SetReverbDamp(int d)    { revDamp_ = d < 0 ? 0 : (d > 255 ? 255 : d) ;
 #ifdef PSP_FDN_REVERB
 	fdn_.SetDamp(revDamp_) ;
+#endif
+#ifdef PSP_ME_OFFLOAD
+	PSPME_ReverbDamp(revDamp_) ;
 #endif
 }
 
@@ -844,6 +877,35 @@ static void postBlock(int samplecount) {
 	pullIn(BK.wet_, bytes) ;
 }
 
+#ifdef PSP_ME_OFFLOAD
+extern "C" int PSPME_Bank(const fixed *dlyAcc, const fixed *revAcc,
+                          fixed *wet, int n, int fb, int dlyLen, int runDly) ;
+extern "C" unsigned int PSPME_Ready(void) ;
+
+/* The whole send bank runs on the second core. This core hands the two
+   send accumulators across and takes back whatever the ME finished, then
+   drives it out through the SAME sample-granular wet ring the single-core
+   deferred path uses -- so a not-ready block extends the lead with silence
+   (a fade edge) instead of repeating a whole block (a hard seam = a click). */
+static void processBankMe(fixed *buffer, int samplecount) {
+	// The ME finishes one block per call at best, so the ring runs on a
+	// single block of lead -- one late job would empty it and emit
+	// silence. Lay down a few blocks of silent lead on the first block of
+	// each take so an isolated overrun (a knob move rebuilding coefficients)
+	// is absorbed as a few ms of return latency instead of a dropout.
+	if (mePrimePending_) {
+		memset(BK.wet_, 0, samplecount * 2 * sizeof(fixed)) ;
+		for (int i = 0 ; i < 5 ; i++) wetAppend(BK.wet_, samplecount) ;
+		mePrimePending_ = false ;
+	}
+	wetEmit(buffer, samplecount) ;
+	int n = samplecount ; if (n > 2048) n = 2048 ;
+	int produced = PSPME_Bank(BK.dlyAcc_, BK.revAcc_, BK.wet_, n,
+	                          BK.fb_, BK.dlyLenS_, BK.runDly_ ? 1 : 0) ;
+	if (produced > 0) wetAppend(BK.wet_, produced) ;
+}
+#endif
+
 bool Return::Render(fixed *buffer, int samplecount) {
 
 	if (!ready_) return false ;
@@ -878,6 +940,17 @@ bool Return::Render(fixed *buffer, int samplecount) {
 	BK.runDly_  = runDly ;
 	BK.runRev_  = runRev ;
 
+#ifdef PSP_ME_OFFLOAD
+	// Once the second core is live, the reverb runs there -- decided
+	// ahead of the deferred/immediate split, because the ME path carries
+	// its own one-block deferral and supersedes the DEFERREDFX single-
+	// core timing experiment entirely.
+	if (PSPME_Ready()) {
+		processBankMe(buffer, samplecount) ;
+		dlyFed_ = revFed_ = false ;
+		return true ;
+	}
+#endif
 	if (!deferred_) {
 		// one core: straight into the return slot, as ever
 		processBank(buffer, samplecount) ;

@@ -57,6 +57,21 @@ The result is `dist/PSP/EBOOT.PBP`. `usbmidi.prx` is not built by this
 tree; it belongs to the PSP-MIDI adapter and is dropped in before
 packaging.
 
+### The Media Engine library
+
+The default build runs the reverb and delay on the PSP's second core,
+the Media Engine, and draws the meters and scope on the GPU. The audio
+side links a small vendored library, mcidclan's me-core, whose source
+sits under `third_party/me-core/`. Build and install it into your PSPDEV
+toolchain once before building PSPATTERN: its `CMakeLists.txt` installs
+the `me-core`, `me-core-lib` and `me-core-mapper` archives and their
+headers where the link step looks for them. See
+`third_party/me-core/README.md` and the repository `NOTICE`.
+
+To build without the second core, drop `-DPSP_ME_OFFLOAD` and
+`-DPSP_GU_DISPLAY` from `projects/Makefile.PSP`; both paths stay guarded
+and everything falls back to the main core.
+
 This is a PSP release. LittleGPTracker's ports for other machines are
 not included, because none of them is needed to build this and carrying
 sixteen of them would only obscure what is.

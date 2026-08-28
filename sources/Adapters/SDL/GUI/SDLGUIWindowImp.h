@@ -26,6 +26,11 @@ public: // I_GUIWindowImp implementation
 
 	virtual void SetColor(GUIColor &) ;
 	virtual void DrawRect(GUIRect &) ;
+	virtual void SetBatchRects(bool on) ;
+#if defined(PLATFORM_PSP) && defined(PSP_GU_DISPLAY)
+	virtual void GuQueueScope(int,int,int,int,const short*,const short*,int,bool,unsigned int,unsigned int) ;
+	virtual void GuQueueRect(int,int,int,int,unsigned int) ;
+#endif
 	virtual void DrawChar(const char c,GUIPoint &pos,GUITextProperties &);
 	virtual void DrawString(const char *string,GUIPoint &pos,GUITextProperties &,bool overlay=false);
 	virtual GUIRect GetRect() ;
@@ -70,6 +75,7 @@ private:
   bool windowed_;
 	SDL_Rect updateRects_[MAX_OVERLAYS] ;
 	int updateCount_ ;
+	bool batchRects_ ;   // suppress per-call dirty rects (scope/meters)
 	int appAnchorX_ ;
 	int appAnchorY_ ;
 	int mult_ ;

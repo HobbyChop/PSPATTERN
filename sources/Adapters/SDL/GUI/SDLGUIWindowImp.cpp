@@ -196,7 +196,7 @@ SDLGUIWindowImp::SDLGUIWindowImp(GUICreateWindowParams &p)
 	Trace::Log("DISPLAY","Preparing overlay bitmaps") ;
 	prepareBitmaps() ;
 #endif
-	updateCount_=0 ;
+	updateCount_=0 ; batchRects_=false ;
 } ;
 
 SDLGUIWindowImp::~SDLGUIWindowImp() {
@@ -577,13 +577,15 @@ void SDLGUIWindowImp::DrawString(const char *string,GUIPoint &pos,GUITextPropert
 	}
 }
 
+void SDLGUIWindowImp::SetBatchRects(bool on) { batchRects_=on ; }
+
 void SDLGUIWindowImp::DrawRect(GUIRect &r)
 {
   SDL_Rect rect;
   transform(r, &rect);
   SDL_FillRect(screen_, &rect,currentColor_) ;
   // overlay rects must reach the display like char updates do
-  if ((!framebuffer_)&&(updateCount_<MAX_OVERLAYS)) {
+  if ((!framebuffer_)&&(!batchRects_)&&(updateCount_<MAX_OVERLAYS)) {
     updateRects_[updateCount_++]=rect ;
   }
 } ;
@@ -684,6 +686,100 @@ void SDLGUIWindowImp::Unlock()
 	}
 }
 
+#if defined(PLATFORM_PSP) && defined(PSP_GU_DISPLAY)
+#include <pspgu.h>
+#include <pspge.h>
+// Phase 1: render the scope on the GPU. AppWindow's OOP_SCOPE stops drawing
+// the scope in software and instead QUEUES it here; the GU draws it straight
+// into SDL's framebuffer AFTER the software present each frame, so the CPU
+// no longer plots the ~184 one-pixel columns per frame.
+static unsigned int __attribute__((aligned(16))) s_guList[128*1024/4];
+static bool s_guReady = false;
+struct GuVtxC { unsigned int color; short x, y, z; };
+struct GuScope { int x,y,w,h,n; bool live; unsigned int wave,bg; short lo[96],hi[96]; };
+static GuScope s_scopes[4];
+static int s_scopeCount = 0;
+struct GuRect { int x,y,w,h; unsigned int color; };
+static GuRect s_rects[256];
+static int s_rectCount = 0;
+static void guGpuInit() {
+	void *fbTop = 0; int fbw = 512, fbpf = 0;
+	sceDisplayGetFrameBuf(&fbTop, &fbw, &fbpf, PSP_DISPLAY_SETBUF_NEXTFRAME);
+	unsigned int edram = (unsigned int)sceGeEdramGetAddr();
+	unsigned int off = ((unsigned int)fbTop & 0x1FFFFFFF) - (edram & 0x1FFFFFFF);
+	sceGuInit();
+	sceGuStart(GU_DIRECT, s_guList);
+	sceGuDrawBuffer(fbpf, (void*)off, fbw);
+	sceGuOffset(2048 - (480/2), 2048 - (272/2));
+	sceGuViewport(2048, 2048, 480, 272);
+	sceGuScissor(0, 0, 480, 272);
+	sceGuEnable(GU_SCISSOR_TEST);
+	sceGuDisable(GU_DEPTH_TEST);
+	sceGuFinish();
+	sceGuSync(0, 0);
+	s_guReady = true;
+}
+static void guDrawOverlays() {
+	if (!s_scopeCount && !s_rectCount) return;
+	if (!s_guReady) guGpuInit();
+	const int fmt = GU_COLOR_8888 | GU_VERTEX_16BIT | GU_TRANSFORM_2D;
+	sceGuStart(GU_DIRECT, s_guList);
+	if (s_rectCount) {
+		GuVtxC *rv = (GuVtxC*)sceGuGetMemory(2 * s_rectCount * sizeof(GuVtxC));
+		for (int i = 0; i < s_rectCount; i++) {
+			GuRect &r = s_rects[i];
+			rv[2*i].color   = r.color; rv[2*i].x   = r.x;       rv[2*i].y   = r.y;       rv[2*i].z = 0;
+			rv[2*i+1].color = r.color; rv[2*i+1].x = r.x + r.w; rv[2*i+1].y = r.y + r.h; rv[2*i+1].z = 0;
+		}
+		sceGuDrawArray(GU_SPRITES, fmt, 2 * s_rectCount, 0, rv);
+	}
+	for (int si = 0; si < s_scopeCount; si++) {
+		GuScope &sc = s_scopes[si];
+		GuVtxC *bg = (GuVtxC*)sceGuGetMemory(2 * sizeof(GuVtxC));
+		bg[0].color = sc.bg; bg[0].x = sc.x;        bg[0].y = sc.y;        bg[0].z = 0;
+		bg[1].color = sc.bg; bg[1].x = sc.x + sc.w; bg[1].y = sc.y + sc.h; bg[1].z = 0;
+		sceGuDrawArray(GU_SPRITES, fmt, 2, 0, bg);
+		int amp = sc.h/2 - 1, mid = sc.y + sc.h/2, w = sc.w, n = sc.n;
+		if (amp < 1 || n < 1 || w < 1) continue;
+		GuVtxC *col = (GuVtxC*)sceGuGetMemory(2 * w * sizeof(GuVtxC));
+		for (int j = 0; j < w; j++) {
+			int k = j * n / w;
+			int top = sc.live ? -((int)sc.hi[k] * amp) / 16384 : 0;
+			int bot = sc.live ? -((int)sc.lo[k] * amp) / 16384 : 0;
+			if (top < -amp) top = -amp; if (bot > amp) bot = amp;
+			if (top >  amp) top =  amp; if (bot < -amp) bot = -amp;
+			col[2*j].color   = sc.wave; col[2*j].x   = sc.x + j;     col[2*j].y   = mid + top;     col[2*j].z = 0;
+			col[2*j+1].color = sc.wave; col[2*j+1].x = sc.x + j + 1; col[2*j+1].y = mid + bot + 1; col[2*j+1].z = 0;
+		}
+		sceGuDrawArray(GU_SPRITES, fmt, 2 * w, 0, col);
+	}
+	sceGuFinish();
+	sceGuSync(0, 0);
+	s_scopeCount = 0;
+	s_rectCount = 0;
+}
+void SDLGUIWindowImp::GuQueueScope(int x,int y,int w,int h,const short*lo,const short*hi,
+                                   int n,bool live,unsigned int wave,unsigned int bg) {
+	if (s_scopeCount >= 4) return;
+	if (n > 96) n = 96;
+	// map app coords to screen pixels exactly like the software DrawRect
+	GUIRect r(x, y, x + w, y + h);
+	SDL_Rect sr; transform(r, &sr);
+	GuScope &sc = s_scopes[s_scopeCount++];
+	sc.x=sr.x; sc.y=sr.y; sc.w=sr.w; sc.h=sr.h; sc.n=n;
+	if (sc.w > 200) sc.w = 200;
+	sc.live=live; sc.wave=wave; sc.bg=bg;
+	for (int j=0;j<n;j++) { sc.lo[j]=lo[j]; sc.hi[j]=hi[j]; }
+}
+void SDLGUIWindowImp::GuQueueRect(int x,int y,int w,int h,unsigned int color) {
+	if (s_rectCount >= 256) return;
+	GUIRect gr(x, y, x + w, y + h);
+	SDL_Rect sr; transform(gr, &sr);
+	GuRect &r = s_rects[s_rectCount++];
+	r.x = sr.x; r.y = sr.y; r.w = sr.w; r.h = sr.h; r.color = color;
+}
+#endif
+
 void SDLGUIWindowImp::Flush()
 {
 #ifdef BUFFERED
@@ -730,6 +826,9 @@ void SDLGUIWindowImp::Flush()
         }
     }
     updateCount_=0;
+#if defined(PLATFORM_PSP) && defined(PSP_GU_DISPLAY)
+    guDrawOverlays();
+#endif
 #endif
 }
 

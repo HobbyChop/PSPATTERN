@@ -3,6 +3,23 @@
 
 #include <stdlib.h>   /* malloc/free, as the rest of SendFx uses */
 
+/* Integer flush-to-zero. The Allegrex FPU has no denormal support and
+   raises a non-maskable Unimplemented-Operation trap on subnormals --
+   fatal on the Media Engine, which has no FP handler. Reading the bits
+   as an integer never traps; anything whose exponent is below ~2^-67
+   (about -400 dB, long past audibility) becomes a clean zero, which
+   also keeps every later subtract/multiply clear of the subnormal range. */
+#ifdef FDN_FLUSH_DENORMALS
+static inline float fdnFtz(float v) {
+	union { float f; unsigned int i; } u ; u.f = v ;
+	if ((u.i & 0x7F800000u) < 0x1E000000u) return 0.0f ;
+	return v ;
+}
+#else
+static inline float fdnFtz(float v) { return v ; }   // identity off the ME
+#endif
+
+
 /******************************************************************
  FdnReverb: a four-line Feedback Delay Network.
 
@@ -86,7 +103,7 @@ public:
 	// One mono sample through the input diffuser chain.
 	inline float diffuse(float x) {
 		for (int d=0;d<NDIFF;d++) {
-			float delayed = dif_[d][difPos_[d]] ;
+			float delayed = fdnFtz(dif_[d][difPos_[d]]) ;
 			float w = x + difG_[d]*delayed ;
 			dif_[d][difPos_[d]] = w ;
 			x = delayed - difG_[d]*w ;
@@ -120,13 +137,17 @@ public:
 		// the tail is dense from the start.
 		float x = diffuse(0.5f*(inL+inR)) ;
 
-		float s0=buf_[0][pos_[0]], s1=buf_[1][pos_[1]] ;
-		float s2=buf_[2][pos_[2]], s3=buf_[3][pos_[3]] ;
+		float s0=fdnFtz(buf_[0][pos_[0]]), s1=fdnFtz(buf_[1][pos_[1]]) ;
+		float s2=fdnFtz(buf_[2][pos_[2]]), s3=fdnFtz(buf_[3][pos_[3]]) ;
 
-		// per-line damping one-pole
-		lp_[0]+=dc*(s0-lp_[0]) ; lp_[1]+=dc*(s1-lp_[1]) ;
-		lp_[2]+=dc*(s2-lp_[2]) ; lp_[3]+=dc*(s3-lp_[3]) ;
-		float f0=lp_[0], f1=lp_[1], f2=lp_[2], f3=lp_[3] ;
+		// per-line damping one-pole; state flushed so it never decays
+		// into the subnormal range the ME FPU cannot handle
+		float l0=fdnFtz(lp_[0]), l1=fdnFtz(lp_[1]) ;
+		float l2=fdnFtz(lp_[2]), l3=fdnFtz(lp_[3]) ;
+		l0+=dc*(s0-l0) ; l1+=dc*(s1-l1) ;
+		l2+=dc*(s2-l2) ; l3+=dc*(s3-l3) ;
+		lp_[0]=l0 ; lp_[1]=l1 ; lp_[2]=l2 ; lp_[3]=l3 ;
+		float f0=l0, f1=l1, f2=l2, f3=l3 ;
 
 		// Hadamard feedback (normalised by 1/2), scaled by g
 		float m0=0.5f*( f0+f1+f2+f3) ;
@@ -238,6 +259,18 @@ public:
 	float FeedbackGain() const { return g_ ; }
 	float DampCoef() const { return dc_ ; }
 	int LineLen(int i) const { return len_[i] ; }
+	// Point the delay lines at an alternate address window (e.g. the
+	// uncached alias) for a core whose cache cannot reach this memory.
+	// Call once after Init, before that core runs.
+	void RemapLines(unsigned int orMask) {
+		for (int i=0;i<NLINE;i++) if (buf_[i]) buf_[i]=(float*)((unsigned int)buf_[i]|orMask) ;
+		for (int i=0;i<NDIFF;i++) if (dif_[i]) dif_[i]=(float*)((unsigned int)dif_[i]|orMask) ;
+	}
+	unsigned int DbgBufPtr(int i) const { return (unsigned int)buf_[i] ; }
+	unsigned int DbgDifPtr(int i) const { return (unsigned int)dif_[i] ; }
+	unsigned int DbgLineBits(int i,int j) const {
+		if (!buf_[i]) return 0xDEADBEEFu ;
+		union { float f; unsigned int u; } v; v.f = buf_[i][j]; return v.u ; }
 
 private:
 	void rebuild() {

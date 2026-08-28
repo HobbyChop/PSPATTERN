@@ -192,6 +192,7 @@ PSPDIRS := \
 	../sources/Adapters/PSP/FileSystem \
 	../sources/System/Process \
 	../sources/Adapters/PSP/System \
+	../sources/Adapters/PSP/Audio \
 	../sources/Adapters/PSP/Midi \
 	../sources/Adapters/SDL/Process \
 	../sources/Adapters/SDL/Audio \
@@ -427,6 +428,7 @@ NDSFILES := \
 
 PSPFILES := \
 	PSPmain.o \
+	PSPMediaEngine.o \
 	PSPFileSystem.o \
 	Process.o \
 	PSPMidiService.o \

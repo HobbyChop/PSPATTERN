@@ -4,11 +4,28 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef PSP_ME_OFFLOAD
+extern "C" unsigned int PSPME_Ready(void) ;
+extern "C" unsigned int PSPME_Heartbeat(void) ;
+extern "C" unsigned int PSPME_Jobs(void) ;
+extern "C" unsigned int PSPME_Calls(void) ;
+#ifndef ME_FM_PROBE
+#define ME_FM_PROBE 0
+#endif
+#if ME_FM_PROBE
+extern "C" unsigned int PSPME_FmCycles(void) ;
+#endif
+#endif
+
 #define BENCH_W 34
 // six voice rows, a blank, a send header, three send rows, then the
 // two lines of legend -- plus the title, the budget line and the
 // column header above them
+#ifdef PSP_ME_OFFLOAD
+#define BENCH_H 22
+#else
 #define BENCH_H 18
+#endif
 
 DspBenchModal::DspBenchModal(View &view) : ModalView(view) {
 	memset(&result_,0,sizeof(result_)) ;
@@ -99,6 +116,21 @@ void DspBenchModal::DrawView() {
 	DrawString(0,4+DSPB_ENGINES+2,"% of one block's realtime",props) ;
 	DrawString(0,4+DSPB_ENGINES+3,"v voices sounding, s sending",props) ;
 	SetColor(CD_NORMAL) ;
+#ifdef PSP_ME_OFFLOAD
+	// Second-core state: rdy = survived init, hb climbs = loop alive,
+	// job climbs = reverb blocks actually processed there.
+	SetColor(CD_HILITE2) ;
+	sprintf(line,"ME rdy%u hb%u",PSPME_Ready(),PSPME_Heartbeat()) ;
+	DrawString(0,4+DSPB_ENGINES+5,line,props) ;
+	sprintf(line,"call%u job%u",PSPME_Calls(),PSPME_Jobs()) ;
+	DrawString(0,4+DSPB_ENGINES+6,line,props) ;
+#if ME_FM_PROBE
+	{ unsigned int cyc=PSPME_FmCycles(); unsigned int us=cyc/333u;
+	  sprintf(line,"FM8v %uus /5805 %s",us,(us&&us<5805)?"FITS":"OVER") ;
+	  DrawString(0,4+DSPB_ENGINES+7,line,props) ; }
+#endif
+	SetColor(CD_NORMAL) ;
+#endif
 }
 
 void DspBenchModal::ProcessButtonMask(unsigned short mask,bool pressed) {

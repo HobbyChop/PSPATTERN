@@ -1,0 +1,33 @@
+PSPATTERN
+Copyright (c) HobbyChop
+Licensed under the GNU GPLv3 (see LICENSE).
+
+A fork of LittleGPTracker (m8-compatible tracker lineage), with original
+work by HobbyChop including the Media Engine audio offload described
+below.
+
+--------------------------------------------------------------------------
+Media Engine audio offload
+--------------------------------------------------------------------------
+PSPATTERN runs its send-effects bank (a feedback delay and an FDN reverb)
+on the PSP's second Allegrex core, the Media Engine. To our knowledge this
+is the first live audio-effects bank to run on the Media Engine inside a
+music application. The offload design and DSP are original work by
+HobbyChop: the cross-core hand-off and wet ring, the FPU
+flush-to-zero for the Media Engine's missing denormal hardware, and the
+uncached line handling.
+
+It builds on the Media Engine access library by mcidclan (m-c/d),
+psp-media-engine-custom-core, which handles Media Engine boot, kernel
+access, and standby. That library is MIT licensed and vendored under
+third_party/me-core/ with its original LICENSE.md preserved:
+
+    Copyright (c) 2025 m-c/d
+    MIT License. See third_party/me-core/LICENSE.md for the full text.
+
+--------------------------------------------------------------------------
+Note on standby
+--------------------------------------------------------------------------
+With the Media Engine driving the effects, the PSP's standby (lid close)
+is held off. This is a deliberate trade for the second core doing real
+work. PSPATTERN is under active development and testing.

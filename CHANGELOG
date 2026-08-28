@@ -1,3 +1,43 @@
+PSPATTERN 0.12.0a
+
+    The send effects moved onto the second core. The PSP has two
+        Allegrex processors and until now the audio ran entirely on the
+        first. The whole send bank -- the delay and the FDN reverb --
+        now runs on the Media Engine, the second core, which had never
+        before carried live audio effects inside a music program. The
+        main core hands the two send accumulators across and takes the
+        finished wet signal back, and the work in between happens
+        somewhere it used to have to pay for. This is where the headroom
+        in this release comes from.
+
+    Getting there meant teaching that core things it did not have. Its
+        floating-point unit has no hardware for denormal numbers, so a
+        reverb tail decaying toward silence would trap and freeze the
+        machine; the fix flushes those values to zero in the unit's
+        control register and in the reverb math. The core also cannot
+        see the first core's data cache, so every buffer that crosses
+        between them travels through an uncached window and a hand-off
+        that drains the write buffer before the first core reads it. A
+        wet ring smooths the seam so no block boundary is audible.
+
+    The meters and the scope draw on the GPU. The graphics chip sat idle
+        while the mixer channel, the level meters and the oscilloscope
+        were painted a pixel at a time on the main core. They are now
+        drawn as sprites on the GPU, which is both faster and one more
+        thing off the processor that runs the sequencer. The display
+        stops lagging when the DSP load is high.
+
+    The master EQ shows numbers. The per-band setting was a row of
+        glyphs that meant little at a glance; each band now reads out in
+        decibels, coloured by whether it cuts or boosts.
+
+    A note on standby. While the second core is running effects, the
+        PSP's sleep switch is held off: the stock standby handler waits
+        on the Media Engine in a way a core running our own code cannot
+        answer, so closing the lid mid-session is disabled rather than
+        risk a hang. This is a deliberate trade for the headroom, on a
+        build still under active development.
+
 PSPATTERN 0.11.0a
 
     The audio DSP moved onto the VFPU. The PSP's vector unit sat idle

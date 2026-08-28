@@ -123,6 +123,11 @@ int setupCallbacks(void) {
    so the sound is not at risk from this. See SDLAudioDriver.cpp. */
 extern "C" { int g_pspMainThreadPriority = 0x20 ; }
 
+#ifdef PSP_ME_OFFLOAD
+extern "C" int  PSPME_Init(void) ;
+extern "C" void PSPME_Shutdown(void) ;
+#endif
+
 int main(int argc,char *argv[])
 {
 
@@ -143,6 +148,10 @@ int main(int argc,char *argv[])
 
 	PSPSystem::Boot(argc,argv) ;
 
+#ifdef PSP_ME_OFFLOAD
+	PSPME_Init() ;   // Phase 1 coexistence probe; no-op without the flag
+#endif
+
 	SDLCreateWindowParams params ;
 	params.title="littlegptracker" ;
 	params.cacheFonts_=false ;
@@ -150,6 +159,9 @@ int main(int argc,char *argv[])
 	Application::GetInstance()->Init(params) ;
 	PSPSystem::MainLoop() ;
     PSPSystem::Shutdown() ;
+#ifdef PSP_ME_OFFLOAD
+	PSPME_Shutdown() ;   // clean teardown of the Phase 1 probe
+#endif
 	scePowerUnlock(0);
 	sceKernelExitGame();
 	return 0 ;

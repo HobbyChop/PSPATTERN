@@ -755,11 +755,9 @@ void MixerView::DrawView() {
 
     /* The master EQ, ten bands on one line under the sends.
 
-       Two characters a band, which is all there is room for across
-       forty columns: a bar character standing for how far the band is
-       from flat rather than a number, because ten numbers in a row is
-       a table and what you want to read here is a SHAPE. Flat draws as
-       a dash on the centre line, cut draws low, boost draws high. */
+       Two columns a band: the band's gain in decibels, which is what
+       an EQ actually speaks, colour-coded by direction so the shape
+       still reads at a glance. */
     {
         Project *proj = viewData_->project_;
         SetColor(CD_ROW2);
@@ -767,20 +765,26 @@ void MixerView::DrawView() {
         for (int b = 0; b < MASTER_EQ_BANDS; b++) {
             int x = 4 + b * 3;
             int v = proj->GetEqBand(b);
-            // five states either side of flat is as much as one
-            // character can honestly carry
-            const char *g;
-            if (v == MASTER_EQ_FLAT)      g = "--";
-            else if (v > MASTER_EQ_FLAT + 40) g = "^^";
-            else if (v > MASTER_EQ_FLAT + 12) g = "' ";
-            else if (v > MASTER_EQ_FLAT)      g = ". ";
-            else if (v < MASTER_EQ_FLAT - 40) g = "vv";
-            else if (v < MASTER_EQ_FLAT - 12) g = ", ";
-            else                              g = "_ ";
+            // Real dB per band, which is what an EQ speaks -- right
+            // aligned in two columns, cuts carry a minus, flat reads 0,
+            // a killed band reads "of". Colour still carries the
+            // direction at a glance: dim for flat, warm for boost, cool
+            // for cut.
+            char g[8];
+            if (v == 0)                   { g[0]='o'; g[1]='f'; g[2]=0; }
+            else if (v == MASTER_EQ_FLAT) { g[0]=' '; g[1]='0'; g[2]=0; }
+            else {
+                double db = 20.0 * log10((double)v * v * 8.0 / 32768.0);
+                int idb = (int)(db >= 0 ? db + 0.5 : db - 0.5);
+                if (idb > 99) idb = 99;
+                if (idb < -99) idb = -99;
+                sprintf(g, "%2d", idb);
+            }
             bool cursor = (mixerRow_ == MIXER_EQ_BASE + b);
             props.invert_ = cursor;
             SetColor(cursor ? CD_HILITE2
-                            : (v == MASTER_EQ_FLAT ? CD_ROW : CD_HILITE1));
+                            : (v == MASTER_EQ_FLAT ? CD_ROW
+                            : (v > MASTER_EQ_FLAT ? CD_HILITE1 : CD_HILITE2)));
             DrawString(x, MIXER_EQ_ROW, g, props);
             props.invert_ = false;
         }

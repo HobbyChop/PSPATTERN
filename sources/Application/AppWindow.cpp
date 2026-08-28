@@ -1126,6 +1126,31 @@ void AppWindow::flushOverlayOps() {
             break;
         }
         case OOP_VBAR: {
+#if defined(PLATFORM_PSP) && defined(PSP_GU_DISPLAY)
+            {
+                #define GU_ABGR(c) (0xFF000000u|(((c)._b&0xFF)<<16)|(((c)._g&0xFF)<<8)|((c)._r&0xFF))
+                GUIColor trk = opColor(OC_PANEL2);
+                GetImpWindow()->GuQueueRect(o.x_, o.y_, o.w_, o.h_, GU_ABGR(trk));
+                int fill = o.p1_; if (fill > o.h_) fill = o.h_;
+                if (o.p2_) {
+                    GUIColor cc = colorForProp(o.p2_ >= 2 ? CD_MAJORBEAT : CD_HILITE2);
+                    GetImpWindow()->GuQueueRect(o.x_, o.y_ - 4, o.w_, 3, GU_ABGR(cc));
+                }
+                if (fill > 0) {
+                    int warn = o.h_ * 30 / 100, clip = o.h_ * 10 / 100;
+                    int zTop = o.y_ + o.h_ - fill;
+                    int zWarn = o.y_ + warn, zClip = o.y_ + clip;
+                    GUIColor c1 = colorForProp(CD_HILITE1);
+                    GetImpWindow()->GuQueueRect(o.x_, zTop, o.w_, (o.y_ + o.h_) - zTop, GU_ABGR(c1));
+                    if (zTop < zWarn) { GUIColor c2 = colorForProp(CD_HILITE2);
+                        GetImpWindow()->GuQueueRect(o.x_, zTop, o.w_, zWarn - zTop, GU_ABGR(c2)); }
+                    if (zTop < zClip) { GUIColor c3 = colorForProp(CD_MUTE);
+                        GetImpWindow()->GuQueueRect(o.x_, zTop, o.w_, zClip - zTop, GU_ABGR(c3)); }
+                }
+                #undef GU_ABGR
+            }
+            break;
+#endif
             GUIColor track = opColor(OC_PANEL2);
             GUIWindow::SetColor(track);
             GUIRect tr(o.x_, o.y_, o.x_ + o.w_, o.y_ + o.h_);
@@ -1176,6 +1201,23 @@ void AppWindow::flushOverlayOps() {
             break;
         }
         case OOP_SCOPE: {
+#if defined(PLATFORM_PSP) && defined(PSP_GU_DISPLAY)
+            {
+                // GPU path: queue the scope; the GU draws it after the
+                // software present, so the CPU stops plotting the columns.
+                GUIColor pcol = opColor(OC_PANEL);
+                bool live = Player::GetInstance()->IsRunning();
+                short lo[96], hi[96];
+                int n = o.w_ > 96 ? 96 : o.w_;
+                if (live) AudioStats::ReadScope(lo, hi, n, o.colA_);
+                else for (int j = 0; j < n; j++) { lo[j] = 0; hi[j] = 0; }
+                GUIColor lcol = live ? colorForProp(CD_HILITE1) : opColor(CD_ROW);
+                unsigned int wave = 0xFF000000u|((lcol._b&0xFF)<<16)|((lcol._g&0xFF)<<8)|(lcol._r&0xFF);
+                unsigned int bgc  = 0xFF000000u|((pcol._b&0xFF)<<16)|((pcol._g&0xFF)<<8)|(pcol._r&0xFF);
+                GetImpWindow()->GuQueueScope(o.x_, o.y_, o.w_, o.h_, lo, hi, n, live, wave, bgc);
+            }
+            break;
+#endif
             GUIColor pc = opColor(OC_PANEL);
             GUIWindow::SetColor(pc);
             GUIRect bg(o.x_, o.y_, o.x_ + o.w_, o.y_ + o.h_);
@@ -1189,6 +1231,10 @@ void AppWindow::flushOverlayOps() {
             int mid = o.y_ + o.h_ / 2;
             GUIColor lc = live ? colorForProp(CD_HILITE1) : opColor(CD_ROW);
             GUIWindow::SetColor(lc);
+            // the background rect above already covers the whole scope, so
+            // the per-column rects only flood the dirty-rect list (and tip
+            // the final blit into a full-screen copy). Batch them under it.
+            GetImpWindow()->SetBatchRects(true);
             for (int j = 0; j < o.w_; j++) {
                 int k = j * n / o.w_;
                 // 2x display gain: a mix peaking near full scale still
@@ -1205,6 +1251,7 @@ void AppWindow::flushOverlayOps() {
                 GUIRect sp(o.x_ + j, mid + top, o.x_ + j + 1, mid + bot + 1);
                 GUIWindow::DrawRect(sp);
             }
+            GetImpWindow()->SetBatchRects(false);
             break;
         }
         case OOP_WAVE: {

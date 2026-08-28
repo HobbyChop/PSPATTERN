@@ -24,6 +24,15 @@ public:
 
 	virtual void PushEvent(GUIEvent &)=0 ;
 
+	// When on, DrawRect still draws but does NOT append a dirty rect;
+	// the caller supplies one bounding rect. Default no-op.
+	virtual void SetBatchRects(bool /*on*/) {} ;
+#if defined(PLATFORM_PSP) && defined(PSP_GU_DISPLAY)
+	// Queue a scope for the GPU to draw (PSP GU path). Default no-op.
+	virtual void GuQueueScope(int,int,int,int,const short*,const short*,int,bool,unsigned int,unsigned int) {} ;
+	virtual void GuQueueRect(int,int,int,int,unsigned int) {} ;
+#endif
+
 //	virtual void Save()=0 ;
 //	virtual void Restore()=0 ;
 
