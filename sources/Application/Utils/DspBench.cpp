@@ -22,11 +22,11 @@ namespace DspBench {
 // Chosen to be the shapes people actually use, not the cheapest
 // settings each engine has: a bare saw tells you nothing about
 // whether a track will fit.
-enum { B_TONE=0, B_TONEF, B_VAX, B_PDX, B_FM2, B_FM4,
+enum { B_TONE=0, B_TONEF, B_VAX, B_PDX, B_FM2, B_FM4, B_VOX,
        B_DELAY, B_REVERB, B_BOTH } ;
 
 static const char *names_[DSPB_ENGINES]= {
-	"tone","tone+flt","vax x2","pdx","fm 2op","fm 4op",
+	"tone","tone+flt","vax x2","pdx","fm 2op","fm 4op","vox",
 	"delay","reverb","dly+rev"
 } ;
 
@@ -102,6 +102,12 @@ static void configure(SynthInstrument &s,int which) {
 			}
 			break ;
 		}
+		case B_VOX:
+			s.FindVariable(SYP_ENGINE)->SetInt(SET_VOX) ;
+			s.FindVariable(SYP_WAVE)->SetInt(SWT_SAW) ;   // saw glottal source
+			s.FindVariable(SYP_CUTOFF)->SetInt(0x80) ;    // an "aah"-ish vowel
+			s.FindVariable(SYP_RESO)->SetInt(0x80) ;      // clear formants
+			break ;
 	}
 }
 

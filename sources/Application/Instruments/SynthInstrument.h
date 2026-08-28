@@ -81,6 +81,11 @@
 #define SYP_FMS2      MAKE_FOURCC('F','M','S','2')
 #define SYP_FMS3      MAKE_FOURCC('F','M','S','3')
 #define SYP_FMS4      MAKE_FOURCC('F','M','S','4')
+// ---- VOX (formant / vocal) ------------------------------------------
+// The vowel knob (cutoff) morphs between these two vowels, walking the
+// table through any vowels that lie between them.
+#define SYP_VOXVA     MAKE_FOURCC('V','O','V','A')
+#define SYP_VOXVB     MAKE_FOURCC('V','O','V','B')
 
 #define SYP_TABLE     MAKE_FOURCC('S','Y','T','B')
 #define SYP_TABLEAUTO MAKE_FOURCC('S','Y','T','A')
@@ -90,6 +95,7 @@ enum SynthEngineType {
 	SET_PDX,
 	SET_VAX,
 	SET_FM,
+	SET_VOX,      // formant / vocal: excitation -> parallel formant SVFs
 	SET_LAST
 } ;
 
@@ -204,6 +210,9 @@ struct SynthVoice {
 	unsigned int rng_ ;
 	int svfLow_ ;
 	int svfBand_ ;
+	// VOX (formant) engine: per-formant Chamberlin SVF state (low+band)
+	int fmtLow_[4] ;
+	int fmtBand_[4] ;
 	// FM state
 	FmOp op_[FM_OPS] ;
 	int fbLast_[2] ;          // op4's last two outputs; the feedback
@@ -324,6 +333,7 @@ private:
 	bool renderPdx(SynthVoice &v,fixed *buffer,int size) ;
 	bool renderVax(SynthVoice &v,fixed *buffer,int size) ;
 	bool renderFm(SynthVoice &v,fixed *buffer,int size) ;
+	bool renderVox(SynthVoice &v,fixed *buffer,int size) ;
 	void startFmOps(SynthVoice &v,bool fromCurrent) ;
 	void releaseFmOps(SynthVoice &v) ;
 	void setFmPitch(SynthVoice &v) ;
@@ -365,8 +375,7 @@ private:
 	// FM needs a finer table than the 256-entry one the other engines
 	// use: at 8 bits a modulator's own quantisation lands in the
 	// sidebands, which is exactly where it is audible.
-	static short *fmSin_ ;               /* [1024] */
-	static short *fmSinD_ ;              /* [1024] */
+	static int *fmSinPacked_ ;          /* [1024] base<<16 | delta */
 	static void placeTables() ;
 public:
 	/* Where operator `op` sends its output under `algo`: another
@@ -374,6 +383,16 @@ public:
 	   routing from this, so the picture cannot drift from the engine
 	   -- there is one table and both read it. */
 	static int AlgoDest(int algo,int op) ;
+#ifdef PSP_DSP_PROFILE
+	// Tier-0 cycle-attribution profiler for renderFm (compile-gated, off in
+	// release). Accumulates render time bucketed by whether the voice ran
+	// the two-pass SVF, so the filtered/unfiltered block split gives both
+	// the filtered-patch fraction and, by difference, the filter-stage cost.
+	// Read + reset by DspBenchModal. Times with sceKernelGetSystemTimeLow.
+	static void GetFmProfile(unsigned long long &usFilt,unsigned long long &usUnfilt,
+	                         unsigned int &blkFilt,unsigned int &blkUnfilt) ;
+	static void ResetFmProfile() ;
+#endif
 private:
 } ;
 #endif

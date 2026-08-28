@@ -18,8 +18,11 @@ void UIStepperField::Draw(GUIWindow &w,int offset) {
 	position._y+=offset ;
 	AppWindow &app=(AppWindow &)w ;
 
-	app.SetColor(focus_?CD_NORMAL:CD_ROW2) ;
+	// focused label gets the inverse block, matching the integer fields
+	props.invert_=focus_ ;
+	app.SetColor(focus_?CD_HILITE2:CD_ROW2) ;
 	w.DrawString(format_,position,props) ;
+	props.invert_=false ;
 	position._x+=strlen(format_) ;
 
 	app.SetColor(focus_?CD_NORMAL:CD_ROW) ;

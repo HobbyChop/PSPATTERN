@@ -61,9 +61,6 @@ public:
 	   immediately. */
 	void SetEqBand(int band,int value) { eq_.SetBand(band,value) ; }
     unsigned int GetPeakLevel() const { return peakMixerLevel_; }
-    unsigned int GetPreMasterVolumePeakLevel() const {
-        return preMasterVolumePeakLevel_;
-    }
     // What actually leaves the mixer: after the fader, after the
     // clipper. The master meter has to read THIS. It used to read
     // the raw sum of the buses, which on a normal mix runs a couple
@@ -140,7 +137,6 @@ private:
   bool clipped_;
   volatile bool clipLatch_;
   unsigned int peakMixerLevel_;
-  unsigned int preMasterVolumePeakLevel_;
   unsigned int outputPeakLevel_;
 };
 #endif

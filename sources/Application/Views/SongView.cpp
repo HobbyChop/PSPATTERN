@@ -169,7 +169,7 @@ void SongView::clonePosition() {
     if (current == 255)
         return;
 
-    unsigned short next = viewData_->song_->chain_->GetNext();
+    unsigned short next = viewData_->song_->chain_->GetNext(current);
     if (next == NO_MORE_CHAIN)
         return;
 

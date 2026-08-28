@@ -178,6 +178,10 @@ protected:
 	unsigned char lastSongPos_ ;
 	bool firstPlayCycle_ ;
 	bool triggerLiveChains_ ;
+	// PM_PHRASE follow: when set (config PHRASE_FOLLOW=YES), a looping
+	// phrase jumps to whatever phrase the editor cursor is on at each
+	// loop wrap -- M8-style. Off by default; read once at Start.
+	bool phraseFollow_ ;
 
 	double startTime_ ;
     double currentTime_;

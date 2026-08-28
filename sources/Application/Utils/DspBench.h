@@ -29,8 +29,8 @@
  * voices, because that is what the accumulate scales with. The bank
  * itself costs the same whether one channel feeds it or eight, and
  * seeing those two behaviours separately is the point. */
-#define DSPB_ENGINES 9      // 6 voice shapes + delay / reverb / both
-#define DSPB_VOICE_ROWS 6
+#define DSPB_ENGINES 10     // 7 voice shapes + delay / reverb / both
+#define DSPB_VOICE_ROWS 7
 #define DSPB_STEPS   4      // 1, 2, 4, 8 voices, or senders
 
 namespace DspBench {

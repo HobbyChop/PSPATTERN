@@ -340,6 +340,7 @@ void InstrumentView::fillSynthParameters() {
 	bool pdx=(engine==SET_PDX) ;
 	bool vax=(engine==SET_VAX) ;
 	bool fm=(engine==SET_FM) ;
+	bool vox=(engine==SET_VOX) ;
 
 	// engine pills under the type row
 	GUIPoint pos(6,3) ;
@@ -351,7 +352,7 @@ void InstrumentView::fillSynthParameters() {
 	// two-option waves are pills; longer lists step. FM has no
 	// oscillator waveform to pick -- every operator is a sine, and
 	// the algorithm is what shapes the result.
-	if (!fm) {
+	if (!fm && !vox) {
 		pos=GUIPoint(2,6) ;
 		v=instrument->FindVariable(vax?SYP_VAXWAVE:(pdx?SYP_PDXWAVE:SYP_WAVE)) ;
 		if (vax) {
@@ -407,7 +408,7 @@ void InstrumentView::fillSynthParameters() {
 	// LFO it can actually reach. Oscillator rows sit above the wave
 	// graph; filter and LFO go in the right column, where VAX keeps
 	// its own.
-	if (!fm && !pdx && !vax) {
+	if (!fm && !pdx && !vax && !vox) {
 		int wv=instrument->FindVariable(SYP_WAVE)->GetInt() ;
 		int ty=7 ;
 		UISliderField *ts ;
@@ -517,7 +518,7 @@ void InstrumentView::fillSynthParameters() {
 		}
 	}
 
-	if (!fm && !pdx && !vax) {
+	if (!fm && !pdx && !vax && !vox) {
 		// ---- right column: FILTER (6-8) then LFO (12-14) ----
 		pos=GUIPoint(22,6) ;
 		v=instrument->FindVariable(SYP_CUTOFF) ;
@@ -544,6 +545,55 @@ void InstrumentView::fillSynthParameters() {
 		v=instrument->FindVariable(SYP_LFODEPTH) ;
 		fs=new UISliderField(pos,*v,"depth  ",0,0xFF,1,0x10,7) ;
 		T_SimpleList<UIField>::Insert(fs) ;
+	}
+
+	if (vox) {
+		// VOX (formant / vocal). The reused Variables wear vocal labels
+		// here instead of the tone-page ones: wave = source, cutoff =
+		// vowel, reso = formant sharpness, pwm = glottal, noise = breath.
+		UIStepperField *vst ;
+		UISliderField  *vfs ;
+		pos=GUIPoint(2,6) ;
+		v=instrument->FindVariable(SYP_WAVE) ;
+		vst=new UIStepperField(pos,*v,"source ","%s",0,SWT_LAST-1) ;
+		T_SimpleList<UIField>::Insert(vst) ;
+		pos=GUIPoint(2,7) ;
+		v=instrument->FindVariable(SYP_PWM) ;
+		vfs=new UISliderField(pos,*v,"glottal",0,0xFF,1,0x10,7,SD_AUTO,19) ;
+		T_SimpleList<UIField>::Insert(vfs) ;
+		pos=GUIPoint(2,8) ;
+		v=instrument->FindVariable(SYP_NOISE) ;
+		vfs=new UISliderField(pos,*v,"breath ",0,0xFF,1,0x10,7,SD_AUTO,19) ;
+		T_SimpleList<UIField>::Insert(vfs) ;
+
+		pos=GUIPoint(22,6) ;
+		v=instrument->FindVariable(SYP_CUTOFF) ;
+		vfs=new UISliderField(pos,*v,"vowel  ",0,0xFF,1,0x10,7) ;
+		T_SimpleList<UIField>::Insert(vfs) ;
+		pos=GUIPoint(22,7) ;
+		v=instrument->FindVariable(SYP_RESO) ;
+		vfs=new UISliderField(pos,*v,"formant",0,0xFF,1,0x10,7) ;
+		T_SimpleList<UIField>::Insert(vfs) ;
+		pos=GUIPoint(22,8) ;
+		v=instrument->FindVariable(SYP_VOXVA) ;
+		vst=new UIStepperField(pos,*v,"vow a  ","%s",0,4) ;   // 5 vowels
+		T_SimpleList<UIField>::Insert(vst) ;
+		pos=GUIPoint(22,9) ;
+		v=instrument->FindVariable(SYP_VOXVB) ;
+		vst=new UIStepperField(pos,*v,"vow b  ","%s",0,4) ;
+		T_SimpleList<UIField>::Insert(vst) ;
+		pos=GUIPoint(22,11) ;
+		v=instrument->FindVariable(SYP_LFODEST) ;
+		vst=new UIStepperField(pos,*v,"lfo    ","%s",0,SLD_LAST-1) ;
+		T_SimpleList<UIField>::Insert(vst) ;
+		pos=GUIPoint(22,12) ;
+		v=instrument->FindVariable(SYP_LFORATE) ;
+		vfs=new UISliderField(pos,*v,"rate   ",0,0xFF,1,0x10,7) ;
+		T_SimpleList<UIField>::Insert(vfs) ;
+		pos=GUIPoint(22,13) ;
+		v=instrument->FindVariable(SYP_LFODEPTH) ;
+		vfs=new UISliderField(pos,*v,"depth  ",0,0xFF,1,0x10,7) ;
+		T_SimpleList<UIField>::Insert(vfs) ;
 	}
 
 	if (pdx||vax) {

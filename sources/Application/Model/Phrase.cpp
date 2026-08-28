@@ -38,8 +38,12 @@ Phrase::~Phrase() {
 	*/
 } ;
 
-unsigned short Phrase::GetNext() {
-	for (int i=0;i<PHRASE_COUNT;i++) {
+unsigned short Phrase::GetNext(int startAfter) {
+	// startAfter>=0: hand back the first free slot AFTER it, wrapping --
+	// so a clone lands next to its source instead of at 00. Default -1
+	// keeps the plain lowest-free scan for every other caller.
+	for (int j=0;j<PHRASE_COUNT;j++) {
+		int i=(startAfter>=0)?((startAfter+1+j)%PHRASE_COUNT):j ;
 		if (!isUsed_[i]) {
 			isUsed_[i]=true ;
 			return i ;

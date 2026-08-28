@@ -27,7 +27,6 @@ AudioMixer::AudioMixer(const char *name):
 	clipped_ = false ;
 	clipLatch_ = false ;
     peakMixerLevel_ = 0;
-    preMasterVolumePeakLevel_ = 0 ;
     outputPeakLevel_ = 0 ;
 	
 	// Precalculate constant values for softclipping algorithm
@@ -171,26 +170,12 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
      if (gotData) {
          fixed *c = buffer;
 
-         // Capture pre-volume peaks (raw signal before any processing)
-         fixed preVolumePeakL = i2fp(0), preVolumePeakR = i2fp(0);
-         for (int i = 0; i < samplecount * 2; i += 2) {
-             fixed left = c[i];
-             fixed right = c[i + 1];
-             if (left < 0) left = -left;
-             if (right < 0) right = -right;
-             if (left > preVolumePeakL) preVolumePeakL = left;
-             if (right > preVolumePeakR) preVolumePeakR = right;
-         }
-         // Pack and store pre-volume peaks
-         unsigned int prePackedL = (unsigned int)fp2i(preVolumePeakL);
-         unsigned int prePackedR = (unsigned int)fp2i(preVolumePeakR);
-         if (prePackedL > 0xFFFF) prePackedL = 0xFFFF;
-         if (prePackedR > 0xFFFF) prePackedR = 0xFFFF;
-         preMasterVolumePeakLevel_ = (prePackedL << 16) | prePackedR;
-
-         // Track peak levels (left and right channels)
-         fixed peakL = i2fp(0), peakR = i2fp(0);
-
+         // Master fader / per-channel volume. Two extra full-buffer peak
+         // scans used to bracket this: a pre-volume peak that had no
+         // readers anywhere, and the post-volume peak (peakMixerLevel_,
+         // the bus VU) which equals the post-clip peak taken below -- a
+         // bus's EQ is inert and hard clip is identity until full scale.
+         // Both are gone; peakMixerLevel_ is set from that single pass.
          if (volume_ != i2fp(1)) {
              for (int i = 0; i < samplecount * 2; i++) {
                  fixed v = fp_mul(*c, volume_);
@@ -198,26 +183,7 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
              }
          }
 
-         // Re-point c to buffer start for peak tracking
-         c = buffer;
          
-         // Track peak levels for both channels
-         for (int i = 0; i < samplecount * 2; i += 2) {
-             fixed left = c[i];
-             fixed right = c[i + 1];
-             if (left < 0) left = -left;
-             if (right < 0) right = -right;
-             if (left > peakL) peakL = left;
-             if (right > peakR) peakR = right;
-         }
-
-         // left 16 bits | right 16 bits, clamped to 16-bit range
-         unsigned int packedL = (unsigned int)fp2i(peakL);
-         unsigned int packedR = (unsigned int)fp2i(peakR);
-         if (packedL > 0xFFFF) packedL = 0xFFFF;
-         if (packedR > 0xFFFF) packedR = 0xFFFF;
-         peakMixerLevel_ = (packedL << 16) | packedR;
-
          // Apply soft/hard clipping before recording.
          //
          // This ran every sample through fixed -> float -> fixed even
@@ -273,6 +239,10 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
              if (oL > 0xFFFF) oL = 0xFFFF;
              if (oR > 0xFFFF) oR = 0xFFFF;
              outputPeakLevel_ = (oL << 16) | oR;
+             // Bus VU reads peakMixerLevel_; on a bus this post-clip
+             // peak matches the old post-volume scan (inert EQ, hard
+             // clip) below full scale and both peg above it.
+             peakMixerLevel_ = outputPeakLevel_;
          }
      } else {
          /* Nothing sounded this block, so the meters read zero.
@@ -282,7 +252,6 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
             the transport stops, because UpdateVuBarHeights only
             decays a bar when the new peak is LOWER than the old one,
             and a frozen peak is never lower than itself. */
-         preMasterVolumePeakLevel_ = 0;
          peakMixerLevel_ = 0;
          outputPeakLevel_ = 0;
      }

@@ -1,3 +1,36 @@
+PSPATTERN 0.13.0a
+
+    A new voice. VOX is a formant engine, and where the others subtract
+        from a rich source with one filter, warp a single oscillator, or
+        stack sines into metal, it holds several resonant peaks at once
+        -- which is what a vowel is. A band-limited glottal source and a
+        breath of noise run through a bank of parallel bandpass filters
+        tuned to a vowel's formants, and one knob morphs between two
+        vowels you pick. It sings: choir pads that breathe, talkbox
+        leads, an "ooh" bass. It is also far cheaper than the four
+        operator FM it stands beside -- one source and a handful of
+        filters, no wavetable to miss in the cache -- so it carries the
+        polyphony FM runs out of budget for.
+
+    Underneath, the audio path got cheaper. The mixer was scanning each
+        block three times to read its meters and two of those passes
+        were redundant; they are gone, and the output is identical to
+        the sample. The FM operator's sine was two table reads and two
+        held pointers per sample and is now one of each. Neither was a
+        guess: a compile-time profiler now attributes render time by
+        stage, so the next saving is aimed rather than hoped at.
+
+    And the edges people actually touch. A new synth now arrives with a
+        gentle amplitude envelope already on, because nearly every patch
+        wants one. Moving up and down through a synth's controls is
+        reversible again -- up undoes a down instead of occasionally
+        stepping a column sideways -- and the selected control wears a
+        clear marker rather than a faint change of shade. Cloning a
+        phrase or a chain drops the copy beside its source instead of at
+        the lowest free number. And, for anyone who turns it on, a
+        looping phrase can follow the edit cursor down the list the way
+        the M8 does.
+
 PSPATTERN 0.12.0a
 
     The send effects moved onto the second core. The PSP has two

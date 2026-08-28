@@ -20,8 +20,11 @@ Chain::~Chain() {
 	if (transpose_) SYS_FREE(transpose_) ;
 };
 
-unsigned short Chain::GetNext() {
-	for (int i=0;i<CHAIN_COUNT;i++) {
+unsigned short Chain::GetNext(int startAfter) {
+	// startAfter>=0: first free slot AFTER it, wrapping, so a clone lands
+	// next to its source instead of at 00. Default -1 = lowest-free scan.
+	for (int j=0;j<CHAIN_COUNT;j++) {
+		int i=(startAfter>=0)?((startAfter+1+j)%CHAIN_COUNT):j ;
 		if (!isUsed_[i]) {
 			isUsed_[i]=true ;
 			return i ;

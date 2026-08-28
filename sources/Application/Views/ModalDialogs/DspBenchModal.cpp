@@ -3,6 +3,9 @@
 #include "Application/Player/Player.h"
 #include <stdio.h>
 #include <string.h>
+#ifdef PSP_DSP_PROFILE
+#include "Application/Instruments/SynthInstrument.h"
+#endif
 
 #ifdef PSP_ME_OFFLOAD
 extern "C" unsigned int PSPME_Ready(void) ;
@@ -22,9 +25,9 @@ extern "C" unsigned int PSPME_FmCycles(void) ;
 // two lines of legend -- plus the title, the budget line and the
 // column header above them
 #ifdef PSP_ME_OFFLOAD
-#define BENCH_H 22
+#define BENCH_H 23
 #else
-#define BENCH_H 18
+#define BENCH_H 19
 #endif
 
 DspBenchModal::DspBenchModal(View &view) : ModalView(view) {
@@ -58,6 +61,24 @@ void DspBenchModal::DrawView() {
 		SetColor(CD_HILITE2) ;
 		DrawString(0,9,"O  measure       X  close",props) ;
 		SetColor(CD_NORMAL) ;
+#ifdef PSP_DSP_PROFILE
+		// Tier-0 live renderFm profile (accumulated over whatever has
+		// played since boot). flt/unf = avg us per FM block with/without
+		// the two-pass SVF; their difference is the filter-stage cost, and
+		// "filtered %%" says whether the single-pass filter opt is worth it.
+		{
+			unsigned long long uf,uu ; unsigned int bf,bu ;
+			SynthInstrument::GetFmProfile(uf,uu,bf,bu) ;
+			unsigned int tot=bf+bu ;
+			SetColor(CD_ROW2) ;
+			sprintf(line,"FM us/blk flt%u unf%u",
+			        bf?(unsigned int)(uf/bf):0,bu?(unsigned int)(uu/bu):0) ;
+			DrawString(0,11,line,props) ;
+			sprintf(line,"blks%u  filtered %u%%",tot,tot?(bf*100u/tot):0) ;
+			DrawString(0,12,line,props) ;
+			SetColor(CD_NORMAL) ;
+		}
+#endif
 		return ;
 	}
 

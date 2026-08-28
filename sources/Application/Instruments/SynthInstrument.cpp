@@ -17,8 +17,29 @@
 #define PDX_KNEE_MIN 1024
 
 static const char *engineNames[SET_LAST]= {
-	"tone","pdx","vax","fm"
+	"tone","pdx","vax","fm","vox"
 } ;
+
+// ---- VOX formant engine tables --------------------------------------
+#define VOX_NVOWEL 5
+#define VOX_NFORMANT 4
+// Formant centre frequencies (Hz), a male-ish voice: u o a e i. The
+// cutoff knob morphs across this row, so the source is coloured by a
+// vowel that slides ooh -> oh -> aah -> eh -> eee as the knob opens.
+static const int voxHz_[VOX_NVOWEL][VOX_NFORMANT]={
+	{ 300,  870, 2240, 3300},   // u  (ooh)
+	{ 400,  800, 2600, 3300},   // o  (oh)
+	{ 700, 1220, 2600, 3300},   // a  (aah)
+	{ 500, 1750, 2500, 3350},   // e  (eh)
+	{ 270, 2300, 3000, 3400},   // i  (eee)
+} ;
+// Relative formant levels (Q15): F1 loudest, higher formants fall away.
+static const int voxAmp_[VOX_NFORMANT]={0x2400,0x1a00,0x0e00,0x0700} ;
+// SVF f-coefficients (Q15), per formant per vowel, built at boot with the
+// same 2x-rate mapping cutTable_ uses.
+static short voxCoef_[VOX_NVOWEL][VOX_NFORMANT] ;
+// Vowel names for the Vowel A / Vowel B selectors.
+static const char *voxVowelNames[VOX_NVOWEL]={"ooh","oh","aah","eh","eee"} ;
 
 /* 4-op algorithms. The name IS the routing: ">" means "modulates",
    a space separates independent branches, and anything not followed
@@ -98,8 +119,7 @@ unsigned int *SynthInstrument::lfoInc_ = 0 ;
 short *SynthInstrument::sineTable_ = 0 ;
 short *SynthInstrument::cosTable_ = 0 ;
 short *SynthInstrument::cutTable_ = 0 ;
-short *SynthInstrument::fmSin_ = 0 ;
-short *SynthInstrument::fmSinD_ = 0 ;
+int *SynthInstrument::fmSinPacked_ = 0 ;
 
 /* Where the tables actually sit. See the header for why.
  *
@@ -146,8 +166,10 @@ void SynthInstrument::placeTables() {
 	// for the same reason.
 	noteInc_   = (unsigned int *)p ; p += 128*2 ;
 	lfoInc_    = (unsigned int *)p ; p += 256*2 ;
-	fmSin_     = p ;                 p += 1024 ;
-	fmSinD_    = p ;                 p += 1024 ;
+	// Packed FM sine LUT: base in the high 16 bits, next-entry delta in
+	// the low 16, one int per entry -- one load and one pointer where the
+	// two short tables were two of each. Same 2048-short footprint.
+	fmSinPacked_ = (int *)p ;        p += 1024*2 ;
 	cosTable_  = p ;                 p += 1025 + 1 ;
 	sineTable_ = p ;                 p += 256 ;
 	cutTable_  = p ;                 p += 256 ;
@@ -299,9 +321,15 @@ SynthInstrument::SynthInstrument() {
 	Insert(v) ;
 	v=new Variable("attack",SYP_ATTACK,0) ;
 	Insert(v) ;
-	v=new Variable("decay",SYP_DECAY,0) ;
+	// A new synth arrives with a gentle amp shape already on -- most
+	// patches want one, so this saves dialing it in every time. attack
+	// stays 0 (the instant-on transient is declicked and liked); a short
+	// decay settles to a slightly-below-full sustain. Set sustain back to
+	// 0xFF for the occasional hard gate. Only new synths get this; loading
+	// a song restores its own saved values over these.
+	v=new Variable("decay",SYP_DECAY,0x40) ;
 	Insert(v) ;
-	v=new Variable("sustain",SYP_SUSTAIN,0xFF) ;
+	v=new Variable("sustain",SYP_SUSTAIN,0xC0) ;
 	Insert(v) ;
 	// 0 keeps the old behaviour exactly: the voice is cut by the next
 	// note, as it always was. Anything above 0 lets it ring out.
@@ -352,6 +380,13 @@ SynthInstrument::SynthInstrument() {
 	v=new Variable("lfo rate",SYP_LFORATE,0x40) ;
 	Insert(v) ;
 	v=new Variable("lfo depth",SYP_LFODEPTH,0x80) ;
+	Insert(v) ;
+	// VOX vowel morph endpoints. Default ooh -> eee spans the whole
+	// table, so the vowel knob behaves exactly as it did before these
+	// existed; narrowing them focuses the morph on two chosen vowels.
+	v=new Variable("vowel a",SYP_VOXVA,(char**)voxVowelNames,VOX_NVOWEL,0) ;
+	Insert(v) ;
+	v=new Variable("vowel b",SYP_VOXVB,(char**)voxVowelNames,VOX_NVOWEL,VOX_NVOWEL-1) ;
 	Insert(v) ;
 	v=new Variable("algo",SYP_FMALGO,(char**)fmAlgoNames,FM_ALGO_COUNT,0) ;
 	Insert(v) ;
@@ -420,14 +455,14 @@ bool SynthInstrument::Init() {
 		for (int i=0;i<256;i++) {
 			sineTable_[i]=(short)(32000.0*sin(i*2.0*3.14159265358979/256.0)) ;
 		}
+		// Packed base<<16 | delta. Step-to-next-entry delta (msfa SIN_DELTA)
+		// so interpolation is a multiply-add; bases recomputed for the
+		// delta so there is no read-back from the packed word.
 		for (int i=0;i<1024;i++) {
-			fmSin_[i]=(short)(32000.0*sin(i*2.0*3.14159265358979/1024.0)) ;
-		}
-		// Step to the next entry, so the interpolation below is a
-		// multiply and an add rather than a subtract as well. This is
-		// what msfa does with SIN_DELTA, for the same reason.
-		for (int i=0;i<1024;i++) {
-			fmSinD_[i]=(short)(fmSin_[(i+1)&1023]-fmSin_[i]) ;
+			short b0=(short)(32000.0*sin(i*2.0*3.14159265358979/1024.0)) ;
+			short b1=(short)(32000.0*sin(((i+1)&1023)*2.0*3.14159265358979/1024.0)) ;
+			short d=(short)(b1-b0) ;
+			fmSinPacked_[i]=((int)b0<<16)|(int)(unsigned short)d ;
 		}
 		for (int i=0;i<1025;i++) {
 			cosTable_[i]=(short)(-32000.0*cos(i*2.0*3.14159265358979/1024.0)) ;
@@ -459,6 +494,13 @@ bool SynthInstrument::Init() {
 			double f=0.05*pow(2.0,i*8.33/255.0) ;
 			lfoInc_[i]=(unsigned int)(f*4294967296.0/SYNTH_RATE) ;
 		}
+		// VOX formant coefficients, 2x-rate like cutTable_ above.
+		for (int vw=0;vw<VOX_NVOWEL;vw++)
+			for (int k=0;k<VOX_NFORMANT;k++) {
+				double f=2.0*sin(3.14159265358979*voxHz_[vw][k]/(2.0*SYNTH_RATE))*32768.0 ;
+				if (f>30000.0) f=30000.0 ;
+				voxCoef_[vw][k]=(short)f ;
+			}
 		tablesBuilt_=true ;
 	}
 	tableState_.Reset() ;
@@ -630,6 +672,7 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	if (!wasActive) {
 		v.svfLow_=0 ;
 		v.svfBand_=0 ;
+		for (int k=0;k<4;k++) { v.fmtLow_[k]=0 ; v.fmtBand_[k]=0 ; }
 		v.curInc_=v.phaseInc_ ;
 		v.click_=0 ;
 	} else if (glide==0) {
@@ -919,6 +962,8 @@ bool SynthInstrument::Render(int channel,fixed *buffer,int size,bool updateTick)
 			return renderVax(v,buffer,size) ;
 		case SET_FM:
 			return renderFm(v,buffer,size) ;
+		case SET_VOX:
+			return renderVox(v,buffer,size) ;
 		case SET_TONE:
 		default:
 			return renderTone(v,buffer,size) ;
@@ -1340,6 +1385,22 @@ void SynthInstrument::releaseFmOps(SynthVoice &v) {
 	}
 }
 
+#ifdef PSP_DSP_PROFILE
+#include <pspkernel.h>
+// Tier-0 renderFm cycle-attribution profiler (see SynthInstrument.h). One
+// timer pair per renderFm block, bucketed by the `filtered` flag. Uses
+// sceKernelGetSystemTimeLow (user-mode-safe; a block is hundreds of us so
+// 1us granularity is fine once averaged over the load test).
+static unsigned long long s_fmUsFilt=0, s_fmUsUnfilt=0 ;
+static unsigned int s_fmBlkFilt=0, s_fmBlkUnfilt=0 ;
+static inline unsigned int dspProfMicros() { return sceKernelGetSystemTimeLow() ; }
+void SynthInstrument::GetFmProfile(unsigned long long &usFilt,unsigned long long &usUnfilt,
+                                   unsigned int &blkFilt,unsigned int &blkUnfilt) {
+	usFilt=s_fmUsFilt ; usUnfilt=s_fmUsUnfilt ; blkFilt=s_fmBlkFilt ; blkUnfilt=s_fmBlkUnfilt ;
+}
+void SynthInstrument::ResetFmProfile() { s_fmUsFilt=s_fmUsUnfilt=0 ; s_fmBlkFilt=s_fmBlkUnfilt=0 ; }
+#endif
+
 bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 
 	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
@@ -1458,6 +1519,9 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 	int glideRefresh=0 ;
 	fixed *out=buffer ;
 
+#ifdef PSP_DSP_PROFILE
+	unsigned int _profStart=dspProfMicros() ;
+#endif
 	for (int n=0;n<size;n++) {
 
 		if (glideRefresh==0) {
@@ -1517,7 +1581,7 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 			unsigned int p=ph##N+(PHOFF)+                                         \
 			               (((unsigned int)(FEDIN))<<FM_INDEX_SHIFT) ;            \
 			unsigned int si=(p>>22)&1023 ;                                        \
-			int sv=fmSin_[si]+((fmSinD_[si]*(int)((p>>6)&0xFFFF))>>16) ;          \
+			int _pk=fmSinPacked_[si] ; int sv=(_pk>>16)+((((int)(short)_pk)*(int)((p>>6)&0xFFFF))>>16) ;          \
 			o##N=(sv*g)>>15 ;                                                     \
 		}                                                                      \
 		ph##N+=inc##N ;
@@ -1583,6 +1647,11 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 		*out++=(fixed)(((long long)sample*panL)>>15) ;
 		*out++=(fixed)(((long long)sample*panR)>>15) ;
 	}
+#ifdef PSP_DSP_PROFILE
+	{ unsigned int _d=dspProfMicros()-_profStart ;
+	  if (filtered) { s_fmUsFilt+=_d ; s_fmBlkFilt++ ; }
+	  else          { s_fmUsUnfilt+=_d ; s_fmBlkUnfilt++ ; } }
+#endif
 
 	v.op_[0].phase_=ph0 ; v.op_[1].phase_=ph1 ;
 	v.op_[2].phase_=ph2 ; v.op_[3].phase_=ph3 ;
@@ -1816,6 +1885,147 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 	return true ;
 } ;
 
+// VOX: a formant / vocal engine. A band-limited glottal source (saw or
+// pulse) plus breath noise is fed through a bank of parallel resonant
+// bandpass SVFs tuned to a vowel's formants, summed by formant level.
+// It is the one engine that holds several resonant peaks at once, which
+// is what a vowel is -- VAX subtracts with a single filter, PDX warps a
+// single cosine, FM makes inharmonic clang. Cost is a known quantity
+// (one source + 4 SVFs, no LUT gather), so it undercuts FM in scalar.
+//
+// No new instrument-screen fields: VOX is not fm/pdx/vax, so it falls
+// into the tone-branch layout, where wave/width/noise/cutoff/reso map to
+// source / glottal PW / breath / vowel position / formant sharpness.
+bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
+
+	int wave=FindVariable(SYP_WAVE)->GetInt() ;
+	int pwm=FindVariable(SYP_PWM)->GetInt() ;
+	unsigned int pwThresh=(unsigned int)(16+((pwm*224)>>8))<<24 ;
+	int noiseQ=FindVariable(SYP_NOISE)->GetInt()<<7 ;
+	int cut=v.cutoff_ ;                 // vowel position 0..255 (u..i)
+	int resoP=v.reso_ ;                 // formant sharpness
+	fixed ampSus=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
+	int ampDec=FindVariable(SYP_DECAY)->GetInt() ;
+	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
+	int panL,panR ;
+	panLR(v.pan_,panL,panR) ;
+	int lfoDest=FindVariable(SYP_LFODEST)->GetInt() ;
+	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
+	int lfoDepth=v.lfoDepth_<<7 ;
+	int viA=FindVariable(SYP_VOXVA)->GetInt() ;   // vowel morph endpoints
+	int viB=FindVariable(SYP_VOXVB)->GetInt() ;
+
+	// reso raises formant Q (lowers the SVF damping toward its floor)
+	int qQ=32768-(resoP<<7) ;
+	if (qQ<1024) qQ=1024 ;
+
+	unsigned int curInc=v.curInc_ ;
+	unsigned int uinc=curInc ;
+	unsigned int urcp=blepRcp(uinc) ;
+
+	int fcoef[VOX_NFORMANT] ;
+	int low[VOX_NFORMANT],band[VOX_NFORMANT] ;
+	for (int k=0;k<VOX_NFORMANT;k++) { low[k]=v.fmtLow_[k] ; band[k]=v.fmtBand_[k] ; }
+	unsigned int rng=v.rng_ ;
+	int refresh=0 ;
+
+	fixed *out=buffer ;
+	for (int i=0;i<size;i++) {
+
+		if (refresh==0) {
+			refresh=16 ;
+			v.curInc_=curInc ;
+			glideStep(v,16) ;
+			curInc=v.curInc_ ;
+
+			int mod=0 ;
+			if (lfoDest!=SLD_OFF && lfoDepth) {
+				v.lfoPhase_+=lfoIncV*16 ;
+				mod=(sineTable_[v.lfoPhase_>>24]*lfoDepth)>>15 ;
+			}
+			unsigned int baseInc=curInc ;
+			if (lfoDest==SLD_PITCH && mod) {
+				baseInc=(unsigned int)((long long)curInc+
+					((long long)curInc*mod)/557056) ;
+			}
+			uinc=baseInc ;
+			urcp=blepRcp(uinc) ;
+			int pwmEff=pwm ;
+			if (lfoDest==SLD_PWM) pwmEff+=mod>>8 ;
+			if (pwmEff<0) pwmEff=0 ;
+			if (pwmEff>255) pwmEff=255 ;
+			pwThresh=(unsigned int)(16+((pwmEff*224)>>8))<<24 ;
+
+			// vowel position: the knob (wobbled by the LFO when it is
+			// pointed at the filter) morphs the vowel index from A to B,
+			// walking the table through any vowels that lie between them.
+			// A=ooh, B=eee spans the whole table -- the default and the
+			// original single-knob behaviour.
+			int vpos=cut ;
+			if (lfoDest==SLD_FILTER) vpos+=mod>>8 ;
+			if (vpos<0) vpos=0 ;
+			if (vpos>255) vpos=255 ;
+			int idx=(viA<<8)+((viB-viA)*vpos*256)/255 ;   // vowel index, 8.8
+			int vi=idx>>8,vf=idx&0xFF ;
+			if (vi<0) { vi=0 ; vf=0 ; }
+			if (vi>VOX_NVOWEL-2) { vi=VOX_NVOWEL-2 ; vf=255 ; }
+			for (int k=0;k<VOX_NFORMANT;k++) {
+				int c0=voxCoef_[vi][k],c1=voxCoef_[vi+1][k] ;
+				fcoef[k]=c0+(((c1-c0)*vf)>>8) ;
+			}
+		}
+		refresh-- ;
+
+		// band-limited glottal source + breath noise
+		int ex ;
+		if (wave==SWT_SQUARE)
+			ex=(pulseBlep(v.uphase_[0],uinc,urcp,pwThresh)*24576)>>15 ;
+		else
+			ex=sawBlep(v.uphase_[0],uinc,urcp) ;
+		v.uphase_[0]+=uinc ;
+		if (noiseQ) {
+			rng=rng*1664525u+1013904223u ;
+			int nz=(int)(short)(rng>>16) ;
+			ex+=(nz*noiseQ)>>15 ;
+		}
+		if (ex>32700) ex=32700 ;
+		if (ex<-32700) ex=-32700 ;
+
+		// parallel formant bank: each a bandpass Chamberlin SVF, two
+		// passes at 64-bit exactly as renderVax, summed by formant level.
+		// The four filters share one input, so this is where a VFPU
+		// version runs the recurrence four lanes wide.
+		int sum=0 ;
+		for (int k=0;k<VOX_NFORMANT;k++) {
+			int lo=low[k],bd=band[k],fc=fcoef[k] ;
+			for (int pass=0;pass<2;pass++) {
+				lo+=(int)(((long long)fc*bd)>>15) ;
+				int hi=ex-lo-(int)(((long long)qQ*bd)>>15) ;
+				bd+=(int)(((long long)fc*hi)>>15) ;
+				if (bd>SVF_CLAMP) bd=SVF_CLAMP ;
+				if (bd<-SVF_CLAMP) bd=-SVF_CLAMP ;
+				if (lo>SVF_CLAMP) lo=SVF_CLAMP ;
+				if (lo<-SVF_CLAMP) lo=-SVF_CLAMP ;
+			}
+			low[k]=lo ; band[k]=bd ;
+			sum+=(bd*voxAmp_[k])>>15 ;
+		}
+		if (sum>32700) sum=32700 ;
+		if (sum<-32700) sum=-32700 ;
+
+		stepRamp(v.amp_,ampSus,ampDec) ;
+		fixed smp=fp_mul(sum*(v.amp_.level_>>8),vol) ;
+		applyVoiceClick(v,smp) ;
+		*out++=(fixed)(((long long)smp*panL)>>15) ;
+		*out++=(fixed)(((long long)smp*panR)>>15) ;
+	}
+
+	v.curInc_=curInc ;
+	for (int k=0;k<VOX_NFORMANT;k++) { v.fmtLow_[k]=low[k] ; v.fmtBand_[k]=band[k] ; }
+	v.rng_=rng ;
+	return true ;
+} ;
+
 bool SynthInstrument::IsInitialized() {
 	return true ;
 } ;
@@ -1840,6 +2050,9 @@ const char *SynthInstrument::GetName() {
 			// the algorithm is the identity of an FM patch the way
 			// the waveform is for the others
 			sprintf(name_,"FM %s",fmAlgoNames[FindVariable(SYP_FMALGO)->GetInt()]) ;
+			break ;
+		case SET_VOX:
+			sprintf(name_,"VOX %s",waveNames[FindVariable(SYP_WAVE)->GetInt()]) ;
 			break ;
 		default:
 			sprintf(name_,"TONE %s",waveNames[FindVariable(SYP_WAVE)->GetInt()]) ;

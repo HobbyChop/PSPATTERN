@@ -138,7 +138,7 @@ void ChainView::clonePosition() {
     if (current == 255)
         return;
 
-    unsigned short next = viewData_->song_->phrase_->GetNext();
+    unsigned short next = viewData_->song_->phrase_->GetNext(current);
     if (next == NO_MORE_PHRASE)
         return;
 

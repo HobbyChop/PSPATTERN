@@ -103,6 +103,10 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
 
     viewData_->playMode_ = (forceSongMode ? PM_SONG : mode);
 
+    // M8-style phrase follow (off unless the config opts in)
+    const char *pf = Config::GetInstance()->GetValue("PHRASE_FOLLOW");
+    phraseFollow_ = (pf && !strcmp(pf, "YES"));
+
     // Always set position, allows for playing song with chain offset
     unsigned playPos = viewData_->songY_ + viewData_->songOffset_;
     lastSongPos_ = playPos;
@@ -1233,6 +1237,13 @@ void Player::moveToNextStep() {
                         if (mode_ != PM_PHRASE) {
                             moveToNextPhrase(i);
                         } else {
+                            // phrase mode loops; optionally follow the
+                            // editor cursor to whatever phrase it now
+                            // sits on, so play chases you down (M8)
+                            if (phraseFollow_ &&
+                                viewData_->currentPhrase_ != 0xFF)
+                                viewData_->currentPlayPhrase_[i] =
+                                    viewData_->currentPhrase_ ;
                             updatePhrasePos(0, i);
                         }
                     }

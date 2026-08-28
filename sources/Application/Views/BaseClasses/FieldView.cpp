@@ -142,7 +142,16 @@ void FieldView::ProcessButtonMask(unsigned short mask) {
 						if (sameCol&&((!first)||(cy<first->GetPosition()._y))) first=&current ;
 						if (cy>fy) {
 							if ((!nextAny)||(cy<nextAny->GetPosition()._y)) nextAny=&current ;
-							if (sameCol&&((!next)||(cy<next->GetPosition()._y))) next=&current ;
+							if (sameCol) {
+								// break same-row ties by nearest x, so down is
+								// deterministic and up reverses it (the amp
+								// env's sustain/release sit on one row)
+								int nx=next?next->GetPosition()._x:0 ;
+								int ndx=(nx>fx)?(nx-fx):(fx-nx) ;
+								if ((!next)||(cy<next->GetPosition()._y)||
+								    ((cy==next->GetPosition()._y)&&(dx<ndx)))
+									next=&current ;
+							}
 						}
 					}
 
@@ -179,7 +188,13 @@ void FieldView::ProcessButtonMask(unsigned short mask) {
 						if (sameCol&&((!last)||(cy>last->GetPosition()._y))) last=&current ;
 						if (cy<fy) {
 							if ((!prevAny)||(cy>prevAny->GetPosition()._y)) prevAny=&current ;
-							if (sameCol&&((!prev)||(cy>prev->GetPosition()._y))) prev=&current ;
+							if (sameCol) {
+								int px=prev?prev->GetPosition()._x:0 ;
+								int pdx=(px>fx)?(px-fx):(fx-px) ;
+								if ((!prev)||(cy>prev->GetPosition()._y)||
+								    ((cy==prev->GetPosition()._y)&&(dx<pdx)))
+									prev=&current ;
+							}
 						}
 					}
 

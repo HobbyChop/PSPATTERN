@@ -21,10 +21,14 @@ void UISliderField::Draw(GUIWindow &w,int offset) {
 	position._y+=offset ;
 	AppWindow &app=(AppWindow &)w ;
 
-	// label: grey at rest, white when this row is selected (the tick
-	// on the bar does the highlighting — no inverse video)
-	app.SetColor(focus_?CD_NORMAL:CD_ROW2) ;
+	// label: grey at rest; the focused row gets an inverse block on its
+	// name -- the same marker the integer fields use -- so the selection
+	// is unmistakable. The bar tick alone read as too faint on a busy
+	// page (tester feedback).
+	props.invert_=focus_ ;
+	app.SetColor(focus_?CD_HILITE2:CD_ROW2) ;
 	w.DrawString(format_,position,props) ;
+	props.invert_=false ;
 
 	// the bar: a real pixel gradient bar (the PSPECTRA grad_bar look),
 	// composited over the char grid by AppWindow at flush time. The
