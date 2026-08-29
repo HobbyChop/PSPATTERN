@@ -1,3 +1,25 @@
+PSPATTERN 0.16.0a
+
+    Standby works. Slide the power switch and the machine sleeps;
+        slide it again and the song, the screen and the second
+        processor all come back. The Media Engine is why this was ever
+        broken: its library replaces the firmware's own suspend
+        handling, and with nothing in the replacement the core went
+        down mid-job and the machine rebooted -- which is why the
+        switch was locked out entirely. Now the core is held in reset
+        while the machine sleeps and reboots from its resident image
+        at wake, the controller and display re-arm on the way up, and
+        if the wake ever goes wrong the effects simply fall back to
+        the main processor rather than hanging anything. Verified on
+        hardware through suspends mid-reverb and back-to-back cycles.
+
+    And a navigation fix: jumping deep through the map in one gesture
+        -- song straight to phrase, or all the way to the instrument
+        screen -- now carries the cursor's context through every level
+        it crosses, so the phrase you land on is the one reachable
+        through the cell you were standing on, exactly as the two-hop
+        route always did.
+
 PSPATTERN 0.15.0a
 
     The instrument screen becomes an instrument. Each control owns one

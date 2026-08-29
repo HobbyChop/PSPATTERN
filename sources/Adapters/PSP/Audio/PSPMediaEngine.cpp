@@ -388,11 +388,59 @@ extern "C" int PSPME_Init(void) {
 	ME_FMCYC = 0;
 #endif
 	int tableId = meLibDefaultInit();
-	if (tableId == ME_CORE_T2_IMG_TABLE || tableId == ME_CORE_IMG_TABLE) {
-		scePowerLock(0);   // suspend with the core live reboots inside the app
-	}
+	/* The power lock that used to live here is gone: the sleep/wake
+	   handlers above quiesce the core across a suspend (hold reset,
+	   ME_READY down, reboot from the resident image at wake), so the
+	   switch is allowed to work. If hardware ever proves the wake path
+	   wrong, the failure is silent sends on the scalar fallback -- the
+	   old un-quiesced reboot cannot recur while meLibOnSleep links
+	   strong. */
 	return tableId;
 }
+
+/* STANDBY. me-lib hijacks Sony's ME suspend handler at kinit, so
+   without strong handlers here the ME went down un-quiesced -- the
+   crash-and-reboot that led to the power lock in PSPME_Init. These are
+   the SIMPLE style: hold the core in reset while the machine sleeps,
+   pulse the reset at wake so it reboots clean from its RESIDENT image
+   (everything it needs -- the shared words, the uncached buffers, the
+   delay-line aliases -- survives in main RAM). The DEFAULT register-
+   save style is NOT safe here: the ME stack lives in eDRAM, which
+   standby wipes.
+
+   Sleep also drops ME_READY, and that is the safety keystone: if
+   anything about the wake goes wrong, every render just takes the
+   scalar fallback -- silent sends, never a hang. */
+static volatile unsigned int meSleepCount_ = 0;
+static volatile unsigned int meWakeCount_ = 0;
+
+extern "C" __attribute__((noinline, aligned(4)))
+void meLibOnSleep(void) {
+	ME_READY = 0;              // renders fall back to the scalar path
+	ME_BUSY = 0;               // nothing is in flight on a parked core
+	meSleepCount_++;
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;
+	meLibSync();
+}
+
+extern "C" __attribute__((noinline, aligned(4)))
+void meLibOnWake(void) {
+	meWakeCount_++;
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;
+	HW_SYS_RESET_ENABLE = 0;   // reboot from the resident image
+	meLibSync();
+}
+
+/* Main-thread half of the wake, called from PSPHandleResume: reconcile
+   the job handshake. A job frozen mid-flight at suspend would leave
+   the collect side reading "busy" forever. */
+extern "C" void PSPME_OnResume(void) {
+	ME_BUSY = 0;
+	mePrevN_ = 0;
+	meLibSync();
+}
+extern "C" unsigned int PSPME_SleepCount(void) { return meSleepCount_; }
+extern "C" unsigned int PSPME_WakeCount(void)  { return meWakeCount_; }
 
 extern "C" void PSPME_Shutdown(void) {
 	ME_EXIT_ = 1;
@@ -401,6 +449,12 @@ extern "C" void PSPME_Shutdown(void) {
 	if (meDlyIn) meLibAllocUncached32(&meDlyInH_, 0);
 	if (meRevIn) meLibAllocUncached32(&meRevInH_, 0);
 	if (meOut)   meLibAllocUncached32(&meOutH_,   0);
+	// leave the core HELD IN RESET: a halted-but-unreset ME across a
+	// suspend is the guaranteed hang (project rule); held in reset it
+	// is inert whatever the power switch does during shutdown
+	ME_READY = 0;
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;
+	meLibSync();
 }
 
 extern "C" unsigned int PSPME_Ready(void)     { return (unsigned int)ME_READY; }

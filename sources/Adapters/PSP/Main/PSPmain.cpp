@@ -14,6 +14,7 @@
 
 #include <pspkernel.h>
 #include <pspdebug.h>
+#include <pspctrl.h>
 #include <psppower.h>
 #include "Adapters/PSP/Midi/PSPUsbMidiLink.h"
 
@@ -50,6 +51,9 @@ int exitCallback(int arg1, int arg2, void *common) {
    adapter, the audio device needs un-pausing, and the renderer only
    repaints cells that changed — so the whole diff cache has to be
    invalidated or the LCD stays stale/black. */
+extern "C" void PSPME_OnResume(void) ;
+extern "C" void SDLGUI_MarkGuLost(void) ;
+
 static volatile int g_resumePending = 0;
 
 int powerCallback(int unknown, int pwrflags, void *common) {
@@ -74,6 +78,18 @@ int powerCallback(int unknown, int pwrflags, void *common) {
 void PSPHandleResume() {
 	if (!g_resumePending) return;
 	g_resumePending = 0;
+
+#ifdef PSP_ME_OFFLOAD
+	// reconcile the ME handshake before audio starts posting jobs; the
+	// core itself was already rebooted by meLibOnWake at sysevent time
+	PSPME_OnResume();
+#endif
+	// standby resets controller sampling: re-assert analog or the nub
+	// goes dead until the next boot
+	sceCtrlSetSamplingCycle(0);
+	sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
+	// the GE state did not survive; re-init on the next draw
+	SDLGUI_MarkGuLost();
 
 	SDL_PauseAudio(0);
 	PSPUsbMidiLink::OnResume();

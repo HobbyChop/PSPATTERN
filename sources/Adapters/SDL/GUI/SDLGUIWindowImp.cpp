@@ -733,6 +733,8 @@ void SDLGUIWindowImp::Unlock()
 // no longer plots the ~184 one-pixel columns per frame.
 static unsigned int __attribute__((aligned(16))) s_guList[128*1024/4];
 static bool s_guReady = false;
+// a resume wiped the GE state: force guGpuInit on the next draw
+extern "C" void SDLGUI_MarkGuLost(void) { s_guReady = false; }
 struct GuVtxC { unsigned int color; short x, y, z; };
 struct GuScope { int x,y,w,h,n; bool live; unsigned int wave,bg; short lo[96],hi[96]; };
 static GuScope s_scopes[4];

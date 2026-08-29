@@ -1809,7 +1809,7 @@ bool AppWindow::onEvent(GUIEvent &event) {
             if (navigating_) {
                 navigating_ = false;
                 if (navSel_ != currentViewType() && _currentView) {
-                    _currentView->OnNavTo(navSel_);
+                    navPrep(currentViewType(), navSel_);
                     switchToView(navSel_);
                 }
             }
@@ -1937,6 +1937,34 @@ ViewType AppWindow::currentViewType() {
     // "the cursor will not go there".
     else if (_currentView == _tableView)      return _tableView->GetViewType();
     return VT_SONG;
+}
+
+/* Context prep for a menu jump. A single hop asks the leaving view
+   (its OnNavTo override). A DEEP jump -- song straight to phrase or
+   instrument -- runs the preps along the hierarchy chain, so landing
+   on the phrase from the song follows the cursor through the chain
+   exactly as two single hops would: the cell under the song cursor
+   names the chain, the chain's row names the phrase. */
+void AppWindow::navPrep(ViewType from, ViewType to) {
+    if (from == VT_SONG &&
+        (to == VT_PHRASE || to == VT_INSTRUMENT || to == VT_TABLE)) {
+        if (_songView)  _songView->OnNavTo(VT_CHAIN);
+        if (_chainView) _chainView->OnNavTo(VT_PHRASE);
+        if (to == VT_INSTRUMENT && _phraseView)
+            _phraseView->OnNavTo(VT_INSTRUMENT);
+        return;
+    }
+    if (from == VT_CHAIN && to == VT_INSTRUMENT) {
+        if (_chainView)  _chainView->OnNavTo(VT_PHRASE);
+        if (_phraseView) _phraseView->OnNavTo(VT_INSTRUMENT);
+        return;
+    }
+    if (from == VT_MIXER && to == VT_INSTRUMENT) {
+        if (_mixerView)  _mixerView->OnNavTo(VT_PHRASE);
+        if (_phraseView) _phraseView->OnNavTo(VT_INSTRUMENT);
+        return;
+    }
+    if (_currentView) _currentView->OnNavTo(to);
 }
 
 // The one place a screen switch happens: views fire VET_SWITCH_VIEW at
