@@ -71,6 +71,8 @@ public:
     void MidiNoteOn(unsigned char note,unsigned char velocity);
     void MidiNoteOff(unsigned char note);
     void MidiAllNotesOff();
+    // hard-release any voice rendering this instrument (pre-delete)
+    void CutInstrument(I_Instrument *instr);
     SequencerMode GetSequencerMode() ;
 
     void OnStartButton(PlayMode origin, unsigned int from,

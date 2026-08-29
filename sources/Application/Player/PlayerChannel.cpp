@@ -6,6 +6,8 @@
 #include "Application/Player/SyncMaster.h"
 #include "Application/Utils/fixed.h"
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 PlayerChannel::PlayerChannel(int index) {             
     index_=index ;
@@ -27,6 +29,11 @@ PlayerChannel::PlayerChannel(int index) {
     lpfPrevOutput_[0] = lpfPrevOutput_[1] = i2fp(0);
     lpfAlpha_ = i2fp(0);
     lpfFreq_ = 0;
+    phaserRate_ = 128; phaserDepth_ = 0;
+    chorusRate_ = 96;  chorusDepth_ = 0;
+    phLfoPh_ = 0; chLfoPh_ = 0; chPos_ = 0;
+    chBuf_ = 0; chClear_ = false;
+    for (int k = 0; k < 4; k++) phZ_[k][0] = phZ_[k][1] = 0;
     lastOut_[0] = lastOut_[1] = 0;
     click_[0] = click_[1] = 0;
     declickPending_ = false;
@@ -36,6 +43,7 @@ PlayerChannel::PlayerChannel(int index) {
 #define CHANNEL_CLICK_MAX (i2fp(32000))
 
 PlayerChannel::~PlayerChannel() {
+	if (chBuf_) { free(chBuf_) ; chBuf_=0 ; }
 }
 
 void PlayerChannel::StartInstrument(I_Instrument *instr,unsigned char note,bool trigger) {
@@ -91,6 +99,14 @@ void PlayerChannel::StartInstrument(I_Instrument *instr,unsigned char note,bool 
    };
 } ;
 
+void PlayerChannel::CutIfPlaying(I_Instrument *instr) {
+	if (instr_!=instr) return ;
+	instr_->Stop(index_) ;
+	instr_=0 ;
+	releasing_=false ;
+	declickPending_=true ;
+} ;
+
 void PlayerChannel::StopInstrument() {
      if (instr_) {
        instr_->Stop(index_) ;
@@ -142,6 +158,82 @@ void PlayerChannel::applyDeclick(fixed *buffer, int samplecount) {
 
     lastOut_[0] = buffer[(samplecount - 1) * 2];
     lastOut_[1] = buffer[(samplecount - 1) * 2 + 1];
+}
+
+// Per-channel phaser + chorus, a serial insert on the post-fader signal.
+// Fixed-point throughout: pcm ints, Q15 coefficients, Q32 LFO phase,
+// the chorus tap in 24.8 -- the only float is the two per-BLOCK rate
+// mappings. Skipped whole when both depths are zero, so a channel with
+// no inserts pays nothing; the chorus line is allocated on first use.
+void PlayerChannel::applyInserts(fixed *buffer, int samplecount) {
+    bool doPh = (phaserDepth_ > 0);
+    bool doCh = (chorusDepth_ > 0);
+    if (!doPh && !doCh) return;
+
+    if (doCh && !chBuf_) {
+        chBuf_ = (short *)malloc(CHORUS_LEN * 2 * sizeof(short));
+        if (chBuf_) chClear_ = true;
+        else doCh = false;               // heap tight: chorus waits
+    }
+    if (doCh && chClear_) {
+        memset(chBuf_, 0, CHORUS_LEN * 2 * sizeof(short));
+        chClear_ = false;
+    }
+    if (!doPh && !doCh) return;
+
+    // rate 0..255 -> ~0.12..3.9 Hz (phaser), ~0.10..2.7 Hz (chorus);
+    // Q32 phase increments, computed once a block
+    unsigned int phInc =
+        (unsigned int)((0.12f + phaserRate_ * (3.8f / 255.0f)) *
+                       (4294967296.0f / 44100.0f));
+    unsigned int chInc =
+        (unsigned int)((0.10f + chorusRate_ * (2.6f / 255.0f)) *
+                       (4294967296.0f / 44100.0f));
+    int phMix = phaserDepth_ << 7;       // Q15
+    int chMix = chorusDepth_ << 7;
+
+    for (int n = 0; n < samplecount; n++) {
+        // triangle from the top of the phase word, 0..32767
+        int pt = (int)(phLfoPh_ >> 16);
+        int phTri = (pt < 32768) ? pt : (65535 - pt);
+        int ct = (int)(chLfoPh_ >> 16);
+        int chTri = (ct < 32768) ? ct : (65535 - ct);
+        // all-pass sweep 0.15..0.85 in Q15
+        int coef = 4915 + (int)(((long long)22938 * phTri) >> 15);
+        // delay ~10..17.5ms in 24.8 samples
+        int d8 = (441 << 8) + (int)(((long long)(330 << 8) * chTri) >> 15);
+
+        for (int c = 0; c < 2; c++) {
+            int x = fp2i(buffer[n * 2 + c]);
+            if (doPh) {
+                int s = x;
+                for (int k = 0; k < 4; k++) {
+                    int y = phZ_[k][c] - (int)(((long long)coef * s) >> 15);
+                    phZ_[k][c] = s + (int)(((long long)coef * y) >> 15);
+                    s = y;
+                }
+                x = x + (int)(((long long)(s - x) * phMix) >> 15);
+            }
+            if (doCh) {
+                int w = x;
+                if (w > 32767) w = 32767;
+                if (w < -32768) w = -32768;
+                chBuf_[(chPos_ << 1) + c] = (short)w;
+                int rp = ((chPos_ << 8) - d8) & ((CHORUS_LEN << 8) - 1);
+                int i0 = rp >> 8, frac = rp & 255;
+                int i1 = (i0 + 1) & (CHORUS_LEN - 1);
+                int tap = (chBuf_[(i0 << 1) + c] * (256 - frac) +
+                           chBuf_[(i1 << 1) + c] * frac) >> 8;
+                x = x + ((tap * chMix) >> 15);
+            }
+            if (x > 32767) x = 32767;
+            if (x < -32768) x = -32768;
+            buffer[n * 2 + c] = i2fp(x);
+        }
+        phLfoPh_ += phInc;
+        chLfoPh_ += chInc;
+        chPos_ = (chPos_ + 1) & (CHORUS_LEN - 1);
+    }
 }
 
 bool PlayerChannel::Render(fixed *buffer,int samplecount) {
@@ -303,6 +395,10 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
          curGain23_ = targetGain23;
 
          applyDeclick(buffer, samplecount);
+
+         // Per-channel phaser/chorus, before the send tap so the
+         // modulated sound is what reaches master and the effects.
+         applyInserts(buffer, samplecount);
 
          // The send tap. It sits at the end of the channel strip for
          // the same reason it does on a desk: what goes to the

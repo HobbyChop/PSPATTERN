@@ -29,6 +29,7 @@ public:
 	void StartInstrument(int channel,I_Instrument *instrument,unsigned char note,bool newInstrument) ;
 	void SetVelocity(int channel,fixed v) ;
 	void StopInstrument(int channel) ;
+	void CutInstrument(I_Instrument *instr) ;
 
 	int GetChannelNote(int Channel) ;
 

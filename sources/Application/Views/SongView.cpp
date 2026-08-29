@@ -1579,3 +1579,14 @@ void SongView::nudgeTempo(int direction) {
         break;
     }
 }
+
+// nav-menu context prep: entering the chain follows the song cursor,
+// exactly as the old R+RIGHT drill did
+void SongView::OnNavTo(ViewType to) {
+    if (to == VT_CHAIN) {
+        unsigned char *data = viewData_->GetCurrentSongPointer();
+        if (*data != 0xFF) {
+            viewData_->currentChain_ = *data;
+        }
+    }
+}

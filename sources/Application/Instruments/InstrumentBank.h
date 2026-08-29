@@ -4,6 +4,9 @@
 #include "Application/Persistency/Persistent.h"
 #include "Application/Model/Song.h"
 #include "Application/Instruments/I_Instrument.h"
+#include <string>
+#include <utility>
+#include <vector>
 
 #define NO_MORE_INSTRUMENT 0x100
 
@@ -25,6 +28,13 @@ public:
 	void SetType(int i,InstrumentType it) ;
 private:
 	I_Instrument *instrument_[MAX_INSTRUMENT_COUNT] ;
+	/* Per-(slot,type) parameter stash. SetType records the leaving
+	   type's name->value pairs and replays them when the slot returns
+	   to that type -- flipping sample->synth->sample loses NOTHING,
+	   which is what let the "settings are lost" confirmation die.
+	   Session-only; the project file still saves the active type. */
+	std::vector<std::pair<std::string,std::string> >
+	    stash_[MAX_INSTRUMENT_COUNT][IT_LAST] ;
 } ;
 
 #endif

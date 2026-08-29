@@ -1,3 +1,100 @@
+PSPATTERN 0.15.0a
+
+    The instrument screen becomes an instrument. Each control owns one
+        job: the d-pad stays on the identity ladder -- left and right
+        step the type or the engine, up and down move between them, and
+        it never wanders into the parameters. The analog nub, mapped to
+        nothing since the day the hardware shipped, browses the
+        parameters; hold O and it turns the focused value, ticking
+        slowly under a gentle push so exact numbers are easy to land
+        and speeding up with real deflection. L with the d-pad switches
+        instrument from anywhere, X with the d-pad browses parameters
+        for the day the nub wears out, and SELECT previews: every press
+        plays the instrument, every type, engine or instrument step
+        re-sounds it while armed, and holding it silences. Changing
+        type loses nothing any more -- the settings of the type you
+        leave are kept and restored when you return, and the "settings
+        are lost" warning is gone because nothing is.
+
+    The screen map became the navigation. Hold R and the map appears
+        with your screen highlighted; the arrows walk the highlight
+        over exactly the grid that is drawn, and releasing R jumps
+        there. Every screen reachable from everywhere, one mental
+        model, and the drills keep their context -- entering the chain
+        from the song still follows the cursor.
+
+    A hunt through every corner of the renderer, verified change by
+        change. The synth engines stopped paying for a heap-allocating
+        parameter lookup forty times a voice per block; the default
+        master no longer defeats its own unity skip over a rounding
+        error; a dead double pitch computation left the FM path; the
+        wide-open VAX lowpass now skips its filter the way TONE does.
+        That last one is audible: "open" used to roll the top octave
+        off, and open now means open -- pull cutoff to around 230 to
+        get the old shade back. Project saves fell from a two second
+        freeze to a blink, sample imports run in sixty-four kilobyte
+        strides instead of a thousand bytes at a time, and the repaint
+        no longer holds the audio thread hostage across the vblank
+        wait, which was the dropout people hit scrolling during
+        playback.
+
+    And the crash is gone. Fast browsing or editing on the instrument
+        screen could freeze the machine and reboot it; it turned out to
+        be four separate defects stacked -- key repeat running input on
+        a background thread, screens rebuilding themselves under the
+        control being edited, a stack smash drawing long sample
+        filenames, and observer lists mutated mid walk. All four are
+        fixed, and the machinery that found them left the input system
+        cleaner than it was.
+
+    Settings commit whenever you leave the screen, whatever door you
+        use, and stepping the theme repaints the palette live so you
+        can shop for one. The mixer's master strip grew its fader. The
+        drive, freeze and the per channel phaser and chorus from the
+        effect rack are live; the duck, gate and comp controls beside
+        them still wait for their processing.
+
+PSPATTERN 0.14.0a
+
+    An effect rack. The delay and reverb move off the mixer's one
+        cramped line and onto their own FX screen, left of the mixer on
+        the map, with room to grow -- and grow they do. The reverb
+        learns to FREEZE: feedback goes lossless and the tail hangs
+        forever, so a chord can be caught and held as a pad to play
+        over. A DRIVE control saturates the whole wet bus through a
+        soft clip, from a warm push to a crushed, dirty space. Both run
+        on the Media Engine beside the effects they colour, and both
+        work identically with the second core switched off.
+
+    And every channel gets two insert effects of its own: a phaser and
+        a chorus, each with its own rate and depth, applied after the
+        fader and before the sends so the movement carries into the
+        echo and the room. A channel that leaves them at zero pays
+        nothing. They are edited on the FX screen through a channel
+        selector; the duck, gate, and comp controls drawn beside them
+        are wired to the engine but their processing lands in the next
+        release -- moving them does not yet change the sound.
+
+    The mixer's master strip grows a fader. The master volume lived
+        only on the project screen; now the cursor walks one column
+        further right and the same value sits under the master meters,
+        where a mix is actually balanced.
+
+    Settings become a screen. config.xml can now be edited on the
+        device: a SETTINGS page between PROJECT and GROOVE carries the
+        theme (applied live), the font, the audio buffer, the Media
+        Engine offload, and the FM engine toggle, each marked when a
+        reboot is needed to take. Saving preserves every comment in the
+        file. Underneath, the FM engine is hidden from the instrument
+        picker by default -- it is the one engine that can outrun the
+        DSP budget -- switchable back on in config; instruments already
+        saved as FM always load and play. The Media Engine offload
+        gained the same runtime switch, on by default.
+
+    The VOX formant bank now runs on the VFPU in the shipping build,
+        verified on hardware: a VOX-heavy song dropped about ten
+        percent DSP, and high-resonance vowels stay clean.
+
 PSPATTERN 0.13.0a
 
     A new voice. VOX is a formant engine, and where the others subtract

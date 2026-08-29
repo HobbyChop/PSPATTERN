@@ -194,6 +194,33 @@ void AppWindow::defineColor(const char *colorName, GUIColor &color) {
     }
 }
 
+// The palette, in one place so boot and a live theme change agree.
+void AppWindow::loadPalette() {
+    defineColor("BACKGROUND", backgroundColor_);
+    defineColor("FOREGROUND", normalColor_);
+    defineColor("BORDER", borderColor_);
+    defineColor("SONGVIEW_FE", songviewfeColor_);
+    defineColor("SONGVIEW_00", songview00Color_);
+    defineColor("HICOLOR1", highlightColor_);
+    defineColor("HICOLOR2", highlight2Color_);
+    defineColor("CURSORCOLOR", cursorColor_);
+    defineColor("PLAYCOLOR", playColor_);
+    defineColor("MUTECOLOR", muteColor_);
+    defineColor("ROWCOLOR1", rownumberColor_);
+    defineColor("ROWCOLOR2", rownumber2Color_);
+    defineColor("MAJORBEAT", majorbeatColor_);
+}
+
+void AppWindow::ApplyTheme() {
+    // defineColor() reads config live, so once the THEME variable has been
+    // changed in memory this repaints the whole screen in the new palette.
+    // InvalidateScreen busts the glyph cache so cells whose colour changed
+    // but whose character did not still repaint.
+    loadPalette();
+    InvalidateScreen();
+    Redraw();
+}
+
 /* The screen used to repaint once per rendered audio block, and the
    block length is derived from the tempo -- 641 samples at 172bpm,
    1225 at 90, 1837 at 60. So the scope and the meters ran at 68Hz on
@@ -230,7 +257,73 @@ int AppWindow::uiFps_ = 0;
 int AppWindow::animFps_ = 0;
 int AppWindow::uiFrameMs_ = 16;   // 62.5Hz; the PSP LCD does ~60
 
-void AppWindow::uiTick() { Invalidate(); }
+/* Runs on the ticker thread at ~62Hz: ask for the repaint, and poll
+   the analog stick for FLICKS. A push past the threshold is one step,
+   re-armed only once the stick returns near centre; the step reaches
+   the current view as ET_PADANALOGFLICK through the same thread-safe
+   user-event queue every other input uses, so views handle it on the
+   main thread like any keypress. Direct polling rather than SDL axis
+   events: the PSP port's delivery of those proved unreliable. */
+void AppWindow::uiTick() {
+    int ax, ay;
+    if (System::GetInstance()->GetAnalog(ax, ay)) {
+        /* Two stick behaviours, picked by whether O is down.
+
+           NAVIGATION (stick alone) keeps flick semantics: one step per
+           push past 60/128, re-armed near centre -- deliberate moves,
+           no drift.
+
+           EDITING (O held) is a held-deflection repeater: past 45/128
+           it fires immediately -- whatever order stick and O were
+           pressed in -- and repeats while held, faster the harder the
+           push (200ms easing to 30ms at full tilt). That is what makes
+           value changes feel like turning a knob instead of flicking
+           a switch. */
+        bool edit = (_mask & EPBM_A) != 0;
+        unsigned long now = System::GetInstance()->GetClock();
+        static bool armed[2] = {true, true};
+        static unsigned long nextFire[2] = {0, 0};
+        int vals[2] = {ax, ay};
+        for (int axis = 0; axis < 2; axis++) {
+            int v = vals[axis];
+            int mag = (v < 0) ? -v : v;
+            int dir = (axis == 0) ? ((v < 0) ? 0 : 1) : ((v < 0) ? 2 : 3);
+            if (edit) {
+                armed[axis] = true;
+                if (mag > 50) {
+                    if (now >= nextFire[axis]) {
+                        /* two-zone feel: a gentle hold sits in a slow
+                           precision band so exact values are easy to
+                           land; real speed asks for real deflection */
+                        int interval;
+                        if (mag < 85) interval = 330;
+                        else {
+                            interval = 250 - ((mag - 85) * 205) / 42;
+                            if (interval < 45) interval = 45;
+                        }
+                        nextFire[axis] = now + (unsigned long)interval;
+                        GUIEvent *e = new GUIEvent((long)dir,
+                                                   ET_PADANALOGFLICK, 0, 0, 0, 0);
+                        PushEvent(*e);
+                    }
+                } else {
+                    nextFire[axis] = 0;   // released: next push is instant
+                }
+            } else {
+                nextFire[axis] = 0;
+                if (armed[axis] && mag > 60) {
+                    armed[axis] = false;
+                    GUIEvent *e = new GUIEvent((long)dir,
+                                               ET_PADANALOGFLICK, 0, 0, 0, 0);
+                    PushEvent(*e);
+                } else if (!armed[axis] && mag < 25) {
+                    armed[axis] = true;
+                }
+            }
+        }
+    }
+    Invalidate();
+}
 
 AppWindow::AppWindow(I_GUIWindowImp &imp) : GUIWindow(imp) {
 
@@ -255,6 +348,10 @@ AppWindow::AppWindow(I_GUIWindowImp &imp) : GUIWindow(imp) {
     _nullView = 0;
     _mixerView = 0;
     _grooveView = 0;
+    _configView = 0;
+    _fxView = 0;
+    navSel_ = VT_SONG;
+    navigating_ = false;
     _closeProject = 0;
     _loadAfterSaveAsProject = 0;
     _loadAfterResume = 0;
@@ -282,19 +379,7 @@ AppWindow::AppWindow(I_GUIWindowImp &imp) : GUIWindow(imp) {
     // Init midi services
     MidiService::GetInstance()->Init();
 
-    defineColor("BACKGROUND", backgroundColor_);
-    defineColor("FOREGROUND", normalColor_);
-    defineColor("BORDER", borderColor_);
-    defineColor("SONGVIEW_FE", songviewfeColor_);
-    defineColor("SONGVIEW_00", songview00Color_);
-    defineColor("HICOLOR1", highlightColor_);
-    defineColor("HICOLOR2", highlight2Color_);
-    defineColor("CURSORCOLOR", cursorColor_);
-    defineColor("PLAYCOLOR", playColor_);
-    defineColor("MUTECOLOR", muteColor_);
-    defineColor("ROWCOLOR1", rownumberColor_);
-    defineColor("ROWCOLOR2", rownumber2Color_);
-    defineColor("MAJORBEAT", majorbeatColor_);
+    loadPalette();
 
     GUIWindow::Clear(backgroundColor_);
 
@@ -402,20 +487,22 @@ void AppWindow::Clear(bool all) {
 
    so up/down/left/right from the highlighted cell lands where the
    picture says it will. */
-void AppWindow::drawNavMap() {
-
-    struct MapCell {
-        int col, row;
-        const char *name;
-        ViewType type;
-    };
-    static const MapCell cells[] = {
+// The screen map's grid -- shared by the overlay drawing and the nav
+// menu's highlight movement, so what you see is what the arrows walk.
+struct MapCell {
+    int col, row;
+    const char *name;
+    ViewType type;
+};
+static const MapCell navCells_[] = {
         {0, 0, "project", VT_PROJECT},
+        {1, 0, "config",  VT_CONFIG},
         {2, 0, "groove",  VT_GROOVE},
         {0, 1, "song",    VT_SONG},
         {1, 1, "chain",   VT_CHAIN},
         {2, 1, "phrase",  VT_PHRASE},
         {3, 1, "instr",   VT_INSTRUMENT},
+        {0, 2, "fx",      VT_FX},
         {1, 2, "mixer",   VT_MIXER},
         // The same editor in both places, which is why they share a
         // name. The column is what tells them apart: under phrase it
@@ -424,11 +511,33 @@ void AppWindow::drawNavMap() {
         // like a second feature.
         {2, 2, "table",   VT_TABLE},
         {3, 2, "table",   VT_TABLE2},
-    };
-    const int cellCount = sizeof(cells) / sizeof(cells[0]);
+};
+static const int navCellCount_ = sizeof(navCells_) / sizeof(navCells_[0]);
 
-    // which cell are we on?
-    ViewType current = currentViewType();
+// Move the menu highlight one cell on the grid. Returns false when
+// there is no cell in that direction (the highlight stays put).
+bool AppWindow::navMove(int dx, int dy) {
+    const MapCell *cur = 0;
+    for (int i = 0; i < navCellCount_; i++)
+        if (navCells_[i].type == navSel_) { cur = &navCells_[i]; break; }
+    if (!cur) return false;
+    int c = cur->col + dx, r = cur->row + dy;
+    for (int i = 0; i < navCellCount_; i++)
+        if (navCells_[i].col == c && navCells_[i].row == r) {
+            navSel_ = navCells_[i].type;
+            return true;
+        }
+    return false;
+}
+
+void AppWindow::drawNavMap() {
+
+    const MapCell *cells = navCells_;
+    const int cellCount = navCellCount_;
+
+    // the highlight is the menu selection while navigating, else the
+    // screen we are on
+    ViewType current = navigating_ ? navSel_ : currentViewType();
 
     // panel: 4 columns of 7 cells, 3 rows of 2, centred.
     // Coordinates here are CHARACTER CELLS for DrawString and PIXELS
@@ -541,6 +650,16 @@ void AppWindow::Redraw() {
 
 void AppWindow::Flush() {
 
+    // Scoped so the mutex drops BEFORE the present. GUIWindow::Flush
+    // waits for vblank -- up to a frame -- and the audio thread takes
+    // this same mutex every block for its play-cursor updates. Holding
+    // it across the wait was a ~16ms audio stall whenever a repaint
+    // and a block render collided, which is the dropout people hit
+    // while scrolling during playback. Everything that touches the
+    // char grid or the overlay list stays inside; only the present of
+    // already-rendered pixels happens outside. Flush only ever runs on
+    // the main thread, so the present cannot interleave with itself.
+    {
     SysMutexLocker locker(drawMutex_);
 
     if (navMapVisible_ && _currentView && !_currentView->HasModal()) {
@@ -551,7 +670,6 @@ void AppWindow::Flush() {
     }
 
     Lock();
-    long flushStart = System::GetInstance()->GetClock();
     memset(cellDirty_, 0, sizeof(cellDirty_));
 
     GUITextProperties props;
@@ -639,17 +757,21 @@ void AppWindow::Flush() {
         pos._y += AppWindow::charHeight_;
         pos._x = 0;
     }
-    long flushEnd = System::GetInstance()->GetClock();
     // a modal dialog owns the screen: drop the ops (the erase pass
     // wipes their pixels); the post-modal redraw re-registers them
     if (_currentView && _currentView->HasModal()) {
         overlayOpCount_ = 0;
     }
     flushOverlayOps();
-    GUIWindow::Flush();
-    Unlock();
+    // the cache update pairs with the diff above, so it must stay
+    // under the mutex -- a play-cursor write landing between the diff
+    // and this copy would be marked painted without being painted
     memcpy(_preScreen, _charScreen, 1200);
     memcpy(_preScreenProp, _charScreenProp, 1200);
+    }   // drawMutex_ released here
+
+    GUIWindow::Flush();   // the vblank wait, now outside the mutex
+    Unlock();
 };
 
 static GUIColor lerpColor(GUIColor &a, GUIColor &b, int num, int den) {
@@ -1500,6 +1622,12 @@ void AppWindow::LoadProject(const Path &p) {
     _grooveView = new GrooveView((*this), _viewData);
     _grooveView->AddObserver(*this);
 
+    _configView = new ConfigView((*this), _viewData);
+    _configView->AddObserver(*this);
+
+    _fxView = new FxView((*this), _viewData);
+    _fxView->AddObserver(*this);
+
     _mixerView = new MixerView((*this), _viewData);
     _mixerView->AddObserver(*this);
 
@@ -1577,6 +1705,8 @@ void AppWindow::CloseProject() {
     // LoadProject builds these two as well; they were the only ones
     // left behind on every project switch, and the PSP has 32MB.
     SAFE_DELETE(_grooveView);
+    SAFE_DELETE(_configView);
+    SAFE_DELETE(_fxView);
     SAFE_DELETE(_mixerView);
 
     UIController *controller = UIController::GetInstance();
@@ -1626,12 +1756,27 @@ bool AppWindow::onEvent(GUIEvent &event) {
         // cover the mixer's channel strips for the whole gesture.
         if ((v & EPBM_R) && !navMapVisible_ && !(_mask & ~EPBM_R)) {
             navMapVisible_ = true;
+            // the map is a menu: the highlight starts on this screen
+            // and the arrows below walk it while R stays down
+            navSel_ = currentViewType();
+            navigating_ = true;
             _isDirty = true;
         }
         if (navMapVisible_ && (_mask & ~(EPBM_R | EPBM_LEFT | EPBM_RIGHT |
                                          EPBM_UP | EPBM_DOWN))) {
             navMapVisible_ = false;   // a chord started: get out of the way
+            navigating_ = false;      // and the release will not jump
             _isDirty = true;
+        }
+        // While the menu is up, the arrows move its highlight and go no
+        // further -- the views' own R+arrow chords are retired in favour
+        // of one consistent walk of the drawn grid.
+        if (navMapVisible_ && navigating_ && (_mask & EPBM_R) &&
+            (v & (EPBM_LEFT | EPBM_RIGHT | EPBM_UP | EPBM_DOWN))) {
+            int dx = (v & EPBM_RIGHT) ? 1 : ((v & EPBM_LEFT) ? -1 : 0);
+            int dy = (v & EPBM_DOWN) ? 1 : ((v & EPBM_UP) ? -1 : 0);
+            if (navMove(dx, dy)) _isDirty = true;
+            break;
         }
         // Undo is R+L: hold the nav modifier, then press L. Order
         // matters and this is the right way round -- L on its own is
@@ -1658,9 +1803,29 @@ bool AppWindow::onEvent(GUIEvent &event) {
         if (navMapVisible_ && !(_mask & EPBM_R)) {
             navMapVisible_ = false;
             _isDirty = true;   // the view repaints over the map
+            // releasing R commits the menu: the leaving view first gets
+            // to prep the destination's context (a drill keeps
+            // following the cursor), then the jump
+            if (navigating_) {
+                navigating_ = false;
+                if (navSel_ != currentViewType() && _currentView) {
+                    _currentView->OnNavTo(navSel_);
+                    switchToView(navSel_);
+                }
+            }
         }
         if (_currentView)
             _currentView->ProcessButton(_mask, false);
+        break;
+
+    case ET_PADANALOGFLICK:
+        if (_currentView && !_currentView->HasModal()) {
+            _currentView->OnNubFlick((int)event.GetValue(), _mask);
+            // the deferred work a flick queues (type swap, engine
+            // rebuild) runs at the top of DrawView -- without this the
+            // redraw never fired and the flick looked like nothing
+            _isDirty = true;
+        }
         break;
 
     case ET_SYSQUIT:
@@ -1760,6 +1925,8 @@ void AppWindow::LayoutChildren() {};
 ViewType AppWindow::currentViewType() {
     if (_currentView == _projectView)         return VT_PROJECT;
     else if (_currentView == _grooveView)     return VT_GROOVE;
+    else if (_currentView == _configView)     return VT_CONFIG;
+    else if (_currentView == _fxView)         return VT_FX;
     else if (_currentView == _chainView)      return VT_CHAIN;
     else if (_currentView == _phraseView)     return VT_PHRASE;
     else if (_currentView == _instrumentView) return VT_INSTRUMENT;
@@ -1772,6 +1939,38 @@ ViewType AppWindow::currentViewType() {
     return VT_SONG;
 }
 
+// The one place a screen switch happens: views fire VET_SWITCH_VIEW at
+// it, and the nav menu jumps through it on R-release.
+void AppWindow::switchToView(ViewType vt) {
+    if (_currentView) {
+        _currentView->LooseFocus();
+    }
+    switch (vt) {
+    case VT_SONG:       _currentView = _songView;       break;
+    case VT_CHAIN:      _currentView = _chainView;      break;
+    case VT_PHRASE:     _currentView = _phraseView;     break;
+    case VT_PROJECT:    _currentView = _projectView;    break;
+    case VT_INSTRUMENT: _currentView = _instrumentView; break;
+    case VT_TABLE:      _currentView = _tableView;      break;
+    case VT_TABLE2:     _currentView = _tableView;      break;
+    case VT_GROOVE:     _currentView = _grooveView;     break;
+    case VT_CONFIG:     _currentView = _configView;     break;
+    case VT_FX:         _currentView = _fxView;         break;
+    case VT_MIXER:
+        // remember where we came from before _currentView moves on
+        if (_mixerView) {
+            _mixerView->SetPreviousViewType(currentViewType());
+        }
+        _currentView = _mixerView;
+        break;
+    }
+    _currentView->SetFocus(vt);
+    _isDirty = true;
+    GUIWindow::Clear(backgroundColor_, true);
+    Clear(true);
+    Redraw();
+}
+
 void AppWindow::Update(Observable &o, I_ObservableData *d) {
 
     ViewEvent *ve = (ViewEvent *)d;
@@ -1780,47 +1979,7 @@ void AppWindow::Update(Observable &o, I_ObservableData *d) {
 
     case VET_SWITCH_VIEW: {
         ViewType *vt = (ViewType *)ve->GetData();
-        if (_currentView) {
-            _currentView->LooseFocus();
-        }
-        switch (*vt) {
-        case VT_SONG:
-            _currentView = _songView;
-            break;
-        case VT_CHAIN:
-            _currentView = _chainView;
-            break;
-        case VT_PHRASE:
-            _currentView = _phraseView;
-            break;
-        case VT_PROJECT:
-            _currentView = _projectView;
-            break;
-        case VT_INSTRUMENT:
-            _currentView = _instrumentView;
-            break;
-        case VT_TABLE:
-            _currentView = _tableView;
-            break;
-        case VT_TABLE2:
-            _currentView = _tableView;
-            break;
-        case VT_GROOVE:
-            _currentView = _grooveView;
-            break;
-        case VT_MIXER:
-            // remember where we came from before _currentView moves on
-            if (_mixerView) {
-                _mixerView->SetPreviousViewType(currentViewType());
-            }
-            _currentView = _mixerView;
-            break;
-        }
-        _currentView->SetFocus(*vt);
-        _isDirty = true;
-        GUIWindow::Clear(backgroundColor_, true);
-        Clear(true);
-        Redraw();
+        switchToView(*vt);
         break;
     }
 

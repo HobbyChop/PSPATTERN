@@ -22,6 +22,10 @@ class System: public T_Factory<System> {
 
 public: // Override in implementation
 	virtual unsigned long GetClock()=0 ; // millisecs
+	/* The analog stick, centred: -128..127 per axis. Returns false
+	   where there is none (desktop) -- the nub is a PSP browse control
+	   (instrument type/engine flicks), polled by the UI ticker. */
+	virtual bool GetAnalog(int &x,int &y) { return false ; }
 	virtual int GetBatteryLevel()=0 ;
 	virtual void *Malloc(unsigned size)=0 ;
 	virtual void Free(void *)=0 ;

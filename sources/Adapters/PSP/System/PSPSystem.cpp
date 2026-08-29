@@ -13,6 +13,7 @@
 #include "System/Console/Logger.h"
 #include <time.h>
 #include <pspdebug.h>
+#include <pspctrl.h>
 #include <psppower.h>
 #include <sys/time.h>
 #include <malloc.h>
@@ -33,6 +34,12 @@ void PSPSystem::Boot(int argc,char **argv) {
 
 	// Install System
 	System::Install(new PSPSystem()) ;
+
+	// the nub: analog sampling on, so GetAnalog reads real positions.
+	// SDL's joystick init sets the same mode later; setting it here too
+	// costs nothing and removes the ordering dependency.
+	sceCtrlSetSamplingCycle(0) ;
+	sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG) ;
 
 	// Install FileSystem
 	FileSystem::Install(new PSPFileSystem()) ;
@@ -158,14 +165,31 @@ void PSPSystem::Boot(int argc,char **argv) {
 } ;
 
 int PSPSystem::GetBatteryLevel() {
-	if (!scePowerIsBatteryExist()) return -1 ;
+	// polled every UI frame by the song view's side panel; a battery
+	// figure does not move at 60Hz, so answer from a 2s cache and save
+	// two power syscalls per frame (same idea as GetMemoryFree's cache)
+	static unsigned long at=0 ; static int cached=-1 ;
+	unsigned long now=GetClock() ;
+	if (at&&((now-at)<2000)) return cached ;
+	at=now?now:1 ;
+	if (!scePowerIsBatteryExist()) { cached=-1 ; return -1 ; }
 	int pct=scePowerGetBatteryLifePercent() ;
-	return (pct<0)?-1:pct ;
+	cached=(pct<0)?-1:pct ;
+	return cached ;
 } ;
 
 void PSPSystem::Shutdown() {
 	PSPUsbMidiLink::Unload() ;
 } ;
+
+bool PSPSystem::GetAnalog(int &x,int &y) {
+	SceCtrlData pad ;
+	// peek, not read: SDL's own control reads must keep seeing events
+	if (sceCtrlPeekBufferPositive(&pad,1)<=0) return false ;
+	x=(int)pad.Lx-128 ;
+	y=(int)pad.Ly-128 ;
+	return true ;
+}
 
 unsigned long PSPSystem::GetClock() {
 	struct timeval now;
@@ -222,7 +246,15 @@ void PSPSystem::PostQuitMessage() {
 } ; 
 
 unsigned int PSPSystem::GetMemoryUsage() {
-	struct mallinfo m=mallinfo();	
-	return m.uordblks ;
+	// mallinfo walks the free list under the malloc lock -- O(fragments)
+	// and contending the allocator, per frame, for a panel bar. Cache it
+	// a second at a time like GetMemoryFree does.
+	static unsigned long at=0 ; static unsigned int cached=0 ;
+	unsigned long now=GetClock() ;
+	if (at&&((now-at)<1000)) return cached ;
+	at=now?now:1 ;
+	struct mallinfo m=mallinfo();
+	cached=m.uordblks ;
+	return cached ;
 }
 

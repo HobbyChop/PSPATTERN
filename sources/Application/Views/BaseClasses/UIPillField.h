@@ -11,10 +11,13 @@ class UIPillField: public UIIntVarField {
 public:
 	// label may be 0 for a bare pill row
 	UIPillField(GUIPoint &position,Variable &v,const char *label,
-	            int optionCount) ;
+	            int optionCount,int hiddenValue=-1) ;
 	virtual ~UIPillField() {} ;
 	virtual void Draw(GUIWindow &w,int offset=0) ;
+	virtual void ProcessArrow(unsigned short mask) ;
 private:
 	int optionCount_ ;
+	// an option the arrows skip and Draw omits (unless current); -1=none
+	int hiddenValue_ ;
 } ;
 #endif

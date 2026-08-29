@@ -31,6 +31,11 @@ void SDLTimer::SetPeriod(float msec) {
 
 bool SDLTimer::Start() {
 	if (period_>0) {
+		// re-arming used to leak the previous SDL timer: every button
+		// edge while an arrow was held added ANOTHER live repeat timer,
+		// each dispatching input from the timer thread. Rapid
+		// back-and-forth browsing bred a storm of them.
+		if (timer_) SDL_RemoveTimer(timer_) ;
 		offset_=period_ ;
 		Uint32 newcb=int(offset_) ;
 		offset_-=newcb ;

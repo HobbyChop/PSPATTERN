@@ -63,6 +63,11 @@ InstrumentBank::~InstrumentBank() {
 } ;
 
 I_Instrument *InstrumentBank::GetInstrument(int i) {
+	// clamp: callers hand this raw song bytes (a phrase's instrument
+	// column), and a foreign or hand-edited file can hold 0xA0..0xFE --
+	// indexing past the array returned a garbage object whose observer
+	// list was then walked
+	if (i<0||i>=MAX_INSTRUMENT_COUNT) i=0 ;
 	return instrument_[i] ;
 } ;
 
@@ -254,6 +259,19 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
 void InstrumentBank::SetType(int i,InstrumentType it) {
 	I_Instrument *instr=instrument_[i] ;
 	if (instr->GetType()==it) return ;
+	// stash the leaving type's parameters (the RestoreContent replay
+	// pattern), so coming back restores everything
+	InstrumentType oldType=instr->GetType() ;
+	if (oldType>=0&&oldType<IT_LAST) {
+		std::vector<std::pair<std::string,std::string> > &st=stash_[i][oldType] ;
+		st.clear() ;
+		IteratorPtr<Variable> itv(instr->GetIterator()) ;
+		for (itv->Begin();!itv->IsDone();itv->Next()) {
+			Variable &v=itv->CurrentItem() ;
+			st.push_back(std::make_pair(std::string(v.GetName()),
+			                            std::string(v.GetString()))) ;
+		}
+	}
 	delete instr ;
 	switch (it) {
 		case IT_MIDI: {
@@ -275,6 +293,14 @@ void InstrumentBank::SetType(int i,InstrumentType it) {
 	}
 	instrument_[i]=instr ;
 	instr->Init() ;
+	// returning to a type this slot has seen: replay its settings
+	if (it>=0&&it<IT_LAST) {
+		std::vector<std::pair<std::string,std::string> > &rs=stash_[i][it] ;
+		for (size_t k=0;k<rs.size();k++) {
+			Variable *v=instr->FindVariable(rs[k].first.c_str()) ;
+			if (v) v->SetString(rs[k].second.c_str()) ;
+		}
+	}
 } ;
 
 void InstrumentBank::Init() {

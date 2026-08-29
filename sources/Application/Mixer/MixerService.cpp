@@ -184,9 +184,11 @@ bool MixerService::Clipped() {
 } ;
 
 void MixerService::SetPregain(int vol) {
-    Mixer *mixer = Mixer::GetInstance();
-
-    fixed masterVolume = fp_mul(i2fp(vol), fl2fp(0.01f));
+    // i2fp(vol)/100, not fp_mul by fl2fp(0.01): the float round trip
+    // lands 32700 for vol==100 instead of 32768, which defeated the
+    // unity skip in AudioMixer -- every bus paid a full gain pass for
+    // a -0.018dB "gain" at the default setting.
+    fixed masterVolume = i2fp(vol) / 100;
 
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         bus_[i].SetVolume(masterVolume);
@@ -275,6 +277,11 @@ void MixerService::SetSendFxParams(int division,int feedback,
 	SendFx::SetDelayFeedback(feedback) ;
 	SendFx::SetReverbSize(size) ;
 	SendFx::SetReverbDamp(damp) ;
+}
+
+void MixerService::SetSendFx2(int freeze,int drive) {
+	SendFx::SetReverbFreeze(freeze) ;
+	SendFx::SetDrive(drive) ;
 }
 
 void MixerService::Execute(FourCC id,float value) {

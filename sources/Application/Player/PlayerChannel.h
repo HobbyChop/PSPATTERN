@@ -20,6 +20,17 @@ public:
 	// a channel down takes its tail with it and a cut note does not
 	// leave a click ringing in the reverb.
 	void SetSends(int delay,int reverb) { delaySend_=delay ; reverbSend_=reverb ; }
+	// Per-channel insert effects: phaser and chorus, each rate+depth
+	// (0..255, depth 0 = bypass). A serial insert on the channel's
+	// post-fader signal, so what goes to master AND the sends is the
+	// modulated sound.
+	void SetInserts(int phRate,int phDepth,int chRate,int chDepth) {
+		phaserRate_=phRate ; phaserDepth_=phDepth ;
+		chorusRate_=chRate ;
+		// a chorus coming back on must not replay whatever tail was
+		// left in the line from last time
+		if (chDepth>0&&chorusDepth_==0) chClear_=true ;
+		chorusDepth_=chDepth ; }
 	// The velocity of the note currently sounding, as a Q15 gain.
 	// Separate from volume_, which is the channel fader: one is set
 	// per note by the pattern, the other by the mixer, and they
@@ -31,6 +42,11 @@ public:
     void SetHPFMode(unsigned char mode);
     void ApplyHPF(fixed *buffer, int samplecount);
     void applyDeclick(fixed *buffer, int samplecount);
+    // hard-release if this channel's voice is `instr`: the pointer is
+    // dropped immediately (the object is about to be deleted); the
+    // declick correction absorbs the cut edge
+    void CutIfPlaying(I_Instrument *instr);
+    void applyInserts(fixed *buffer, int samplecount);
     void SetLPFFreq(unsigned short freq);
     void Reset();
 
@@ -53,6 +69,19 @@ public:
     fixed lpfPrevOutput_[2];
     fixed lpfAlpha_;
     unsigned short lpfFreq_;
+    // per-channel phaser + chorus inserts (see SetInserts). All
+    // fixed-point: the first version ran float with a fixed<->float
+    // crossing per sample; the audio thread has no business in floats
+    // for a couple of multiplies. The chorus line is int16 and
+    // allocated LAZILY on first use -- inline float arrays were 64KB
+    // resident across 8 channels whether anyone chorused or not.
+    int phaserRate_, phaserDepth_, chorusRate_, chorusDepth_;
+    int phZ_[4][2];              // 4 all-pass stages, per output channel
+    unsigned int phLfoPh_, chLfoPh_;      // Q32 LFO phase accumulators
+    static const int CHORUS_LEN = 1024;   // ~23ms line; power of two
+    short *chBuf_;               // interleaved stereo, CHORUS_LEN*2, lazy
+    int chPos_;
+    bool chClear_;               // wipe the line on the next enable
     // note-on declick: channels are monophonic, so a new note cuts
     // whatever was still ringing. The jump from the last sample the
     // DAC saw to the first sample of the new voice is measured at

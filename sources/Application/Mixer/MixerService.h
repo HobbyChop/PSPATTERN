@@ -45,6 +45,9 @@ public:
     // PlayerChannel, so that routing two channels to one bus does
     // not make them share an effects send.
     void SetSendFxParams(int division,int feedback,int size,int damp);
+    // The fold-in effects (freeze/drive now; more later), pushed every
+    // tick alongside SetSendFxParams.
+    void SetSendFx2(int freeze,int drive);
     unsigned int GetMasterPeakLevel() const;
     bool TakeMasterClipLatch();
     // What share of the last block the master sum spent pinned at the

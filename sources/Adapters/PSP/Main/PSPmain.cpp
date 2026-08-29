@@ -3,6 +3,7 @@
 
 #include "Application/Application.h"
 #include "Application/AppWindow.h"
+#include "Application/Model/Config.h"
 #include "Adapters/PSP/System/PSPSystem.h"
 #include "Foundation/T_Singleton.h"
 #include <SDL/SDL.h>
@@ -149,7 +150,14 @@ int main(int argc,char *argv[])
 	PSPSystem::Boot(argc,argv) ;
 
 #ifdef PSP_ME_OFFLOAD
-	PSPME_Init() ;   // Phase 1 coexistence probe; no-op without the flag
+	// ME send-FX offload, runtime-toggleable (config ME_OFFLOAD, default
+	// on). When off we simply never start the ME: SendFx::Return::Render
+	// sees PSPME_Ready()==0 and runs the send bank on the main core
+	// (processBank) by itself. Gating INIT -- not a start-then-halt --
+	// is the standby-safe way to disable it.
+	const char *meCfg=Config::GetInstance()->GetValue("ME_OFFLOAD") ;
+	bool meOn=!(meCfg && meCfg[0]=='N') ;
+	if (meOn) PSPME_Init() ;
 #endif
 
 	SDLCreateWindowParams params ;
@@ -160,7 +168,7 @@ int main(int argc,char *argv[])
 	PSPSystem::MainLoop() ;
     PSPSystem::Shutdown() ;
 #ifdef PSP_ME_OFFLOAD
-	PSPME_Shutdown() ;   // clean teardown of the Phase 1 probe
+	if (meOn) PSPME_Shutdown() ;   // matched teardown (skipped if never started)
 #endif
 	scePowerUnlock(0);
 	sceKernelExitGame();

@@ -116,6 +116,18 @@ public:
 	void SetSize(int s) { size_ = s<0?0:(s>255?255:s) ; rebuild() ; }
 	void SetDamp(int d) { damp_ = d<0?0:(d>255?255:d) ; rebuild() ; }
 
+	// Infinite hold: g=1 (lossless on the normalised Hadamard) and no
+	// damping, so the tail sustains forever; the caller mutes injection.
+	// SetFreeze(false) rebuilds from the current size/damp knobs.
+	void SetFreeze(bool f) {
+		if (f) {
+			g_ = 1.0f ; dc_ = 1.0f ;
+			static const float H[16] = {
+				1, 1, 1, 1,  1,-1, 1,-1,  1, 1,-1,-1,  1,-1,-1, 1 } ;
+			for (int i=0;i<16;i++) mtx_[i]=0.5f*H[i] ;   // s = 0.5 * g(=1)
+		} else rebuild() ;
+	}
+
 	/* Process one interleaved stereo block. `in` is the send going to
 	   the reverb (interleaved), `out` receives the wet (interleaved).
 	   in and out may be the same buffer. */

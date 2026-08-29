@@ -17,6 +17,7 @@ Uint32 OnTimer(Uint32 interval) {
 EventDispatcher::EventDispatcher() {
 	window_=0;
 	eventMask_=0 ;
+	repeatArmed_=false ;
 
 	// Read config file key repeat
 
@@ -94,7 +95,10 @@ void EventDispatcher::Execute(FourCC id,float value) {
 		if (value>0.5) {
 			eventMask_|=(1<<mapping) ;
 		} else {
-			eventMask_^=(1<<mapping) ;
+			// clear, not XOR: a release without a matched press (missed
+			// event, resume) would otherwise SET the bit and fake a
+			// held button
+			eventMask_&=~(1<<mapping) ;
 		}
 
 		// Dispatch event to window
@@ -105,11 +109,17 @@ void EventDispatcher::Execute(FourCC id,float value) {
 		window_->DispatchEvent(event) ;
 
 
-		if (eventMask_&repeatMask_) {
+		bool wantRepeat=(eventMask_&repeatMask_)!=0 ;
+		if (wantRepeat&&!repeatArmed_) {
+			// arm once per hold, not on every edge -- re-arming reset
+			// the delay and (before SDLTimer fixed its leak) stacked
+			// live timers
 			timer_->SetPeriod(float(keyDelay_)) ;
 			timer_->Start() ;
-		} else {
+			repeatArmed_=true ;
+		} else if (!wantRepeat&&repeatArmed_) {
 			timer_->Stop() ;
+			repeatArmed_=false ;
 		}
 	} ;
 };
@@ -127,8 +137,17 @@ unsigned int EventDispatcher::OnTimerTick() {
 		int current=0 ;
 		while (sendMask) {
 			if (sendMask&1) {
-				GUIEvent event(current,ET_PADBUTTONDOWN,now,0,0,0) ;
-				window_->DispatchEvent(event) ;
+				/* PUSH, do not dispatch. This runs on SDL's timer
+				   thread, and dispatching from here executed the whole
+				   input pipeline -- view switches, the instrument
+				   screen tearing down and rebuilding its field list --
+				   concurrently with the main thread drawing that same
+				   list. That is the freeze-and-reboot when holding an
+				   arrow to browse. PushEvent is SDL_PushEvent
+				   underneath (thread-safe by contract); the main loop
+				   dispatches and deletes it like any other event. */
+				GUIEvent *event=new GUIEvent(current,ET_PADBUTTONDOWN,now,0,0,0) ;
+				window_->PushEvent(*event) ;
 			}
 			sendMask>>=1 ;
 			current++ ;

@@ -5,6 +5,7 @@
 #include "Application/Instruments/SynthInstrument.h"
 #include "Application/Instruments/SamplePool.h"
 #include "Application/Model/Config.h"
+#include "Application/Mixer/MixerService.h"
 #include "BaseClasses/UIBigHexVarField.h"
 #include "BaseClasses/UIIntVarOffField.h"
 #include "BaseClasses/UINoteVarField.h"
@@ -17,14 +18,6 @@
 #include "ModalDialogs/MessageBox.h"
 #include "System/System/System.h"
 
-// The type change is destructive: the old instrument object goes and
-// with it the sample, every parameter and the table binding. Nothing
-// in the instrument screen is undoable, so ask first.
-static void TypeChangeCallback(View &v, ModalView &dialog) {
-	((InstrumentView &)v).ConfirmTypeChange(
-		dialog.GetReturnCode() == MBL_YES) ;
-}
-
 void ImportSampleDialogCallback(View &v, ModalView &dialog) {
     ((InstrumentView &)v).OnFocus();
 }
@@ -32,20 +25,32 @@ void ImportSampleDialogCallback(View &v, ModalView &dialog) {
 extern char *InstrumentTypeData[] ;
 
 #define IVP_TYPE MAKE_FOURCC('T','Y','P','E')
+#define IVP_SLOT MAKE_FOURCC('S','L','O','T')
 
 InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):FieldView(w,data),
-	typeVar_("type",IVP_TYPE,(char**)InstrumentTypeData,IT_LAST,0) {
+	typeVar_("type",IVP_TYPE,(char**)InstrumentTypeData,IT_LAST,0),
+	slotVar_("slot",IVP_SLOT,0) {
 
 	project_=data->project_ ;
 	lastFocusID_=0 ;
 	current_=0 ;
 	refreshingType_=false ;
 	pendingType_=IT_SAMPLE ;
+	rebuildPending_=false ;
+	applyTypePending_=false ;
+	refreshingSlot_=false ;
+	auditionLatch_=false ;
+	auditionNote_=60 ;
+	selectDownAt_=0 ;
 	typeVar_.AddObserver(*this) ;
+	slotVar_.AddObserver(*this) ;
 	onInstrumentChange() ;
 }
 
 InstrumentView::~InstrumentView() {
+	// unhook, or the instrument keeps a dangling observer pointer and
+	// its next notify is a wild vtable call
+	if (current_) current_->RemoveObserver(*this) ;
 }
 
 InstrumentType InstrumentView::getInstrumentType() {
@@ -66,6 +71,12 @@ void InstrumentView::onInstrumentChange() {
 	current_=bank->GetInstrument(i) ;
 
 	if (current_!=old) {
+		// unhook from the instrument being LEFT -- this used to remove
+		// from the new one instead, so every visited instrument kept
+		// notifying this view forever
+		if (old) old->RemoveObserver(*this) ;
+		// defensive: drop any stale registration on the incoming one
+		// before the re-add below
 		current_->RemoveObserver(*this) ;
 	} ;
 	T_SimpleList<UIField>::Empty() ;
@@ -76,8 +87,14 @@ void InstrumentView::onInstrumentChange() {
 	refreshingType_=true ;
 	typeVar_.SetInt(it) ;
 	refreshingType_=false ;
+	refreshingSlot_=true ;
+	slotVar_.SetInt(i) ;
+	refreshingSlot_=false ;
 
-	GUIPoint tpos(6,2) ;
+	// no slot FIELD: the title strip carries the number, and L+arrows
+	// are deliberately the ONLY way to change which instrument -- a
+	// focusable slot row made it editable through every value gesture
+	GUIPoint tpos(2,2) ;
 	UIPillField *tf=new UIPillField(tpos,typeVar_,"type   ",IT_LAST) ;
 	T_SimpleList<UIField>::Insert(tf) ;
 	tf->SetFocus() ;
@@ -345,7 +362,13 @@ void InstrumentView::fillSynthParameters() {
 	// engine pills under the type row
 	GUIPoint pos(6,3) ;
 	Variable *v=instrument->FindVariable(SYP_ENGINE) ;
-	UIPillField *pf=new UIPillField(pos,*v,"engine ",SET_LAST) ;
+	// FM is the CPU-hungriest engine, hidden from the picker unless
+	// config opts in (FM_ENGINE=YES). An instrument already set to FM
+	// still shows it and plays; you just cannot newly select it.
+	const char *fmCfg=Config::GetInstance()->GetValue("FM_ENGINE") ;
+	bool fmEnabled=(fmCfg && fmCfg[0]=='Y') ;
+	UIPillField *pf=new UIPillField(pos,*v,"engine ",SET_LAST,
+	                                fmEnabled?-1:SET_FM) ;
 	T_SimpleList<UIField>::Insert(pf) ;
 
 	// ---- left column: OSC (content rows 6-13) ----
@@ -681,20 +704,118 @@ void InstrumentView::fillSynthParameters() {
 void InstrumentView::applyTypeChange() {
 	int i=viewData_->currentInstrument_ ;
 	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	/* Serialize with the audio thread and hard-release any voice still
+	   rendering the object about to be deleted (a ringing audition
+	   note, or its release tail) -- the deferred path runs from
+	   DrawView, which is OUTSIDE the input path's mixer lock. */
+	MixerService *ms=MixerService::GetInstance() ;
+	ms->Lock() ;
+	Player::GetInstance()->CutInstrument(bank->GetInstrument(i)) ;
 	bank->SetType(i,pendingType_) ;
+	ms->Unlock() ;
 	current_=0 ;   // old pointer is gone; re-observe the new one
 	lastFocusID_=IVP_TYPE ;
 	onInstrumentChange() ;
 	isDirty_=true ;
 } ;
 
-void InstrumentView::ConfirmTypeChange(bool go) {
-	if (go) {
-		applyTypeChange() ;
-	} else {
-		onInstrumentChange() ;   // redraw the selector where it was
-		isDirty_=true ;
+// the ladder rows the d-pad owns; the nub may not focus these.
+// TYPE and ENGINE only -- the wave row sits among the parameters and
+// belongs to the stick like any other variable.
+static bool ivIsSelectorId(FourCC id) {
+	return id==IVP_TYPE||id==SYP_ENGINE ;
+}
+
+void InstrumentView::auditionStart() {
+	if (Player::GetInstance()->IsRunning()) {
+		View::SetNotification("stop playback to audition") ;
+		return ;
 	}
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
+	int note=60 ;
+	if (instr&&instr->GetType()==IT_SAMPLE) {
+		Variable *rv=instr->FindVariable(SIP_ROOTNOTE) ;
+		if (rv&&rv->GetInt()>=0&&rv->GetInt()<128) note=rv->GetInt() ;
+	}
+	auditionNote_=(unsigned char)note ;
+	Player::GetInstance()->MidiNoteOn(auditionNote_,127) ;
+	auditionLatch_=true ;
+} ;
+
+void InstrumentView::auditionStop() {
+	Player::GetInstance()->MidiNoteOff(auditionNote_) ;
+	auditionLatch_=false ;
+} ;
+
+void InstrumentView::auditionRetrigger() {
+	Player::GetInstance()->MidiNoteOff(auditionNote_) ;
+	auditionStart() ;
+} ;
+
+void InstrumentView::cycleType(int step) {
+	if (Player::GetInstance()->IsRunning()) {
+		View::SetNotification("stop playback to change type") ;
+		return ;
+	}
+	InstrumentType t=getInstrumentType() ;
+	pendingType_=(InstrumentType)((t+step+IT_LAST)%IT_LAST) ;
+	applyTypePending_=true ;   // applied at the top of the next DrawView
+	isDirty_=true ;
+} ;
+
+void InstrumentView::cycleEngine(int step) {
+	if (getInstrumentType()!=IT_SYNTH) return ;
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
+	Variable *v=instr->FindVariable(SYP_ENGINE) ;
+	if (!v) return ;
+	const char *fmCfg=Config::GetInstance()->GetValue("FM_ENGINE") ;
+	bool fmEnabled=(fmCfg && fmCfg[0]=='Y') ;
+	int e=v->GetInt()+step ;
+	if (!fmEnabled && e==SET_FM) e+=step ;   // skip the hidden engine
+	if (e<0||e>=SET_LAST) return ;           // ends stop, no wrap
+	v->SetInt(e) ;   // notify -> deferred rebuild (+ audition retrigger)
+	isDirty_=true ;
+} ;
+
+/* The nub owns the parameters: alone it WALKS the focus between the
+   fields (all four directions); with O held it TURNS the focused value
+   (left/right fine, up/down coarse -- the O+arrows grammar on an
+   analog feel). Walking can never edit, turning needs the O. */
+void InstrumentView::OnNubFlick(int dir, unsigned short mask) {
+	static const unsigned short bits[4]=
+	    {EPBM_LEFT,EPBM_RIGHT,EPBM_UP,EPBM_DOWN} ;
+	if (mask&EPBM_A) {
+		UIField *f=GetFocus() ;
+		if (!f) return ;
+		f->ProcessArrow(bits[dir&3]) ;
+	} else {
+		// walk -- but never REST on the ladder: type/engine/wave belong
+		// to the d-pad. A step that lands there keeps going in the same
+		// direction (so the stick hops over the ladder into the
+		// parameters); if there is no parameter that way, the focus
+		// returns to where it started.
+		UIField *before=GetFocus() ;
+		UIField *landed=0 ;
+		for (int guard=0;guard<6;guard++) {
+			UIField *prev=GetFocus() ;
+			FieldView::ProcessButtonMask(bits[dir&3]) ;
+			UIField *now=GetFocus() ;
+			if (now==prev) break ;           // hit the edge of the grid
+			if (!ivIsSelectorId(((UIIntVarField *)now)->GetVariableID())) {
+				landed=now ;
+				break ;
+			}
+		}
+		if (!landed) SetFocus(before) ;
+	}
+	isDirty_=true ;
+} ;
+
+void InstrumentView::LooseFocus() {
+	if (auditionLatch_) auditionStop() ;
+	View::LooseFocus() ;
 } ;
 
 void InstrumentView::warpToNext(int offset) {
@@ -707,12 +828,22 @@ void InstrumentView::warpToNext(int offset) {
 	} ;
 	viewData_->currentInstrument_=instrument ;
 	onInstrumentChange() ;
+	if (auditionLatch_) auditionRetrigger() ;
 	isDirty_=true ;
 } ;
 
 void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 
-	if (!pressed) return ;
+	if (!pressed) {
+		// a LONG select press silences the preview on release; a tap
+		// (handled at press time) retriggers it
+		if (auditionLatch_&&selectDownAt_&&!(mask&EPBM_SELECT)) {
+			unsigned long held=System::GetInstance()->GetClock()-selectDownAt_ ;
+			selectDownAt_=0 ;
+			if (held>500) { auditionStop() ; isDirty_=true ; }
+		}
+		return ;
+	}
 
 	isDirty_=false ;
 
@@ -786,16 +917,89 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		viewMode_=VM_NORMAL ;
 	}
 
+	// ---- the instrument deck: focus-independent controls ----
+	// SELECT previews the instrument: EVERY press (re)plays the note,
+	// and the latch stays on so engine/type/slot steps keep sounding.
+	// HOLD select (>half a second) to silence it -- the stop happens on
+	// the release, handled above the !pressed early-return.
+	if (mask==EPBM_SELECT) {
+		selectDownAt_=System::GetInstance()->GetClock() ;
+		if (auditionLatch_) auditionRetrigger() ;
+		else auditionStart() ;
+		isDirty_=true ;
+		return ;
+	}
+	// transport takes the channels: drop the latch first
+	if ((mask&EPBM_START)&&auditionLatch_) auditionStop() ;
+	// L+arrows step the instrument NUMBER from anywhere -- the nub
+	// picks WHAT it is (type/engine), L picks WHICH one. B+L still
+	// arms clone, R+L is undo, and A stays clear for the clone flow.
+	if ((mask&EPBM_L)&&!(mask&(EPBM_A|EPBM_B|EPBM_R))) {
+		if (mask&EPBM_LEFT)  { warpToNext(-1) ; return ; }
+		if (mask&EPBM_RIGHT) { warpToNext(+1) ; return ; }
+		if (mask&EPBM_DOWN)  { warpToNext(-16) ; return ; }
+		if (mask&EPBM_UP)    { warpToNext(+16) ; return ; }
+	}
+	/* The d-pad is LOCKED to the ladder -- the selector rows (type,
+	   engine, wave). Up/down move between those rows only, left/right
+	   step the focused row's value, and the d-pad can never wander
+	   into the parameter grid: that is the nub's territory (walk with
+	   the stick, turn with O+stick). If the nub left the focus down in
+	   the parameters, the first d-pad press pulls it back up. */
+	if (!(mask&(EPBM_A|EPBM_B|EPBM_L|EPBM_R|EPBM_SELECT|EPBM_START)) &&
+	    (mask&(EPBM_LEFT|EPBM_RIGHT|EPBM_UP|EPBM_DOWN))) {
+		UIField *sel[4] ; int nSel=0, cur=-1 ;
+		UIField *f=GetFocus() ;
+		IteratorPtr<UIField> it(T_SimpleList<UIField>::GetIterator()) ;
+		for (it->Begin();!it->IsDone()&&nSel<4;it->Next()) {
+			UIField &fld=it->CurrentItem() ;
+			FourCC id=((UIIntVarField &)fld).GetVariableID() ;
+			if (ivIsSelectorId(id)) {
+				if (&fld==f) cur=nSel ;
+				sel[nSel++]=&fld ;
+			}
+		}
+		if (nSel>0) {
+			/* record the ladder row we are acting on BEFORE stepping:
+			   an engine/wave step rebuilds the whole field list, and
+			   the rebuild restores focus by lastFocusID_ -- left stale,
+			   focus silently fell onto the TYPE row and the next press
+			   changed the type instead of the engine. */
+			if (cur<0) {
+				SetFocus(sel[0]) ;             // back up to the ladder
+				lastFocusID_=((UIIntVarField *)sel[0])->GetVariableID() ;
+			} else if (mask&(EPBM_LEFT|EPBM_RIGHT)) {
+				lastFocusID_=((UIIntVarField *)sel[cur])->GetVariableID() ;
+				sel[cur]->ProcessArrow(mask&(EPBM_LEFT|EPBM_RIGHT)) ;
+			} else if ((mask&EPBM_UP)&&cur>0) {
+				SetFocus(sel[cur-1]) ;
+				lastFocusID_=((UIIntVarField *)sel[cur-1])->GetVariableID() ;
+			} else if ((mask&EPBM_DOWN)&&cur<nSel-1) {
+				SetFocus(sel[cur+1]) ;
+				lastFocusID_=((UIIntVarField *)sel[cur+1])->GetVariableID() ;
+			}
+			isDirty_=true ;
+		}
+		return ;
+	}
+
+	// the quiet fallback for a worn-out nub: X+d-pad walks the
+	// variables exactly as the stick does, same ladder fence and all
+	if ((mask&EPBM_B)&&!(mask&(EPBM_A|EPBM_L|EPBM_R|EPBM_SELECT))&&
+	    (mask&(EPBM_LEFT|EPBM_RIGHT|EPBM_UP|EPBM_DOWN))) {
+		int dir=(mask&EPBM_LEFT)?0:(mask&EPBM_RIGHT)?1:
+		        (mask&EPBM_UP)?2:3 ;
+		OnNubFlick(dir,0) ;
+		return ;
+	}
+
 	FieldView::ProcessButtonMask(mask) ;
 
     Player *player=Player::GetInstance() ;
 	// B Modifier
 
     if (mask & EPBM_B) {
-        if (mask&EPBM_LEFT) warpToNext(-1) ;
-		if (mask&EPBM_RIGHT) warpToNext(+1);
-		if (mask&EPBM_DOWN) warpToNext(-16) ;
-		if (mask&EPBM_UP) warpToNext(+16);
+        // X+arrow warping removed: L+arrows are the one slot control
 		if (mask&EPBM_A) { // Allow cut instrument
 		   if (getInstrumentType()==IT_SAMPLE) {
                 if (GetFocus()==T_SimpleList<UIField>::GetFirst()) {
@@ -902,6 +1106,18 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 
 void InstrumentView::DrawView() {
 
+	// deferred rebuild/type-swap from Update: safe here -- the main
+	// thread, no field method on the stack, no notify walk in flight
+	if (applyTypePending_) {
+		applyTypePending_=false ;
+		rebuildPending_=false ;
+		applyTypeChange() ;
+		if (auditionLatch_) auditionRetrigger() ;
+	} else if (rebuildPending_) {
+		rebuildPending_=false ;
+		onInstrumentChange() ;
+	}
+
 	Clear() ;
     View::EnableNotification();
 
@@ -914,7 +1130,9 @@ void InstrumentView::DrawView() {
     const char *name = instr->GetName();
     snprintf(title, 32, "INSTRUMENT %2.2X  %s", viewData_->currentInstrument_,
              (name && name[0]) ? name : "empty");
-    DrawTitleStrip(title, "");
+    DrawTitleStrip(title, auditionLatch_
+                              ? "AUDIT"
+                              : InstrumentTypeData[getInstrumentType()]);
 
     switch (getInstrumentType()) {
         case IT_SYNTH:  drawSynthChrome();  break;
@@ -926,7 +1144,7 @@ void InstrumentView::DrawView() {
     // Draw fields
 
     FieldView::Redraw();
-    DrawHintBar("O edit  X+</> instr  R+< phr  R+v tbl");
+    DrawHintBar("</> pick  O+nub edit  L inst  SEL audit");
 } ;
 
 void InstrumentView::drawSampleChrome() {
@@ -1055,6 +1273,19 @@ void InstrumentView::OnFocus() { onInstrumentChange(); }
 
 void InstrumentView::Update(Observable &o,I_ObservableData *d) {
 
+	if (&o==(Observable *)&slotVar_) {
+		if (refreshingSlot_) return ;
+		int n=slotVar_.GetInt() ;
+		if (n<0) n=0 ;
+		if (n>=MAX_INSTRUMENT_COUNT) n=MAX_INSTRUMENT_COUNT-1 ;
+		viewData_->currentInstrument_=n ;
+		lastFocusID_=IVP_SLOT ;   // keep focus on the stepper across the rebuild
+		rebuildPending_=true ;    // DEFERRED: we are inside the field's edit
+		if (auditionLatch_) auditionRetrigger() ;
+		isDirty_=true ;
+		return ;
+	}
+
 	if (&o==(Observable *)&typeVar_) {
 		if (refreshingType_) return ;
 
@@ -1072,30 +1303,22 @@ void InstrumentView::Update(Observable &o,I_ObservableData *d) {
 		}
 
 		pendingType_=(InstrumentType)typeVar_.GetInt() ;
-		// Was IsEmpty, which is the question the SAVE code asks and
-		// answers "never empty" for synth and midi so they always get
-		// written out. Used here it meant every synth and every midi
-		// instrument warned that settings would be lost, including a
-		// patch straight out of the box with nothing in it to lose,
-		// and so did the drums a new project assigns for you.
-		if (!bank->GetInstrument(i)->IsAtDefaults()) {
-			// put the selector back until the answer comes in, so a
-			// cancelled swap does not leave the wrong type on screen
-			refreshingType_=true ;
-			typeVar_.SetInt(bank->GetInstrument(i)->GetType()) ;
-			refreshingType_=false ;
-			MessageBox *mb=new MessageBox(*this,
-				"replace instrument? settings are lost",
-				MBBF_YES|MBBF_NO) ;
-			DoModal(mb,TypeChangeCallback) ;
-			isDirty_=true ;
-			return ;
-		}
-		applyTypeChange() ;
+		// No confirmation any more: SetType stashes the leaving type's
+		// settings and replays them when the slot returns to it, so a
+		// flip loses nothing.
+		// DEFER: this notification came from the type pill's own
+		// ProcessArrow; applying now would delete that field under its
+		// executing method (see the flags in the header)
+		applyTypePending_=true ;
+		isDirty_=true ;
 		return ;
 	}
 
-	onInstrumentChange() ;
+	// DEFER, same reason: engine/wave notifications arrive from the
+	// editing field's call stack, inside the variable's observer walk
+	rebuildPending_=true ;
+	if (auditionLatch_) auditionRetrigger() ;
+	isDirty_=true ;
 }
 
 /* The routing picture, under the operator columns it describes.

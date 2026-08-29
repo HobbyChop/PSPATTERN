@@ -866,3 +866,13 @@ void ChainView::OnPlayerUpdate(PlayerEventType eventType, unsigned int tick) {
            w_.DrawString("----",pos,props);
     }
 */} ;
+
+// nav-menu context prep: entering the phrase follows the chain cursor
+void ChainView::OnNavTo(ViewType to) {
+    if (to == VT_PHRASE) {
+        unsigned char *data = viewData_->GetCurrentChainPointer();
+        if (*data != 0xFF) {
+            viewData_->currentPhrase_ = *data;
+        }
+    }
+}

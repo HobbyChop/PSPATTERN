@@ -5,7 +5,12 @@
 #include "System/FileSystem/FileSystem.h"
 #include <pspiofilemgr.h>
 
-#define WRITE_BUFFER_SIZE 1024
+/* 32KB, not 1KB. A project save streams ~50KB of XML through this
+   buffer, and at 1KB that was ~50 unaligned sceIoWrites to the Memory
+   Stick -- the documented 1-2s input freeze on save. At 32KB it is two.
+   Costs 31KB per OPEN file, and files are open briefly and one or two
+   at a time. */
+#define WRITE_BUFFER_SIZE 32768
 
 class PSPFile: public I_File {
 public:

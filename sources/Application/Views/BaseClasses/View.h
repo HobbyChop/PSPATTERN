@@ -48,8 +48,12 @@ enum ViewType {
     VT_TABLE,  // Table screen under phrase
     VT_TABLE2, // Table screen under instrument
     VT_GROOVE,
-    VT_MIXER
+    VT_MIXER,
+    VT_CONFIG,
+    VT_FX
 };
+// count of real screens (VT_TABLE2 is the table under a different door)
+#define VT_COUNT (VT_FX + 1)
 
 enum ViewMode {
     VM_NORMAL,
@@ -95,7 +99,9 @@ class View : public Observable {
         OnFocus();
     };
 
-    void LooseFocus() { hasFocus_ = false; };
+    // virtual: a view may need to act when the screen is left (the
+    // settings screen commits its edits here), whatever door was used
+    virtual void LooseFocus() { hasFocus_ = false; };
 
     // Which map cell this view is currently standing in. The table
     // editor occupies TWO cells -- under phrase and under instr --
@@ -117,6 +123,16 @@ class View : public Observable {
     virtual void OnPlayerUpdate(PlayerEventType, unsigned int currentTick) = 0;
     virtual void OnFocus() = 0;
     virtual void AnimationUpdate() {}
+    /* The nav map is a menu: hold R, walk the highlight with the
+       arrows, release to jump. Before the jump the CURRENT view gets
+       this call so a drill keeps its context prep -- song entering
+       chain still follows the cursor, the mixer still hands its
+       column over -- without the map layer knowing any of it. */
+    virtual void OnNavTo(ViewType to) {}
+    // The analog nub, delivered as single steps (0=left 1=right 2=up
+    // 3=down). The instrument screen uses it as the chord-free browse
+    // control for engine (left/right) and type (up/down).
+    virtual void OnNubFlick(int dir, unsigned short mask) {}
 
     void SetDirty(bool dirty);
 

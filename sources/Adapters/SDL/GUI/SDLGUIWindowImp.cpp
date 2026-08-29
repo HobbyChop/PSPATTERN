@@ -458,6 +458,43 @@ void SDLGUIWindowImp::DrawChar(const char c, GUIPoint &pos, GUITextProperties &p
 		const unsigned char *src=font+c*8 ;
 		unsigned char *dest=((unsigned char *)screen_->pixels) + (yy*screen_->pitch) + xx*pixelSize;
 
+		/* The generic loop below calls a library memcpy PER PIXEL --
+		   108 of them per glyph on the PSP's 12x9 cells -- and the
+		   cached-blit branch above is dead there (CELL_W is 12 and
+		   cacheFonts_ is off). These two typed loops cover the real
+		   cases (16 and 32bpp at mult 1) with direct stores; anything
+		   else falls through to the old loop unchanged. */
+		if (mult_==1 && pixelSize==2) {
+			unsigned short fg ; memcpy(&fg,fgPtr,2) ;
+			unsigned short bg ; memcpy(&bg,bgPtr,2) ;
+			unsigned char inv=(unsigned char)p.invert_ ;
+			for (int y=0;y<CELL_H;y++) {
+				unsigned short *d=(unsigned short *)dest ;
+				for (int x=0;x<CELL_W;x++) {
+					int gx=x-GLYPH_PAD_X ;
+					unsigned char v=((y<8)&&(gx>=0)&&(gx<8))?src[gx]:1 ;
+					bool isBg=((v)^inv)!=0 ;
+					if (!(p.transparent_&&isBg)) d[x]=isBg?bg:fg ;
+				}
+				dest+=screen_->pitch ;
+				if (y<7) src+=FONT_WIDTH ;
+			}
+		} else if (mult_==1 && pixelSize==4) {
+			unsigned int fg ; memcpy(&fg,fgPtr,4) ;
+			unsigned int bg ; memcpy(&bg,bgPtr,4) ;
+			unsigned char inv=(unsigned char)p.invert_ ;
+			for (int y=0;y<CELL_H;y++) {
+				unsigned int *d=(unsigned int *)dest ;
+				for (int x=0;x<CELL_W;x++) {
+					int gx=x-GLYPH_PAD_X ;
+					unsigned char v=((y<8)&&(gx>=0)&&(gx<8))?src[gx]:1 ;
+					bool isBg=((v)^inv)!=0 ;
+					if (!(p.transparent_&&isBg)) d[x]=isBg?bg:fg ;
+				}
+				dest+=screen_->pitch ;
+				if (y<7) src+=FONT_WIDTH ;
+			}
+		} else {
 		for (int y = 0; y < CELL_H; y++) {
 			for (int n=0;n<mult_;n++) {
 				for (int x = 0; x < CELL_W; x++) {
@@ -476,6 +513,7 @@ void SDLGUIWindowImp::DrawChar(const char c, GUIPoint &pos, GUITextProperties &p
     		}
 			if (y<7) src+=FONT_WIDTH ;
   		}
+		}
 
 	}
 }

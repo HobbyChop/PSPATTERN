@@ -207,6 +207,8 @@ static Bank *bank_ = &bankStore_ ;
 
 static int revSize_ = 160 ;        // 0..255 -> feedback
 static int revDamp_ = 110 ;        // 0..255 -> hf loss per pass
+static int freeze_ = 0 ;           // reverb infinite hold (0/1)
+static int drive_ = 0 ;            // 0..255 wet-bus drive
 
 static bool ready_ = false ;
 
@@ -415,10 +417,12 @@ void SetDelayFeedback(int f) { dlyFb_ = f < 0 ? 0 : (f > 250 ? 250 : f) ; }
 #ifdef PSP_ME_OFFLOAD
 extern "C" void PSPME_ReverbSize(int s) ;
 extern "C" void PSPME_ReverbDamp(int d) ;
+extern "C" void PSPME_Freeze(int f) ;
+extern "C" void PSPME_Drive(int d) ;
 #endif
 void SetReverbSize(int s)    { revSize_ = s < 0 ? 0 : (s > 255 ? 255 : s) ;
 #ifdef PSP_FDN_REVERB
-	fdn_.SetSize(revSize_) ;
+	if (!freeze_) fdn_.SetSize(revSize_) ;   // held constant while frozen
 #endif
 #ifdef PSP_ME_OFFLOAD
 	PSPME_ReverbSize(revSize_) ;
@@ -426,10 +430,20 @@ void SetReverbSize(int s)    { revSize_ = s < 0 ? 0 : (s > 255 ? 255 : s) ;
 }
 void SetReverbDamp(int d)    { revDamp_ = d < 0 ? 0 : (d > 255 ? 255 : d) ;
 #ifdef PSP_FDN_REVERB
-	fdn_.SetDamp(revDamp_) ;
+	if (!freeze_) fdn_.SetDamp(revDamp_) ;
 #endif
 #ifdef PSP_ME_OFFLOAD
 	PSPME_ReverbDamp(revDamp_) ;
+#endif
+}
+void SetReverbFreeze(int f)  { freeze_ = f < 0 ? 0 : (f > 1 ? 1 : f) ;
+#ifdef PSP_ME_OFFLOAD
+	PSPME_Freeze(freeze_) ;
+#endif
+}
+void SetDrive(int d)         { drive_ = d < 0 ? 0 : (d > 255 ? 255 : d) ;
+#ifdef PSP_ME_OFFLOAD
+	PSPME_Drive(drive_) ;
 #endif
 }
 
@@ -524,6 +538,17 @@ static inline short clip16(fixed v) {
 	if (s > 32767) s = 32767 ;
 	if (s < -32768) s = -32768 ;
 	return (short)s ;
+}
+
+// The ME's soft clip, mirrored for the scalar wet path so drive folds in
+// identically whether the effects run on the ME or the main core.
+static inline float sfxSoftClip(float x) {
+	const float L = 32767.0f, T = 26000.0f ;
+	float a = x < 0.0f ? -x : x ;
+	if (a <= T) return x ;
+	float sign = x < 0.0f ? -1.0f : 1.0f ;
+	float over = a - T, range = L - T ;
+	return sign * (T + range * over / (over + range)) ;
 }
 
 /* The bank itself: input accumulators and line state in, wet out.
@@ -625,10 +650,23 @@ static void processBank(fixed *buffer, int samplecount) {
 	const bool runRev = BK.runRev_ ;
 
 #ifdef PSP_FDN_REVERB
+	// Apply the freeze state to the scalar reverb on change; while frozen
+	// the size/damp setters skip it, so this owns g_/dc_ until released.
+	static int fzApplied_ = -1 ;
+	if (freeze_ != fzApplied_) {
+		if (freeze_) fdn_.SetFreeze(true) ;
+		else { fdn_.SetSize(revSize_) ; fdn_.SetDamp(revDamp_) ; }
+		fzApplied_ = freeze_ ;
+	}
 	// Load the FDN's matrix and state into VFPU registers once for the
 	// whole block, so the per-sample core reloads none of it.
 	if (runRev) fdn_.BeginVfpuBlock() ;
 #endif
+
+	// drive: read the knob once a block, not once a sample (the ME path
+	// does its own copy of this fold-in; this is the scalar mirror)
+	bool driveOn=(drive_!=0) ;
+	float driveG=1.0f + drive_ * (3.0f / 255.0f) ;
 
 	for (int i = 0 ; i < samplecount ; i++) {
 
@@ -688,7 +726,8 @@ static void processBank(fixed *buffer, int samplecount) {
 			if (++BK.revPhase_ >= REV_RATE_DIV) {
 				BK.revPhase_ = 0 ;
 				float outL, outR ;
-				fdn_.ProcessOne(fp2fl(BK.revIn_[0]), fp2fl(BK.revIn_[1]),
+				fdn_.ProcessOne(freeze_ ? 0.0f : fp2fl(BK.revIn_[0]),
+				                freeze_ ? 0.0f : fp2fl(BK.revIn_[1]),
 				                outL, outR) ;
 				BK.revHeld_[0] = fl2fp(outL * 0.3f) ;
 				BK.revHeld_[1] = fl2fp(outR * 0.3f) ;
@@ -799,8 +838,14 @@ static void processBank(fixed *buffer, int samplecount) {
 		// more than full scale. Left alone the delay and the reverb
 		// together measured twice that, which is a whole bus worth of
 		// the master's headroom spent on the effects.
-		buffer[i * 2]     = i2fp(clip16(clampfx((long long)dOutL + wet[0]))) ;
-		buffer[i * 2 + 1] = i2fp(clip16(clampfx((long long)dOutR + wet[1]))) ;
+		fixed wl = clampfx((long long)dOutL + wet[0]) ;
+		fixed wr = clampfx((long long)dOutR + wet[1]) ;
+		if (driveOn) {
+			wl = fl2fp(sfxSoftClip(fp2fl(wl) * driveG)) ;
+			wr = fl2fp(sfxSoftClip(fp2fl(wr) * driveG)) ;
+		}
+		buffer[i * 2]     = i2fp(clip16(wl)) ;
+		buffer[i * 2 + 1] = i2fp(clip16(wr)) ;
 	}
 
 #ifdef PSP_FDN_REVERB
@@ -878,8 +923,9 @@ static void postBlock(int samplecount) {
 }
 
 #ifdef PSP_ME_OFFLOAD
-extern "C" int PSPME_Bank(const fixed *dlyAcc, const fixed *revAcc,
-                          fixed *wet, int n, int fb, int dlyLen, int runDly) ;
+extern "C" int PSPME_Collect(fixed **out) ;
+extern "C" void PSPME_Post(const fixed *dlyAcc, const fixed *revAcc,
+                           int n, int fb, int dlyLen, int runDly) ;
 extern "C" unsigned int PSPME_Ready(void) ;
 
 /* The whole send bank runs on the second core. This core hands the two
@@ -900,9 +946,15 @@ static void processBankMe(fixed *buffer, int samplecount) {
 	}
 	wetEmit(buffer, samplecount) ;
 	int n = samplecount ; if (n > 2048) n = 2048 ;
-	int produced = PSPME_Bank(BK.dlyAcc_, BK.revAcc_, BK.wet_, n,
-	                          BK.fb_, BK.dlyLenS_, BK.runDly_ ? 1 : 0) ;
-	if (produced > 0) wetAppend(BK.wet_, produced) ;
+	// collect straight from the invalidated cached view into the ring
+	// (no staging hop), then post -- collect strictly before post, or
+	// the ME's next job races the read
+	fixed *wetSrc = 0 ;
+	int produced = PSPME_Collect(&wetSrc) ;
+	if (produced < 0) return ;              // still busy: drop this bank block
+	if (produced > 0) wetAppend(wetSrc, produced) ;
+	PSPME_Post(BK.dlyAcc_, BK.revAcc_, n,
+	           BK.fb_, BK.dlyLenS_, BK.runDly_ ? 1 : 0) ;
 }
 #endif
 

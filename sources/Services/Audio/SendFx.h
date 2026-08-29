@@ -43,6 +43,8 @@ namespace SendFx {
 	void SetDelayFeedback(int f) ;      // 0..255
 	void SetReverbSize(int s) ;         // 0..255
 	void SetReverbDamp(int d) ;         // 0..255
+	void SetReverbFreeze(int f) ;       // 0/1 infinite hold
+	void SetDrive(int d) ;              // 0..255 wet-bus drive
 
 	enum { DIV_16, DIV_8T, DIV_8, DIV_D8, DIV_4, DIV_D4, DIV_2,
 	       DIV_COUNT } ;

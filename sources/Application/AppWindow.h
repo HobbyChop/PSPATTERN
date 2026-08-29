@@ -3,7 +3,9 @@
 #define _APP_WINDOW_H_
 
 #include "Application/Views/ChainView.h"
+#include "Application/Views/ConfigView.h"
 #include "Application/Views/ConsoleView.h"
+#include "Application/Views/FxView.h"
 #include "Application/Views/GrooveView.h"
 #include "Application/Views/InstrumentView.h"
 #include "Application/Views/MixerView.h"
@@ -73,12 +75,21 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     // waits until nobody is using the machine.
     unsigned long _lastInputAt;
     ViewType currentViewType();
+    // nav-map menu state: where the highlight sits while R is held
+    bool navMove(int dx, int dy);
+    ViewType navSel_;
+    bool navigating_;
     void CloseProject();
 
     virtual void Clear(bool all = false);
     // throw away the diff cache so the next Flush repaints every cell
     // and every overlay op — the screen is stale after a resume
     void InvalidateScreen();
+    // Re-read the palette from config (used live when the theme setting
+    // changes) and force a full repaint.
+    void ApplyTheme();
+    // the central screen switch (also the nav menu's jump)
+    void switchToView(ViewType vt);
     // the screen map shown while the nav modifier is held
     void drawNavMap();
     // What is on screen while a project opens. See LoadProject.
@@ -175,6 +186,9 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     virtual void Print(char *);
 
     void defineColor(const char *colorName, GUIColor &color);
+    // The 13 defineColor() calls, factored out so boot and a live theme
+    // change share one definition of the palette.
+    void loadPalette();
 
     void onQuitApp();
 
@@ -190,6 +204,8 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     GrooveView *_grooveView;
     NullView *_nullView;
     MixerView *_mixerView;
+    ConfigView *_configView;
+    FxView *_fxView;
 
     Path _root;
 

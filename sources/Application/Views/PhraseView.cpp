@@ -1757,3 +1757,20 @@ void PhraseView::drawTriggerTrail() {
                    intensity);
     }
 }
+
+// nav-menu context prep: entering the instrument screen lands on the
+// instrument under the cursor (or the nearest one), as the old drill did
+void PhraseView::OnNavTo(ViewType to) {
+    if (to == VT_INSTRUMENT) {
+        unsigned char *c = phrase_->instr_ +
+                           (16 * viewData_->currentPhrase_ + row_);
+        if (*c != 0xFF) {
+            viewData_->currentInstrument_ = *c;
+        } else {
+            int nearest = findClosestInstrumentFor(row_);
+            if (nearest >= 0) {
+                viewData_->currentInstrument_ = nearest;
+            } else viewData_->currentInstrument_ = lastInstr_;
+        }
+    }
+}

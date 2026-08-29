@@ -306,19 +306,33 @@ bool WavFile::GetBuffer(long start,long size) {
 	int count=bufferSize ;
 	int offset=0 ;
 	char *ptr=(char *)samples_ ;
-	int readSize =
-   (bufferChunkSize_>0) 
-   ? bufferChunkSize_
-   : count>4096?4096:count;
 
-	while (count>0) {
-		readSize=(count>readSize)?readSize:count ;
-		readBlock(bufferStart,readSize) ;
-		memcpy(ptr+offset,readBuffer_,readSize) ;
-		bufferStart+=readSize ;
-		count-=readSize ;
-		offset+=readSize ;
-		if (bufferChunkSize_>0) TimeService::GetInstance()->Sleep(1) ;
+	if (bufferChunkSize_>0) {
+		// the deliberate trickle: small chunks with a sleep between,
+		// so a big load does not starve whatever else is running
+		int readSize=bufferChunkSize_ ;
+		while (count>0) {
+			readSize=(count>readSize)?readSize:count ;
+			readBlock(bufferStart,readSize) ;
+			memcpy(ptr+offset,readBuffer_,readSize) ;
+			bufferStart+=readSize ;
+			count-=readSize ;
+			offset+=readSize ;
+			TimeService::GetInstance()->Sleep(1) ;
+		}
+	} else {
+		// bulk load: straight into the destination in big sequential
+		// reads. The old path went through readBlock 4KB at a time --
+		// a seek, a read into a bounce buffer, and a memcpy per chunk,
+		// when the reads are contiguous and the destination is right
+		// there.
+		file_->Seek(bufferStart,SEEK_SET) ;
+		while (count>0) {
+			int readSize=(count>131072)?131072:count ;
+			file_->Read(ptr+offset,readSize,1) ;
+			count-=readSize ;
+			offset+=readSize ;
+		}
 	}
 
 

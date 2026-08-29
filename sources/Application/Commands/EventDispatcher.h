@@ -22,6 +22,8 @@ private:
 	static int keyDelay_ ;
 	unsigned int eventMask_ ;
 	unsigned int repeatMask_ ;
+	// repeat timer armed for the current hold (see Execute)
+	bool repeatArmed_ ;
 	I_Timer *timer_ ;
 } ;
 

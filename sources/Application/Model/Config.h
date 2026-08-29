@@ -12,6 +12,13 @@ public:
 	~Config() ;
 	const char *GetValue(const char *key) ;
 	void ProcessArguments(int argc,char **argv) ;
+	// Write the current option values back to config.xml. Surgical on the
+	// raw text so every comment and the hand-tuned layout survive: only
+	// each key's value="..." is rewritten, and a key the file lacks is
+	// appended before </CONFIG>. Returns false if the file can't be read
+	// or written. Seed a new option (FindVariable/Insert + SetString)
+	// before calling if you need to persist a key the file never had.
+	bool Save() ;
 } ;
 
 #endif

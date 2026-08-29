@@ -12,6 +12,7 @@ public:
 
 public: // System implementation
 	virtual unsigned long GetClock() ;
+	virtual bool GetAnalog(int &x,int &y) ;
 	virtual void Sleep(int millisec);
 	virtual void *Malloc(unsigned size) ;
 	virtual void Free(void *) ;

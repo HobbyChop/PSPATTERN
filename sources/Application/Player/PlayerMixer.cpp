@@ -76,6 +76,10 @@ void PlayerMixer::StartChannel(int channel) {
 	isChannelPlaying_[channel]=true ;
 } ;
 
+void PlayerMixer::CutInstrument(I_Instrument *instr) {
+	for (int i=0;i<SONG_CHANNEL_COUNT;i++) channel_[i]->CutIfPlaying(instr) ;
+}
+
 void PlayerMixer::StopChannel(int channel) {
 
     StopInstrument(channel) ;
@@ -127,11 +131,16 @@ void PlayerMixer::Update(Observable &o,I_ObservableData *d) {
       channel_[i]->SetLPFFreq(mixer->GetChannelLPF(i));
       channel_[i]->SetSends(mixer->GetChannelDelaySend(i),
                             mixer->GetChannelReverbSend(i));
+      channel_[i]->SetInserts(mixer->GetChannelPhaserRate(i),
+                              mixer->GetChannelPhaserDepth(i),
+                              mixer->GetChannelChorusRate(i),
+                              mixer->GetChannelChorusDepth(i));
   }
   MixerService *ms=MixerService::GetInstance();
   // the two effects themselves, and the tempo the delay locks to
   ms->SetSendFxParams(mixer->GetDelayDivision(),mixer->GetDelayFeedback(),
                       mixer->GetReverbSize(),mixer->GetReverbDamp());
+  ms->SetSendFx2(mixer->GetReverbFreeze(),mixer->GetDrive());
   SendFx::SetTempo(project_->GetTempo());
   ms->SetPregain(project_->GetPregain());
   ms->SetSoftclip(project_->GetSoftclip(), project_->GetSoftclipGain());

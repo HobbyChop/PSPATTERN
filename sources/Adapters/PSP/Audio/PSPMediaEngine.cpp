@@ -48,7 +48,7 @@
 #endif
 
 // Control words, uncached and shared with the ME.
-meLibSetSharedUncached32(16);
+meLibSetSharedUncached32(32);
 #define ME_EXIT_  (meLibSharedMemory[0])   // main -> ME: stop
 #define ME_BUSY   (meLibSharedMemory[1])   // main sets 1 = job posted; ME clears = done
 #define ME_N      (meLibSharedMemory[2])   // frames in the posted job
@@ -65,6 +65,10 @@ meLibSetSharedUncached32(16);
 #define ME_DAMP   (meLibSharedMemory[13])  // reverb damp knob (0..255)
 #define ME_FMBUF  (meLibSharedMemory[14])  // FM probe working set (uncached)
 #define ME_FMCYC  (meLibSharedMemory[15])  // FM probe: CPU cycles for one 8-voice block
+// Send-bus fold-in effect params (wet tail). [18..31] reserved for the
+// duck/gate/comp/phaser/chorus effects wired in later phases.
+#define ME_FREEZE (meLibSharedMemory[16])  // reverb infinite hold (0/1)
+#define ME_DRIVE  (meLibSharedMemory[17])  // wet-bus drive amount (0..255)
 
 // Interleaved-stereo I/O, all uncached. Two inputs (the delay and reverb
 // send accumulators) and one output (the finished wet).
@@ -179,7 +183,7 @@ void meLibOnProcess(void) {
 	fixed *revIn = (fixed *)meRevIn;
 	fixed *out   = (fixed *)meOut;
 	int   dlyPos = 0;
-	int   lastSize = -1, lastDamp = -1;
+	int   lastSize = -1, lastDamp = -1, lastFreeze = -1;
 	// reverb runs half-rate, like the main-core FDN: accumulate the two
 	// samples' average, run the network once, hold the wet between.
 	int   revPhase = 0;
@@ -194,8 +198,18 @@ void meLibOnProcess(void) {
 			// apply knob changes here, on the owning core -- never let
 			// the main core mutate the instance the ME is reading
 			int sz = (int)ME_SIZE, dp = (int)ME_DAMP;
-			if (sz != lastSize) { meRev_.SetSize(sz); lastSize = sz; }
-			if (dp != lastDamp) { meRev_.SetDamp(dp); lastDamp = dp; }
+			int fz = (int)ME_FREEZE;
+			if (fz != lastFreeze) {
+				meRev_.SetFreeze(fz != 0); lastFreeze = fz;
+				// while frozen, size/damp are held; remember them so the
+				// next real change re-applies (unfreeze rebuilds anyway)
+				if (fz) { lastSize = sz; lastDamp = dp; }
+			}
+			if (!fz) {
+				if (sz != lastSize) { meRev_.SetSize(sz); lastSize = sz; }
+				if (dp != lastDamp) { meRev_.SetDamp(dp); lastDamp = dp; }
+			}
+			int drive = (int)ME_DRIVE;
 
 			short *dlyL   = (short *)ME_DLYL;
 			short *dlyR   = (short *)ME_DLYR;
@@ -225,15 +239,23 @@ void meLibOnProcess(void) {
 				if (++revPhase >= 2) {
 					revPhase = 0;
 					float oL, oR;
-					meRev_.ProcessOneScalar(fp2fl(revSum0), fp2fl(revSum1), oL, oR);
+					meRev_.ProcessOneScalar(fz ? 0.0f : fp2fl(revSum0),
+					                        fz ? 0.0f : fp2fl(revSum1), oL, oR);
 					// clamp in FLOAT before fl2fp -- the scalar cast wraps
 					// on int32 overflow where the VFPU path saturates
 					revHold0 = fl2fp(meSoftClip(oL * 0.3f));
 					revHold1 = fl2fp(meSoftClip(oR * 0.3f));
 					revSum0 = revSum1 = 0;
 				}
-				out[k * 2]     = i2fp(meClip16(meClampfx((long long)dOutL + revHold0)));
-				out[k * 2 + 1] = i2fp(meClip16(meClampfx((long long)dOutR + revHold1)));
+				fixed wl = meClampfx((long long)dOutL + revHold0);
+				fixed wr = meClampfx((long long)dOutR + revHold1);
+				if (drive) {
+					float g = 1.0f + drive * (3.0f / 255.0f);
+					wl = fl2fp(meSoftClip(fp2fl(wl) * g));
+					wr = fl2fp(meSoftClip(fp2fl(wr) * g));
+				}
+				out[k * 2]     = i2fp(meClip16(wl));
+				out[k * 2 + 1] = i2fp(meClip16(wr));
 			}
 			meLibSync();       // land all out[] stores in RAM before the flag
 			ME_BUSY = 0;
@@ -258,6 +280,16 @@ extern "C" void PSPME_ReverbDamp(int d) {
 	if (d == last) return ;
 	last = d ; ME_DAMP = (unsigned int)d ; meLibSync() ;
 }
+extern "C" void PSPME_Freeze(int f) {
+	static int last = -1 ;
+	if (f == last) return ;
+	last = f ; ME_FREEZE = (unsigned int)f ; meLibSync() ;
+}
+extern "C" void PSPME_Drive(int d) {
+	static int last = -1 ;
+	if (d == last) return ;
+	last = d ; ME_DRIVE = (unsigned int)d ; meLibSync() ;
+}
 
 // Give the ME the delay lines (once, after SendFx allocates them). Passed
 // the cached pointers; published to RAM and stored as uncached aliases.
@@ -275,21 +307,33 @@ extern "C" void PSPME_SetDelayLines(short *dlyL, short *dlyR, int maxLen) {
 // (0 if the ME is still busy or nothing is ready yet). Never repeats a
 // block: a not-ready call simply produces nothing and the caller's wet
 // ring silence-extends its lead -- a fade edge, not a mid-signal seam.
-extern "C" int PSPME_Bank(const fixed *dlyAcc, const fixed *revAcc,
-                          fixed *wet, int n, int fb, int dlyLen, int runDly) {
-	meCalls_++;
-	if (n > ME_MAXN) n = ME_MAXN;
-	if (ME_BUSY) return 0;                  // last job still running
+/* The old PSPME_Bank collected the previous job into a caller buffer
+   and posted the next one in a single call -- which forced an extra
+   2KB copy per block on the caller's side (meOut -> staging -> wet
+   ring). Split in two so the caller can append the finished wet
+   straight from the invalidated cached view into its ring, with the
+   collect still strictly BEFORE the post: once the next job is posted
+   the ME starts overwriting meOut, so the order is the correctness. */
 
-	// the finished job's output (mePrevN_ frames) is in meOut
+// Returns -1 while the ME is still busy (nothing collected -- do not
+// post), else the frame count of the finished job (0 on the first
+// call). *out points at the cached view of the wet, already
+// invalidated, valid until the next PSPME_Post.
+extern "C" int PSPME_Collect(fixed **out) {
+	meCalls_++;
+	if (ME_BUSY) return -1;                 // last job still running
 	int produced = mePrevN_;
 	if (produced > 0) {
 		fixed *out_c = (fixed *)((unsigned int)meOut & ~0x40000000u);
 		sceKernelDcacheInvalidateRange(out_c, produced * 2 * (int)sizeof(fixed));
-		for (int k = 0; k < produced * 2; k++) wet[k] = out_c[k];
+		*out = out_c;
 	}
+	return produced;
+}
 
-	// post this block
+extern "C" void PSPME_Post(const fixed *dlyAcc, const fixed *revAcc,
+                           int n, int fb, int dlyLen, int runDly) {
+	if (n > ME_MAXN) n = ME_MAXN;
 	int bytes = n * 2 * (int)sizeof(fixed);
 	fixed *dly_c = (fixed *)((unsigned int)meDlyIn & ~0x40000000u);
 	fixed *rev_c = (fixed *)((unsigned int)meRevIn & ~0x40000000u);
@@ -302,7 +346,6 @@ extern "C" int PSPME_Bank(const fixed *dlyAcc, const fixed *revAcc,
 	meLibSync();
 	ME_BUSY = 1;
 	meLibSync();
-	return produced;
 }
 extern "C" int PSPME_Init(void) {
 	ME_EXIT_ = 0; ME_BUSY = 0; ME_N = 0; ME_READY = 0; ME_HB = 0; ME_JOBS = 0;

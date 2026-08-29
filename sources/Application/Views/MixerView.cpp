@@ -95,6 +95,10 @@ void MixerView::updateCursor(int dx,int dy) {
     bool onEq = (mixerRow_ >= MIXER_EQ_BASE);
 
     if (dy != 0) {
+        if (viewData_->mixerCol_ == 8) {
+            // the master strip is just its fader -- stay on it
+            mixerRow_ = 1; isDirty_ = true; return;
+        }
         if (onEq) {
             // the EQ is the bottom line: up returns to the sends, down
             // wraps round to the top of the channel grid
@@ -141,20 +145,23 @@ void MixerView::updateCursor(int dx,int dy) {
         int x = viewData_->mixerCol_;
 		x += dx;
 		if (x < 0) x = 0;
-		if (x > 7) x = 7;
+		if (x > 8) x = 8;                 // 8 = master fader (was display-only)
 		viewData_->mixerCol_ = x;
+		if (x == 8) mixerRow_ = 1;        // land on the master fader
 		isDirty_ = true;
 	}
 }
 
 void MixerView::toggleMute() {
     int col = viewData_->mixerCol_;
+    if (col > 7) return;                 // master strip: nothing to mute
     UIController::GetInstance()->ToggleMute(col, col);
     isDirty_ = true;
 };
 
 void MixerView::toggleSolo() {
 	int col=viewData_->mixerCol_ ;
+	if (col > 7) return ;                // master strip: nothing to solo
 	bool entering=(soloChannel_!=col) ;
 	UIController::GetInstance()->SwitchSoloMode(col,col,entering) ;
     soloChannel_ = entering ? col : -1;
@@ -244,6 +251,12 @@ void MixerView::processNormalButtonMask(unsigned int mask) {
             ViewEvent ve(VET_SWITCH_VIEW, &vt);
             SetChanged();
             NotifyObservers(&ve);
+        } else if (mask & EPBM_LEFT) {
+            // R + LEFT = the FX rack, the cell left of the mixer on the map
+            ViewType vt = VT_FX;
+            ViewEvent ve(VET_SWITCH_VIEW, &vt);
+            SetChanged();
+            NotifyObservers(&ve);
         } else if (mask & EPBM_RIGHT) {
             ViewType vt = VT_TABLE;
             ViewEvent ve(VET_SWITCH_VIEW, &vt);
@@ -278,13 +291,32 @@ void MixerView::processNormalButtonMask(unsigned int mask) {
                         MasterEq::BandName(b));
                 SetNotification(notifBuf);
             } else if (mixerRow_ < MIXER_CHAN_ROWS) {
-                // reset volume to full
-                Mixer::GetInstance()->SetChannelVolume(viewData_->mixerCol_,
-                                                       0xFF);
+                if (viewData_->mixerCol_ == 8) {
+                    // reset the master fader to its default
+                    viewData_->project_->FindVariable(VAR_MASTERVOL)->SetInt(75);
+                } else {
+                    // reset volume to full
+                    Mixer::GetInstance()->SetChannelVolume(viewData_->mixerCol_,
+                                                           0xFF);
+                }
                 isDirty_ = true;
             }
         }
     } else if (mask & EPBM_A) {
+        if (viewData_->mixerCol_ == 8) {
+            // master strip: A+dir moves the master fader (10..100)
+            Variable *mv = viewData_->project_->FindVariable(VAR_MASTERVOL);
+            int v = mv->GetInt();
+            if (mask & EPBM_UP)    v += 4;
+            if (mask & EPBM_DOWN)  v -= 4;
+            if (mask & EPBM_RIGHT) v += 1;
+            if (mask & EPBM_LEFT)  v -= 1;
+            if (v < 10)  v = 10;
+            if (v > 100) v = 100;
+            mv->SetInt(v);
+            isDirty_ = true;
+            return;
+        }
         if (mixerRow_ == 3) {
             // On LPF row: A+Up/Down = coarse ×2/÷2, A+Left/Right = fine
             // ±10Hz A alone (no direction) = toggle off/1000Hz
@@ -654,6 +686,14 @@ void MixerView::DrawView() {
         }
 
         if (i == 8) {
+            // the master fader, on the volume row of the master strip
+            char mv[8];
+            sprintf(mv, "%d", viewData_->project_->GetMasterVolume());
+            bool cursor = (viewData_->mixerCol_ == 8 && mixerRow_ == 1);
+            props.invert_ = cursor;
+            SetColor(cursor ? CD_HILITE2 : CD_NORMAL);
+            DrawString(c + 1, MIXER_VAL_ROW + 1, mv, props);
+            props.invert_ = false;
             SetColor(CD_ROW2);
             DrawString(c + 1, MIXER_MUTE_ROW, "st", props);
             continue;
@@ -984,4 +1024,22 @@ void MixerView::AnimationUpdate() {
     if (HasModal())
         return; // never repaint the meters over a dialog
     DrawVuBars();
+}
+
+// nav-menu context prep: the mixer hands its column to whatever screen
+// is entered, and seeds chain/phrase for the drill targets
+void MixerView::OnNavTo(ViewType to) {
+    if (to == VT_CHAIN || to == VT_TABLE || to == VT_PHRASE) {
+        viewData_->songX_ = viewData_->mixerCol_ > 7 ? 7 : viewData_->mixerCol_;
+        unsigned char *data = viewData_->GetCurrentSongPointer();
+        if (*data != 0xFF) {
+            viewData_->currentChain_ = *data;
+        }
+        if (to != VT_CHAIN) {
+            data = viewData_->GetCurrentChainPointer();
+            if (*data != 0xFF) {
+                viewData_->currentPhrase_ = *data;
+            }
+        }
+    }
 }

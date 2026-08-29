@@ -34,8 +34,15 @@ void Observable::RemoveAllObservers() {
 
 void Observable::NotifyObservers(I_ObservableData *d) {
 	if (_hasChanged) {
-		std::vector<I_Observer *>::iterator it=_list.begin() ;
-		while (it!=_list.end()) {
+		// Walk a SNAPSHOT: an observer's Update may add or remove
+		// observers on this very object (a view re-observing after a
+		// change), and erase/push_back invalidate a live iterator --
+		// the next step then reads freed memory and calls through a
+		// garbage vtable. The copy makes re-entry safe; an observer
+		// removed mid-notify may still get this one last Update.
+		std::vector<I_Observer *> snapshot=_list ;
+		std::vector<I_Observer *>::iterator it=snapshot.begin() ;
+		while (it!=snapshot.end()) {
 			I_Observer *o=*it++ ;
 			o->Update(*this,d) ;
 		}

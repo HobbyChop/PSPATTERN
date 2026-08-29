@@ -105,11 +105,14 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
             fixed *mixBuffer=mixBuffer_ ;
             if (!mixBuffer) continue ; 
             if (current.Render(mixBuffer,samplecount)) {
-               if (preSumGain_ != FP_ONE) {
-                   fixed *g = mixBuffer;
-                   int c2 = samplecount * 2;
-                   while (c2--) { *g = fp_mul(*g, preSumGain_); g++; }
-               }
+               // The fader is folded into the sum read below instead of
+               // a separate read-modify-write pass over the buffer: the
+               // master defaults to 75, so every stock project paid
+               // that extra 2KB walk per bus per block. Safe because
+               // the gain is (master/100)^4 <= 1, so the scaled source
+               // still respects the saturation invariant.
+               fixed g=preSumGain_ ;
+               bool scaled=(g!=FP_ONE) ;
                fixed *dst=buffer ;
                fixed *src=mixBuffer ;
                int count=samplecount*2 ;
@@ -148,7 +151,7 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
                     here. A mix that never saturates is clean; one that
                     saturates on a fifth of its samples is being
                     destroyed, and that is the thing worth showing. */
-                 fixed sum=*dst+*src ;
+                 fixed sum=*dst+(scaled?fp_mul(*src,g):*src) ;
                  if (sum>MAX_POSITIVE_FIXED) {
                      sum=MAX_POSITIVE_FIXED ;
                      if (trackRawSum_) rawSumPeak_++ ;

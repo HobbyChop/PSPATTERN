@@ -113,6 +113,9 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
 
     // Clear all channel based data
 
+    // the transport owns the channels now: forget any held keyboard/
+    // audition notes, or their release would cut a song note later
+    for (int i = 0; i < 128; i++) midiHeld_[i] = 0;
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         mixer_->StopChannel(i);
         timeToLive_[i] = 0;
@@ -208,6 +211,7 @@ void Player::Stop() {
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         mixer_->StopChannel(i);
     }
+    for (int i = 0; i < 128; i++) midiHeld_[i] = 0;
     MidiService::GetInstance()->OnPlayerStop();
     mixer_->OnPlayerStop();
 
@@ -374,6 +378,14 @@ void Player::MidiNoteOff(unsigned char note) {
 		if (midiHeld_[i]==held) return ;
 	}
 	mixer_->StopInstrument(held-1) ;
+} ;
+
+// Hard-release every voice rendering `instr` -- for when the object is
+// about to be deleted (a type change). Held-note bookkeeping goes with
+// it: those notes' channels no longer play what the map thinks.
+void Player::CutInstrument(I_Instrument *instr) {
+	mixer_->CutInstrument(instr) ;
+	for (int i=0;i<128;i++) midiHeld_[i]=0 ;
 } ;
 
 void Player::MidiAllNotesOff() {

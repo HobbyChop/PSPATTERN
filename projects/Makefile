@@ -249,7 +249,7 @@ COMMONFILES := \
 	NewProjectDialog.o \
 	ImportSampleDialog.o \
 	MixerView.o NullView.o \
-	SongView.o ChainView.o PhraseView.o ViewData.o ConsoleView.o ProjectView.o InstrumentView.o UIController.o \
+	SongView.o ChainView.o PhraseView.o ViewData.o ConsoleView.o ConfigView.o FxView.o ProjectView.o InstrumentView.o UIController.o \
 	View.o ModalView.o FieldView.o UIField.o UIIntField.o \
 	UIIntVarOffField.o UIIntVarField.o UISliderField.o UIPillField.o UIStepperField.o ViewEvent.o I_Action.o\
 	UITempoField.o UIActionField.o \

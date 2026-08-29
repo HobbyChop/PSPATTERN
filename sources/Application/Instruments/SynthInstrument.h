@@ -338,6 +338,18 @@ private:
 	void releaseFmOps(SynthVoice &v) ;
 	void setFmPitch(SynthVoice &v) ;
 	void fmMultipliers(int *mulQ16) ;
+	/* Hot-path parameter lookup. FindVariable walks the container with
+	   a heap-allocated virtual iterator -- the render paths were doing
+	   that ~43 times per FM voice per block, ~15k audio-thread
+	   malloc/frees a second. The variable list never changes after the
+	   constructor, so it is snapshotted once into a sorted table and
+	   answered by binary search (~6 int compares) from then on. */
+	void buildParamCache() ;
+	Variable *pv(FourCC id) ;
+	static const int PV_MAX=96 ;
+	unsigned int pvId_[PV_MAX] ;
+	Variable *pvVar_[PV_MAX] ;
+	int pvCount_ ;
 	// tick-rate command work (ARPG steps, RTRG retriggers), called
 	// from the renderers as the voice crosses tick boundaries
 	void serviceTicks(SynthVoice &v,int channel,int samples) ;

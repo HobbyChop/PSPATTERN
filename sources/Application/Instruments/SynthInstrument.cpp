@@ -303,6 +303,7 @@ static inline int tickLength() {
 
 SynthInstrument::SynthInstrument() {
 
+	pvCount_=0 ;   // pv() falls back to FindVariable until the cache builds
 	strcpy(name_,"SYNTH") ;
 	memset(voice_,0,sizeof(voice_)) ;
 
@@ -437,9 +438,39 @@ SynthInstrument::SynthInstrument() {
 	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
 		voice_[i].active_=false ;
 	}
+
+	buildParamCache() ;   // the list above is final; snapshot it
 } ;
 
 SynthInstrument::~SynthInstrument() {
+} ;
+
+// See the header: one sorted snapshot of the (immutable) variable list,
+// so the render paths stop paying a malloc'd virtual iterator per knob.
+void SynthInstrument::buildParamCache() {
+	pvCount_=0 ;
+	IteratorPtr<Variable> it(GetIterator()) ;
+	for (it->Begin();!it->IsDone();it->Next()) {
+		if (pvCount_>=PV_MAX) break ;
+		Variable &v=it->CurrentItem() ;
+		unsigned int id=(unsigned int)v.GetID() ;
+		int j=pvCount_++ ;
+		while (j>0&&pvId_[j-1]>id) {
+			pvId_[j]=pvId_[j-1] ; pvVar_[j]=pvVar_[j-1] ; j-- ;
+		}
+		pvId_[j]=id ; pvVar_[j]=&v ;
+	}
+} ;
+
+Variable *SynthInstrument::pv(FourCC id) {
+	unsigned int key=(unsigned int)id ;
+	int lo=0,hi=pvCount_-1 ;
+	while (lo<=hi) {
+		int mid=(lo+hi)>>1 ;
+		if (pvId_[mid]==key) return pvVar_[mid] ;
+		if (pvId_[mid]<key) lo=mid+1 ; else hi=mid-1 ;
+	}
+	return FindVariable(id) ;   // pre-cache or unknown id: the slow path
 } ;
 
 bool SynthInstrument::Init() {
@@ -583,7 +614,7 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	// as legato left envelopes unarmed = silent previews.)
 
 	SynthVoice &v=voice_[channel] ;
-	int glide=FindVariable(SYP_GLIDE)->GetInt() ;
+	int glide=pv(SYP_GLIDE)->GetInt() ;
 
 	// The player stops the old note before starting this one, so
 	// active_ is always false by the time we get here and the whole
@@ -613,19 +644,19 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 
 	// per-voice command state starts from the instrument's settings;
 	// commands then bend THIS voice only, and the next note resets it
-	v.volume_=FindVariable(SYP_VOLUME)->GetInt() ;
-	v.cutoff_=FindVariable(SYP_CUTOFF)->GetInt() ;
-	v.reso_=FindVariable(SYP_RESO)->GetInt() ;
-	v.modAmt_=FindVariable(SYP_DCWAMT)->GetInt() ;
-	v.drive_=FindVariable(SYP_DRIVE)->GetInt() ;
-	v.unison_=FindVariable(SYP_UNISON)->GetInt() ;
-	v.detune_=FindVariable(SYP_DETUNE)->GetInt() ;
-	v.lfoDepth_=FindVariable(SYP_LFODEPTH)->GetInt() ;
-	v.lfoRate_=FindVariable(SYP_LFORATE)->GetInt() ;
+	v.volume_=pv(SYP_VOLUME)->GetInt() ;
+	v.cutoff_=pv(SYP_CUTOFF)->GetInt() ;
+	v.reso_=pv(SYP_RESO)->GetInt() ;
+	v.modAmt_=pv(SYP_DCWAMT)->GetInt() ;
+	v.drive_=pv(SYP_DRIVE)->GetInt() ;
+	v.unison_=pv(SYP_UNISON)->GetInt() ;
+	v.detune_=pv(SYP_DETUNE)->GetInt() ;
+	v.lfoDepth_=pv(SYP_LFODEPTH)->GetInt() ;
+	v.lfoRate_=pv(SYP_LFORATE)->GetInt() ;
 	for (int i=0;i<FM_OPS;i++) {
-		v.fmLevel_[i]=FindVariable(fmLevelId[i])->GetInt() ;
+		v.fmLevel_[i]=pv(fmLevelId[i])->GetInt() ;
 	}
-	v.fmFeedback_=FindVariable(SYP_FMFB)->GetInt() ;
+	v.fmFeedback_=pv(SYP_FMFB)->GetInt() ;
 	v.cmdLocks_=0 ;           // a new note answers to the knobs again
 	v.releasing_=false ;      // a new note cancels any tail
 	v.pan_=0x7F ;
@@ -703,8 +734,8 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	// the phase distortion envelope, the operator envelopes -- starts
 	// again, because this is a new note and not a continuation of the
 	// one that just faded out.
-	startRamp(v.amp_,FindVariable(SYP_ATTACK)->GetInt(),wasSounding) ;
-	startRamp(v.mod_,FindVariable(SYP_DCWATK)->GetInt(),wasActive) ;
+	startRamp(v.amp_,pv(SYP_ATTACK)->GetInt(),wasSounding) ;
+	startRamp(v.mod_,pv(SYP_DCWATK)->GetInt(),wasActive) ;
 	// operator phases reset with the voice, so a retrigger is a clean
 	// attack rather than a note that starts mid-timbre
 	startFmOps(v,wasActive) ;
@@ -717,7 +748,7 @@ void SynthInstrument::Stop(int channel) {
 	SynthVoice &v=voice_[channel] ;
 
 	// A voice that is not sounding has nothing to fade.
-	int release=FindVariable(SYP_RELEASE)->GetInt() ;
+	int release=pv(SYP_RELEASE)->GetInt() ;
 	if (!v.active_) {
 		v.active_=false ;
 		v.releasing_=false ;
@@ -735,7 +766,7 @@ void SynthInstrument::Stop(int channel) {
 	// Otherwise both envelopes walk down and the channel keeps
 	// rendering us until IsReleasing goes false.
 	releaseRamp(v.amp_,release) ;
-	releaseRamp(v.mod_,FindVariable(SYP_DCWREL)->GetInt()) ;
+	releaseRamp(v.mod_,pv(SYP_DCWREL)->GetInt()) ;
 	releaseFmOps(v) ;
 	v.releasing_=true ;
 } ;
@@ -765,8 +796,8 @@ void SynthInstrument::retrigger(SynthVoice &v) {
 	}
 	v.subPhase_=0 ;
 	v.syncPhase_=0 ;
-	startRamp(v.amp_,FindVariable(SYP_ATTACK)->GetInt(),false) ;
-	startRamp(v.mod_,FindVariable(SYP_DCWATK)->GetInt(),false) ;
+	startRamp(v.amp_,pv(SYP_ATTACK)->GetInt(),false) ;
+	startRamp(v.mod_,pv(SYP_DCWATK)->GetInt(),false) ;
 }
 
 // set the voice's target pitch from an absolute note; glideCoef_
@@ -922,28 +953,28 @@ bool SynthInstrument::Render(int channel,fixed *buffer,int size,bool updateTick)
 	// nothing until you played the next one -- and cutoff is the knob
 	// people reach for mid-note. Follow the instrument for anything a
 	// command hasn't claimed on this voice.
-	if (!(v.cmdLocks_&SVL_VOLUME)) v.volume_=FindVariable(SYP_VOLUME)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_CUTOFF)) v.cutoff_=FindVariable(SYP_CUTOFF)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_RESO))   v.reso_=FindVariable(SYP_RESO)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_MODAMT)) v.modAmt_=FindVariable(SYP_DCWAMT)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_DRIVE))  v.drive_=FindVariable(SYP_DRIVE)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_UNISON)) v.unison_=FindVariable(SYP_UNISON)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_DETUNE)) v.detune_=FindVariable(SYP_DETUNE)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_LFODEP)) v.lfoDepth_=FindVariable(SYP_LFODEPTH)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_LFORAT)) v.lfoRate_=FindVariable(SYP_LFORATE)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_FMLV1)) v.fmLevel_[0]=FindVariable(SYP_FML1)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_FMLV2)) v.fmLevel_[1]=FindVariable(SYP_FML2)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_FMLV3)) v.fmLevel_[2]=FindVariable(SYP_FML3)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_FMLV4)) v.fmLevel_[3]=FindVariable(SYP_FML4)->GetInt() ;
-	if (!(v.cmdLocks_&SVL_FMFB))  v.fmFeedback_=FindVariable(SYP_FMFB)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_VOLUME)) v.volume_=pv(SYP_VOLUME)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_CUTOFF)) v.cutoff_=pv(SYP_CUTOFF)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_RESO))   v.reso_=pv(SYP_RESO)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_MODAMT)) v.modAmt_=pv(SYP_DCWAMT)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_DRIVE))  v.drive_=pv(SYP_DRIVE)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_UNISON)) v.unison_=pv(SYP_UNISON)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_DETUNE)) v.detune_=pv(SYP_DETUNE)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_LFODEP)) v.lfoDepth_=pv(SYP_LFODEPTH)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_LFORAT)) v.lfoRate_=pv(SYP_LFORATE)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_FMLV1)) v.fmLevel_[0]=pv(SYP_FML1)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_FMLV2)) v.fmLevel_[1]=pv(SYP_FML2)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_FMLV3)) v.fmLevel_[2]=pv(SYP_FML3)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_FMLV4)) v.fmLevel_[3]=pv(SYP_FML4)->GetInt() ;
+	if (!(v.cmdLocks_&SVL_FMFB))  v.fmFeedback_=pv(SYP_FMFB)->GetInt() ;
 
-	int engine=FindVariable(SYP_ENGINE)->GetInt() ;
+	int engine=pv(SYP_ENGINE)->GetInt() ;
 	// The wave selector is per-engine, so read the one this engine
 	// actually uses; otherwise switching PDX waves looks like no change.
-	int wave=(engine==SET_PDX)?FindVariable(SYP_PDXWAVE)->GetInt():
-	         (engine==SET_VAX)?FindVariable(SYP_VAXWAVE)->GetInt():
-	         (engine==SET_FM) ?FindVariable(SYP_FMALGO)->GetInt():
-	                           FindVariable(SYP_WAVE)->GetInt() ;
+	int wave=(engine==SET_PDX)?pv(SYP_PDXWAVE)->GetInt():
+	         (engine==SET_VAX)?pv(SYP_VAXWAVE)->GetInt():
+	         (engine==SET_FM) ?pv(SYP_FMALGO)->GetInt():
+	                           pv(SYP_WAVE)->GetInt() ;
 	// Editing engine or wave under a held note hands the next block to a
 	// different oscillator, which picks up at a different amplitude --
 	// measured at 6x the natural step of a sine, about 11% of full
@@ -972,10 +1003,10 @@ bool SynthInstrument::Render(int channel,fixed *buffer,int size,bool updateTick)
 
 bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 
-	int wave=FindVariable(SYP_WAVE)->GetInt() ;
+	int wave=pv(SYP_WAVE)->GetInt() ;
 	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
-	fixed sustain=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
-	int decay=FindVariable(SYP_DECAY)->GetInt() ;
+	fixed sustain=sustainFromParam(pv(SYP_SUSTAIN)->GetInt()) ;
+	int decay=pv(SYP_DECAY)->GetInt() ;
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
 
@@ -983,15 +1014,15 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 	// on a page sized for eight. Sub, noise and pulse width are the
 	// three the VAX engine already implements, so they cost a read of
 	// a parameter that is zero on every patch written before this.
-	int pwm=FindVariable(SYP_PWM)->GetInt() ;
+	int pwm=pv(SYP_PWM)->GetInt() ;
 	unsigned int pwThresh=(unsigned int)(16+((pwm*224)>>8))<<24 ;
-	int subQ=FindVariable(SYP_SUB)->GetInt()<<7 ;
-	int noiseQ=FindVariable(SYP_NOISE)->GetInt()<<7 ;
+	int subQ=pv(SYP_SUB)->GetInt()<<7 ;
+	int noiseQ=pv(SYP_NOISE)->GetInt()<<7 ;
 	unsigned int rng=v.rng_ ;
 
 	// ...and no LFO either, so pointing lfo dest at anything on this
 	// engine did nothing at all
-	int lfoDest=FindVariable(SYP_LFODEST)->GetInt() ;
+	int lfoDest=pv(SYP_LFODEST)->GetInt() ;
 	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
 	int lfoDepth=v.lfoDepth_<<7 ;
 
@@ -1016,7 +1047,7 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 	int resoP=v.reso_&0xFF ;
 	bool filtered=(cut<0xFF)||(resoP>0)||
 	              ((lfoDest==SLD_FILTER)&&lfoDepth) ;
-	int fltMode=FindVariable(SYP_FLTMODE)->GetInt() ;
+	int fltMode=pv(SYP_FLTMODE)->GetInt() ;
 	int qQ=32768-(resoP<<7) ;
 	if (qQ<1024) qQ=1024 ;
 	int f=cutTable_[cut] ;
@@ -1151,17 +1182,17 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 
 bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
 
-	int wave=FindVariable(SYP_PDXWAVE)->GetInt() ;
+	int wave=pv(SYP_PDXWAVE)->GetInt() ;
 	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
-	fixed ampSus=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
-	int ampDec=FindVariable(SYP_DECAY)->GetInt() ;
-	fixed dcwSus=sustainFromParam(FindVariable(SYP_DCWSUS)->GetInt()) ;
-	int dcwDec=FindVariable(SYP_DCWDEC)->GetInt() ;
+	fixed ampSus=sustainFromParam(pv(SYP_SUSTAIN)->GetInt()) ;
+	int ampDec=pv(SYP_DECAY)->GetInt() ;
+	fixed dcwSus=sustainFromParam(pv(SYP_DCWSUS)->GetInt()) ;
+	int dcwDec=pv(SYP_DCWDEC)->GetInt() ;
 	int dcwAmt=v.modAmt_<<7 ;                              // 0..FF -> ~Q15
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
 
-	int lfoDest=FindVariable(SYP_LFODEST)->GetInt() ;
+	int lfoDest=pv(SYP_LFODEST)->GetInt() ;
 	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
 	int lfoDepth=v.lfoDepth_<<7 ;
 
@@ -1338,7 +1369,7 @@ bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
    nothing. */
 void SynthInstrument::fmMultipliers(int *mulQ16) {
 	for (int i=0;i<FM_OPS;i++) {
-		int ridx=FindVariable(fmRatioId[i])->GetInt() ;
+		int ridx=pv(fmRatioId[i])->GetInt() ;
 		if (ridx<0) ridx=0 ;
 		if (ridx>31) ridx=31 ;
 		int m=((int)fmRatioMul[ridx])<<8 ;
@@ -1346,7 +1377,7 @@ void SynthInstrument::fmMultipliers(int *mulQ16) {
 		// so the full swing is about +/-0.34% -- a few cents, which
 		// is what makes two carriers at the same ratio beat instead
 		// of cancel
-		int det=FindVariable(fmDetId[i])->GetInt()-7 ;
+		int det=pv(fmDetId[i])->GetInt()-7 ;
 		if (det) m+=(m*det)>>11 ;
 		if (m<1) m=1 ;
 		mulQ16[i]=m ;
@@ -1365,7 +1396,7 @@ void SynthInstrument::setFmPitch(SynthVoice &v) {
 void SynthInstrument::startFmOps(SynthVoice &v,bool fromCurrent) {
 	for (int i=0;i<FM_OPS;i++) {
 		if (!fromCurrent) v.op_[i].phase_=0 ;
-		startRamp(v.op_[i].env_,FindVariable(fmAtkId[i])->GetInt(),fromCurrent) ;
+		startRamp(v.op_[i].env_,pv(fmAtkId[i])->GetInt(),fromCurrent) ;
 	}
 	if (!fromCurrent) {
 		v.fbLast_[0]=0 ;
@@ -1402,14 +1433,20 @@ void SynthInstrument::ResetFmProfile() { s_fmUsFilt=s_fmUsUnfilt=0 ; s_fmBlkFilt
 #endif
 
 bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
+#ifdef PSP_DSP_PROFILE
+	// bracket opens at ENTRY: the knob preamble used to sit outside it,
+	// so a third of the voice's real cost was invisible to the profiler
+	// while fully charged to dsp%
+	unsigned int _profStart=dspProfMicros() ;
+#endif
 
 	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
-	fixed sustain=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
-	int decay=FindVariable(SYP_DECAY)->GetInt() ;
+	fixed sustain=sustainFromParam(pv(SYP_SUSTAIN)->GetInt()) ;
+	int decay=pv(SYP_DECAY)->GetInt() ;
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
 
-	int algo=FindVariable(SYP_FMALGO)->GetInt() ;
+	int algo=pv(SYP_FMALGO)->GetInt() ;
 	if (algo<0) algo=0 ;
 	if (algo>=FM_ALGO_COUNT) algo=FM_ALGO_COUNT-1 ;
 	const signed char *dest=fmAlgoDest[algo] ;
@@ -1418,8 +1455,8 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 	int carriers=0 ;
 	for (int i=0;i<FM_OPS;i++) {
 		level[i]=v.fmLevel_[i]&0xFF ;
-		opSus[i]=sustainFromParam(FindVariable(fmSusId[i])->GetInt()) ;
-		opDec[i]=FindVariable(fmDecId[i])->GetInt() ;
+		opSus[i]=sustainFromParam(pv(fmSusId[i])->GetInt()) ;
+		opDec[i]=pv(fmDecId[i])->GetInt() ;
 		if (dest[i]==FM_OUT && level[i]>0) carriers++ ;
 	}
 	if (carriers==0) carriers=1 ;
@@ -1451,12 +1488,15 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 	// glide refresh
 	int mulQ16[FM_OPS] ;
 	fmMultipliers(mulQ16) ;
-	setFmPitch(v) ;
+	// no setFmPitch here: it ran fmMultipliers a second time to write
+	// v.op_[i].inc_, but glideRefresh starts at 0 so FM_REFRESH derives
+	// the incs from mulQ16 on sample 0 before anything reads them --
+	// the whole call was dead work every block
 
 	int cut=v.cutoff_&0xFF ;
 	int resoP=v.reso_&0xFF ;
 	bool filtered=(cut<0xFF)||(resoP>0) ;
-	int fltMode=FindVariable(SYP_FLTMODE)->GetInt() ;
+	int fltMode=pv(SYP_FLTMODE)->GetInt() ;
 	int qQ=32768-(resoP<<7) ;
 	if (qQ<1024) qQ=1024 ;
 	int f=cutTable_[cut] ;
@@ -1519,9 +1559,6 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 	int glideRefresh=0 ;
 	fixed *out=buffer ;
 
-#ifdef PSP_DSP_PROFILE
-	unsigned int _profStart=dspProfMicros() ;
-#endif
 	for (int n=0;n<size;n++) {
 
 		if (glideRefresh==0) {
@@ -1664,35 +1701,35 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 
 bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 
-	int wave=FindVariable(SYP_VAXWAVE)->GetInt() ;
+	int wave=pv(SYP_VAXWAVE)->GetInt() ;
 	int unison=v.unison_ ;
 	if (unison<1) unison=1 ;
 	if (unison>VAX_MAX_UNISON) unison=VAX_MAX_UNISON ;
 	int detune=v.detune_ ;
-	int pwm=FindVariable(SYP_PWM)->GetInt() ;
+	int pwm=pv(SYP_PWM)->GetInt() ;
 	unsigned int pwThresh=(unsigned int)(16+((pwm*224)>>8))<<24 ;
-	int subQ=FindVariable(SYP_SUB)->GetInt()<<7 ;
-	int noiseQ=FindVariable(SYP_NOISE)->GetInt()<<7 ;
+	int subQ=pv(SYP_SUB)->GetInt()<<7 ;
+	int noiseQ=pv(SYP_NOISE)->GetInt()<<7 ;
 	// sync: 0 is off. Above that the audible oscillators run from
 	// 1x up to 4x the note and are restarted every time the silent
 	// master crosses zero, which is what makes the formant sweep.
-	int syncAmt=FindVariable(SYP_SYNC)->GetInt() ;
+	int syncAmt=pv(SYP_SYNC)->GetInt() ;
 	// ring: crossfade between the oscillator and the oscillator times
 	// a sine at the sub octave. 0 passes the oscillator through.
-	int ringQ=FindVariable(SYP_RING)->GetInt()<<7 ;
+	int ringQ=pv(SYP_RING)->GetInt()<<7 ;
 	int cut=v.cutoff_ ;
 	int resoP=v.reso_ ;
-	int fltMode=FindVariable(SYP_FLTMODE)->GetInt() ;
+	int fltMode=pv(SYP_FLTMODE)->GetInt() ;
 	int modAmt=v.modAmt_ ;
-	fixed modSus=sustainFromParam(FindVariable(SYP_DCWSUS)->GetInt()) ;
-	int modDec=FindVariable(SYP_DCWDEC)->GetInt() ;
-	fixed ampSus=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
-	int ampDec=FindVariable(SYP_DECAY)->GetInt() ;
+	fixed modSus=sustainFromParam(pv(SYP_DCWSUS)->GetInt()) ;
+	int modDec=pv(SYP_DCWDEC)->GetInt() ;
+	fixed ampSus=sustainFromParam(pv(SYP_SUSTAIN)->GetInt()) ;
+	int ampDec=pv(SYP_DECAY)->GetInt() ;
 	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
 	int drive3=v.drive_*3 ;
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
-	int lfoDest=FindVariable(SYP_LFODEST)->GetInt() ;
+	int lfoDest=pv(SYP_LFODEST)->GetInt() ;
 	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
 	int lfoDepth=v.lfoDepth_<<7 ;
 
@@ -1701,6 +1738,15 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 	unsigned int subRcp=0 ;
 	int qQ=32768-(resoP<<7) ;         // reso: damping 1.0 -> 0.03
 	if (qQ<1024) qQ=1024 ;
+	// Same skip TONE has: a wide-open lowpass with no resonance and
+	// nothing riding the cutoff (mod envelope, filter LFO) changes
+	// nothing worth two SVF passes a sample. NOTE this brightens
+	// existing full-open patches: the table tops out at ~12.5kHz, so
+	// until now "open" still rolled the top octave off. Open now means
+	// open; pull cutoff to ~230 to get the old rolloff back. BP/HP
+	// modes never skip -- for them wide open is not a bypass.
+	bool vaxFiltered=(cut<0xFF)||(resoP>0)||(fltMode!=VFM_LP)||
+	                 (modAmt!=0)||((lfoDest==SLD_FILTER)&&lfoDepth) ;
 	int gcoef=v.glideCoef_ ;
 
 	unsigned int curInc=v.curInc_ ;
@@ -1768,11 +1814,13 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 			pwThresh=(unsigned int)(16+((pwmEff*224)>>8))<<24 ;
 
 			// cutoff rides the mod envelope (and the wobble)
-			int cutEff=cut+((modAmt*(v.mod_.level_>>8))>>15) ;
-			if (lfoDest==SLD_FILTER) cutEff+=mod>>8 ;
-			if (cutEff>255) cutEff=255 ;
-			if (cutEff<0) cutEff=0 ;
-			f=cutTable_[cutEff] ;
+			if (vaxFiltered) {
+				int cutEff=cut+((modAmt*(v.mod_.level_>>8))>>15) ;
+				if (lfoDest==SLD_FILTER) cutEff+=mod>>8 ;
+				if (cutEff>255) cutEff=255 ;
+				if (cutEff<0) cutEff=0 ;
+				f=cutTable_[cutEff] ;
+			}
 		}
 		refresh-- ;
 
@@ -1839,6 +1887,8 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 		// ticks at twice the sample rate, which is what keeps the
 		// coefficient inside the range a Chamberlin is stable and
 		// untwisted in
+		int s ;
+		if (vaxFiltered) {
 		int high=0 ;
 		for (int pass=0;pass<2;pass++) {
 			low+=(int)(((long long)f*band)>>15) ;
@@ -1855,7 +1905,10 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 			if (high<-SVF_CLAMP) high=-SVF_CLAMP ;
 		}
 
-		int s=(fltMode==VFM_LP)?low:((fltMode==VFM_BP)?band:high) ;
+		s=(fltMode==VFM_LP)?low:((fltMode==VFM_BP)?band:high) ;
+		} else {
+			s=mix ;
+		}
 
 		// drive: post-filter gain into a soft knee — grit that keeps
 		// its shape instead of hard-clip fizz
@@ -1898,22 +1951,22 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 // source / glottal PW / breath / vowel position / formant sharpness.
 bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
 
-	int wave=FindVariable(SYP_WAVE)->GetInt() ;
-	int pwm=FindVariable(SYP_PWM)->GetInt() ;
+	int wave=pv(SYP_WAVE)->GetInt() ;
+	int pwm=pv(SYP_PWM)->GetInt() ;
 	unsigned int pwThresh=(unsigned int)(16+((pwm*224)>>8))<<24 ;
-	int noiseQ=FindVariable(SYP_NOISE)->GetInt()<<7 ;
+	int noiseQ=pv(SYP_NOISE)->GetInt()<<7 ;
 	int cut=v.cutoff_ ;                 // vowel position 0..255 (u..i)
 	int resoP=v.reso_ ;                 // formant sharpness
-	fixed ampSus=sustainFromParam(FindVariable(SYP_SUSTAIN)->GetInt()) ;
-	int ampDec=FindVariable(SYP_DECAY)->GetInt() ;
+	fixed ampSus=sustainFromParam(pv(SYP_SUSTAIN)->GetInt()) ;
+	int ampDec=pv(SYP_DECAY)->GetInt() ;
 	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
-	int lfoDest=FindVariable(SYP_LFODEST)->GetInt() ;
+	int lfoDest=pv(SYP_LFODEST)->GetInt() ;
 	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
 	int lfoDepth=v.lfoDepth_<<7 ;
-	int viA=FindVariable(SYP_VOXVA)->GetInt() ;   // vowel morph endpoints
-	int viB=FindVariable(SYP_VOXVB)->GetInt() ;
+	int viA=pv(SYP_VOXVA)->GetInt() ;   // vowel morph endpoints
+	int viB=pv(SYP_VOXVB)->GetInt() ;
 
 	// reso raises formant Q (lowers the SVF damping toward its floor)
 	int qQ=32768-(resoP<<7) ;
@@ -1926,6 +1979,44 @@ bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
 	int fcoef[VOX_NFORMANT] ;
 	int low[VOX_NFORMANT],band[VOX_NFORMANT] ;
 	for (int k=0;k<VOX_NFORMANT;k++) { low[k]=v.fmtLow_[k] ; band[k]=v.fmtBand_[k] ; }
+
+#if defined(__PSP__) && defined(PSP_VFPU_VOX)
+	/* VFPU formant bank -- device-validated: a VOX-heavy song fell ~10%
+	   dsp on hardware and high-reso low vowels stayed clean, so the
+	   shipping PSP build takes this path (PSP_VFPU_VOX, set in
+	   Makefile.PSP). The four bandpass SVFs are independent recurrences
+	   on one shared excitation, so they run four lanes wide: one
+	   vmul/vadd/vscl/vsub set updates all four filters per pass instead
+	   of a scalar loop of four. The scalar bank below (#else) stays the
+	   portable reference -- every non-PSP build, and any PSP build
+	   without the define, uses it. Signals (low/band/ex/sum) are kept as
+	   magnitude floats and coefficients (f/qQ/amp) normalised by 1/32768,
+	   so the float recurrence matches the Q15 integer one term for term. */
+#if VOX_NFORMANT != 4
+#error "the VFPU formant bank is hardwired four lanes wide"
+#endif
+	int __attribute__((aligned(16))) voxLoA[VOX_NFORMANT],voxBdA[VOX_NFORMANT] ;
+	int __attribute__((aligned(16))) voxFcA[VOX_NFORMANT],voxAmA[VOX_NFORMANT] ;
+	int __attribute__((aligned(16))) voxCpA[VOX_NFORMANT],voxCnA[VOX_NFORMANT] ;
+	for (int k=0;k<VOX_NFORMANT;k++) {
+		voxLoA[k]=low[k] ; voxBdA[k]=band[k] ; voxFcA[k]=0 ;
+		voxAmA[k]=voxAmp_[k] ; voxCpA[k]=SVF_CLAMP ; voxCnA[k]=-SVF_CLAMP ;
+	}
+	/* Load the resident state and constants once. Nothing between here
+	   and the store after the loop touches a V register -- the whole
+	   per-sample scalar body (BLEP, noise, envelope, pan) is integer --
+	   so C000..C030, C100/C110 and S120 survive across every sample. */
+	__asm__ volatile (
+		"lv.q C000, 0(%[lo])\n" "vi2f.q C000, C000, 0\n"    // low  (magnitude)
+		"lv.q C010, 0(%[bd])\n" "vi2f.q C010, C010, 0\n"    // band (magnitude)
+		"lv.q C020, 0(%[fc])\n" "vi2f.q C020, C020, 15\n"   // f    (/32768)
+		"lv.q C030, 0(%[am])\n" "vi2f.q C030, C030, 15\n"   // amp  (/32768)
+		"lv.q C100, 0(%[cp])\n" "vi2f.q C100, C100, 0\n"    // +clamp
+		"lv.q C110, 0(%[cn])\n" "vi2f.q C110, C110, 0\n"    // -clamp
+		"mtv  %[qq], S120\n"    "vi2f.s S120, S120, 15\n"   // qQ   (/32768)
+		:: [lo]"r"(voxLoA),[bd]"r"(voxBdA),[fc]"r"(voxFcA),[am]"r"(voxAmA),
+		   [cp]"r"(voxCpA),[cn]"r"(voxCnA),[qq]"r"(qQ) : "memory") ;
+#endif
 	unsigned int rng=v.rng_ ;
 	int refresh=0 ;
 
@@ -1973,6 +2064,12 @@ bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
 				int c0=voxCoef_[vi][k],c1=voxCoef_[vi+1][k] ;
 				fcoef[k]=c0+(((c1-c0)*vf)>>8) ;
 			}
+#if defined(__PSP__) && defined(PSP_VFPU_VOX)
+			// f changed this block: refresh the resident coefficient lane
+			for (int k=0;k<VOX_NFORMANT;k++) voxFcA[k]=fcoef[k] ;
+			__asm__ volatile ("lv.q C020, 0(%[fc])\n" "vi2f.q C020, C020, 15\n"
+				:: [fc]"r"(voxFcA) : "memory") ;
+#endif
 		}
 		refresh-- ;
 
@@ -1995,7 +2092,37 @@ bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
 		// passes at 64-bit exactly as renderVax, summed by formant level.
 		// The four filters share one input, so this is where a VFPU
 		// version runs the recurrence four lanes wide.
-		int sum=0 ;
+		int sum ;
+#if defined(__PSP__) && defined(PSP_VFPU_VOX)
+		// four bandpass SVFs, two passes, one shared input -- run wide.
+		// ex enters as an integer and is converted in-register (vi2f),
+		// so no float crosses the C code that could make gcc touch a V
+		// register and clobber the resident state.
+		__asm__ volatile (
+			"mtv  %[ex], S130\n" "vi2f.s S130, S130, 0\n"       // ex broadcast src
+			// pass 1
+			"vmul.q C200, C020, C010\n"                          // f*band
+			"vadd.q C000, C000, C200\n"                          // low += f*band
+			"vscl.q C200, C010, S120\n"                          // qQ*band
+			"vsub.q C210, C130[x,x,x,x], C000\n"                 // ex - low
+			"vsub.q C210, C210, C200\n"                          // high = ex-low-qQ*band
+			"vmul.q C200, C020, C210\n"                          // f*high
+			"vadd.q C010, C010, C200\n"                          // band += f*high
+			"vmax.q C010, C010, C110\n" "vmin.q C010, C010, C100\n"   // clamp band
+			"vmax.q C000, C000, C110\n" "vmin.q C000, C000, C100\n"   // clamp low
+			// pass 2
+			"vmul.q C200, C020, C010\n" "vadd.q C000, C000, C200\n"
+			"vscl.q C200, C010, S120\n"
+			"vsub.q C210, C130[x,x,x,x], C000\n" "vsub.q C210, C210, C200\n"
+			"vmul.q C200, C020, C210\n" "vadd.q C010, C010, C200\n"
+			"vmax.q C010, C010, C110\n" "vmin.q C010, C010, C100\n"
+			"vmax.q C000, C000, C110\n" "vmin.q C000, C000, C100\n"
+			// out = band . amp (magnitude), truncate toward zero to int
+			"vdot.q S220, C010, C030\n" "vf2iz.s S220, S220, 0\n"
+			"mfv  %[sum], S220\n"
+			: [sum]"=r"(sum) : [ex]"r"(ex)) ;
+#else
+		sum=0 ;
 		for (int k=0;k<VOX_NFORMANT;k++) {
 			int lo=low[k],bd=band[k],fc=fcoef[k] ;
 			for (int pass=0;pass<2;pass++) {
@@ -2010,6 +2137,7 @@ bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
 			low[k]=lo ; band[k]=bd ;
 			sum+=(bd*voxAmp_[k])>>15 ;
 		}
+#endif
 		if (sum>32700) sum=32700 ;
 		if (sum<-32700) sum=-32700 ;
 
@@ -2021,7 +2149,16 @@ bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
 	}
 
 	v.curInc_=curInc ;
+#if defined(__PSP__) && defined(PSP_VFPU_VOX)
+	__asm__ volatile (
+		"vf2iz.q C000, C000, 0\n" "sv.q C000, 0(%[lo])\n"   // low  -> int
+		"vf2iz.q C010, C010, 0\n" "sv.q C010, 0(%[bd])\n"   // band -> int
+		"vflush\n"                                          // drain before CPU reads
+		:: [lo]"r"(voxLoA),[bd]"r"(voxBdA) : "memory") ;
+	for (int k=0;k<VOX_NFORMANT;k++) { v.fmtLow_[k]=voxLoA[k] ; v.fmtBand_[k]=voxBdA[k] ; }
+#else
 	for (int k=0;k<VOX_NFORMANT;k++) { v.fmtLow_[k]=low[k] ; v.fmtBand_[k]=band[k] ; }
+#endif
 	v.rng_=rng ;
 	return true ;
 } ;
@@ -2039,23 +2176,23 @@ InstrumentType SynthInstrument::GetType() {
 } ;
 
 const char *SynthInstrument::GetName() {
-	switch (FindVariable(SYP_ENGINE)->GetInt()) {
+	switch (pv(SYP_ENGINE)->GetInt()) {
 		case SET_PDX:
-			sprintf(name_,"PDX %s",pdxWaveNames[FindVariable(SYP_PDXWAVE)->GetInt()]) ;
+			sprintf(name_,"PDX %s",pdxWaveNames[pv(SYP_PDXWAVE)->GetInt()]) ;
 			break ;
 		case SET_VAX:
-			sprintf(name_,"VAX %s",vaxWaveNames[FindVariable(SYP_VAXWAVE)->GetInt()]) ;
+			sprintf(name_,"VAX %s",vaxWaveNames[pv(SYP_VAXWAVE)->GetInt()]) ;
 			break ;
 		case SET_FM:
 			// the algorithm is the identity of an FM patch the way
 			// the waveform is for the others
-			sprintf(name_,"FM %s",fmAlgoNames[FindVariable(SYP_FMALGO)->GetInt()]) ;
+			sprintf(name_,"FM %s",fmAlgoNames[pv(SYP_FMALGO)->GetInt()]) ;
 			break ;
 		case SET_VOX:
-			sprintf(name_,"VOX %s",waveNames[FindVariable(SYP_WAVE)->GetInt()]) ;
+			sprintf(name_,"VOX %s",waveNames[pv(SYP_WAVE)->GetInt()]) ;
 			break ;
 		default:
-			sprintf(name_,"TONE %s",waveNames[FindVariable(SYP_WAVE)->GetInt()]) ;
+			sprintf(name_,"TONE %s",waveNames[pv(SYP_WAVE)->GetInt()]) ;
 			break ;
 	}
 	return name_ ;
@@ -2063,7 +2200,7 @@ const char *SynthInstrument::GetName() {
 
 void SynthInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 
-	int engine=FindVariable(SYP_ENGINE)->GetInt() ;
+	int engine=pv(SYP_ENGINE)->GetInt() ;
 	SynthVoice &v=voice_[channel] ;
 	if (!v.active_) return ;
 
@@ -2336,11 +2473,11 @@ void SynthInstrument::Purge() {
 } ;
 
 int SynthInstrument::GetTable() {
-	return FindVariable(SYP_TABLE)->GetInt() ;
+	return pv(SYP_TABLE)->GetInt() ;
 } ;
 
 bool SynthInstrument::GetTableAutomation() {
-	return FindVariable(SYP_TABLEAUTO)->GetBool() ;
+	return pv(SYP_TABLEAUTO)->GetBool() ;
 } ;
 
 void SynthInstrument::GetTableState(TableSaveState &state) {

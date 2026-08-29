@@ -55,14 +55,17 @@ void UIIntVarField::Draw(GUIWindow &w,int offset) {
 				if (range<1) range=1 ;
 				ivalue=(src_.GetInt()-min_)*100/range ;
 			}
-			sprintf(buffer,format_,ivalue,ivalue) ;
+			snprintf(buffer,sizeof(buffer),format_,ivalue,ivalue) ;
 			}
 			break ;
 		case Variable::CHAR_LIST:
 		case Variable::BOOL:
 			{
 			const char *cvalue=src_.GetString() ;
-			sprintf(buffer,format_,cvalue) ;
+			// snprintf, not sprintf: cvalue can be a samplelib FILENAME,
+			// and a long one overran this stack buffer -- a wild jump on
+			// every redraw of the row (the browse-crash detonator)
+			snprintf(buffer,sizeof(buffer),format_,cvalue) ;
 			}
 			break ;
 

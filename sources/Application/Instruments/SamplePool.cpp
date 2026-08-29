@@ -248,7 +248,11 @@ if (wave) {
 }
 }
 
-#define IMPORT_CHUNK_SIZE 1000
+/* 64KB heap chunks, not a 1000-byte stack buffer: a megabyte sample
+   was two thousand read/write round trips to the Memory Stick (and
+   1000 is not even sector-aligned). Falls back to smaller chunks if
+   the heap is tight during an import. */
+#define IMPORT_CHUNK_SIZE 65536
 
 /*
   Returns a nonnegative int or an element of
@@ -287,13 +291,21 @@ int SamplePool::ImportSample(Path &path) {
 
     // copy file to current project
 
-    char buffer[IMPORT_CHUNK_SIZE];
+    int chunk=IMPORT_CHUNK_SIZE ;
+    char *buffer=(char *)malloc(chunk) ;
+    while (!buffer && chunk>4096) { chunk>>=1 ; buffer=(char *)malloc(chunk) ; }
+    if (!buffer) {
+        fin->Close() ; fout->Close() ;
+        delete (fin) ; delete (fout) ;
+        return -SLOAD_ERR_OUTPUT_FILE ;
+    }
     while (size>0) {
-		int count=(size>IMPORT_CHUNK_SIZE)?IMPORT_CHUNK_SIZE:size ;
+		int count=(size>chunk)?chunk:size ;
 		fin->Read(buffer,1,count) ;
 		fout->Write(buffer,1,count) ;
 		size-=count ;
 	} ;
+    free(buffer) ;
 
 	fin->Close() ;
 	fout->Close() ;
