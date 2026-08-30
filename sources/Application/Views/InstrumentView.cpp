@@ -51,7 +51,6 @@ InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):FieldView(w,data),
 	refreshingSlot_=false ;
 	auditionLatch_=false ;
 	auditionNote_=60 ;
-	selectDownAt_=0 ;
 	presetVar_=0 ;
 	presetShown_=0 ;
 	presetPending_=false ;
@@ -929,12 +928,11 @@ void InstrumentView::warpToNext(int offset) {
 void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 
 	if (!pressed) {
-		// a LONG select press silences the preview on release; a tap
-		// (handled at press time) retriggers it
-		if (auditionLatch_&&selectDownAt_&&!(mask&EPBM_SELECT)) {
-			unsigned long held=System::GetInstance()->GetClock()-selectDownAt_ ;
-			selectDownAt_=0 ;
-			if (held>500) { auditionStop() ; isDirty_=true ; }
+		// the preview lives exactly as long as SELECT is held: the
+		// note starts on the press and dies on the release, like a key
+		if (auditionLatch_&&!(mask&EPBM_SELECT)) {
+			auditionStop() ;
+			isDirty_=true ;
 		}
 		return ;
 	}
@@ -1012,14 +1010,11 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 	}
 
 	// ---- the instrument deck: focus-independent controls ----
-	// SELECT previews the instrument: EVERY press (re)plays the note,
-	// and the latch stays on so engine/type/slot steps keep sounding.
-	// HOLD select (>half a second) to silence it -- the stop happens on
-	// the release, handled above the !pressed early-return.
+	// SELECT previews the instrument for as long as it is held: press
+	// = note on, release = note off (handled above the !pressed
+	// early-return). No latch, no timing.
 	if (mask==EPBM_SELECT) {
-		selectDownAt_=System::GetInstance()->GetClock() ;
-		if (auditionLatch_) auditionRetrigger() ;
-		else auditionStart() ;
+		if (!auditionLatch_) auditionStart() ;
 		isDirty_=true ;
 		return ;
 	}
@@ -1244,7 +1239,6 @@ void InstrumentView::DrawView() {
 		// browsing is SILENT by request: the cut above ended any
 		// ringing preview, and only SELECT demos the new sound
 		auditionLatch_=false ;
-		selectDownAt_=0 ;
 	} else if (presetRestorePending_) {
 		// the browse backed out: replay the snapshot taken when it
 		// began, then drop it -- edits made back on "--" must be the
@@ -1267,7 +1261,6 @@ void InstrumentView::DrawView() {
 		lastFocusID_=IVP_PRESET ;
 		onInstrumentChange() ;
 		auditionLatch_=false ;   // silent here too: SELECT demos
-		selectDownAt_=0 ;
 	} else if (rebuildPending_) {
 		rebuildPending_=false ;
 		onInstrumentChange() ;

@@ -1,4 +1,5 @@
 #include "SDLAudioDriver.h"
+#include "Services/Audio/AudioStats.h"
 #include <string.h>
 #ifdef __PSP__
 #include <pspthreadman.h>
@@ -184,6 +185,8 @@ void SDLAudioDriver::OnChunkDone(Uint8 *stream, int len) {
         // then get next queued buffer and copy data from it
 
         if (pool_[poolPlayPosition_].buffer_ == 0) {
+            // starved: the queue is empty and the card gets silence
+            AudioStats::AddUnderrun();
             SYS_MEMCPY(mainBuffer_ + bufferSize_ - bufferPos_, miniBlank_, len);
             bufferSize_ = bufferSize_ - bufferPos_ + len;
 

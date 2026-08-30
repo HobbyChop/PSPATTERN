@@ -103,10 +103,14 @@ Hold O and press up or down to place a chain. The tracker plays down the
 rows. A channel with a blank cell at row zero never starts, so start
 every channel you want to hear at row zero.
 
-The panel on the right shows how much memory the project is using, the
-tempo, the project name, the MIDI adapter and the battery. The scope
-above it draws the master output, one trace per channel. The DSP figure
-is on the title strip at the top, not in this panel.
+The info panel on the right carries the tempo, the project name, the
+MIDI adapter, the battery, and the machine's health: dsp is the render
+load (it turns into the worst recent figure with an exclamation mark
+only when a block actually misses its deadline), me is how busy the
+second processor is with the send effects, mem is the sample memory
+still free, and und counts the times the audio queue ran dry since
+play started -- zero is the only good number. The scope above it draws
+the master output, one trace per channel.
 
 L and X mutes the channel under the cursor.
 
@@ -438,11 +442,9 @@ what the nub does.
 L with a direction is the only control that changes which instrument
 slot you are editing.
 
-SELECT plays the current instrument so you can hear what you are
-shaping; press it again and the note retriggers. Hold it half a
-second and release to stop the note. The audition follows you as you
-step types, engines and presets, which is what makes the preset row
-browsable by ear.
+SELECT plays the current instrument for as long as you hold it,
+like a key: press for note on, release for note off. Tap it between
+preset steps and you are browsing the bank by ear.
 
 
 12. THE SYNTH ENGINES

@@ -347,6 +347,46 @@ extern "C" void PSPME_Post(const fixed *dlyAcc, const fixed *revAcc,
 	ME_BUSY = 1;
 	meLibSync();
 }
+static volatile int meAlive_ = 0;   // Init ran; shared words are real
+
+/* The info panel's ME figure, measured WITHOUT an ME-side clock --
+   the ME has none worth the name: CP0 Count does not tick on the
+   Allegrex, and the 1MHz system-time register never moved when read
+   from that side either (both were tried; both froze the meter at 0).
+
+   What provably does move is ME_HB, the heartbeat the idle loop
+   bumps once per spin. The spin body is a fixed instruction sequence,
+   so its full-idle rate is a constant of the machine; while a job
+   renders, the heartbeat stands still. Load is therefore the DROP in
+   spin rate: calibrate the idle rate once at init with the main
+   core's real microsecond clock, then
+
+       load% = 100 * (1 - observed spins/sec / idle spins/sec).
+
+   -1 = no meter (offload off, or the core is down across a suspend)
+   and the UI prints "--" rather than a stale number. */
+static unsigned int meIdleHz_ = 0;      // calibrated idle spins/sec
+static unsigned int meLoadHB_ = 0;      // last sample: heartbeat
+static unsigned int meLoadT_ = 0;       // last sample: microseconds
+static int meLoadPct_ = 0;              // cached between samples
+
+extern "C" int PSPME_LoadPercent(void) {
+	if (!meAlive_ || !ME_READY || !meIdleHz_) return -1;
+	unsigned int now = sceKernelGetSystemTimeLow();
+	unsigned int dt = now - meLoadT_;
+	if (dt < 250000) return meLoadPct_;   // fresh enough
+	unsigned int hb = ME_HB;
+	unsigned int dhb = hb - meLoadHB_;
+	meLoadHB_ = hb;
+	meLoadT_ = now;
+	unsigned long long rate = (unsigned long long)dhb * 1000000ull / dt;
+	int pct = 100 - (int)(rate * 100 / meIdleHz_);
+	if (pct < 0) pct = 0;
+	if (pct > 100) pct = 100;
+	meLoadPct_ = pct;
+	return pct;
+}
+
 extern "C" int PSPME_Init(void) {
 	ME_EXIT_ = 0; ME_BUSY = 0; ME_N = 0; ME_READY = 0; ME_HB = 0; ME_JOBS = 0;
 	ME_DLYL = 0; ME_DLYR = 0; ME_DLYMAX = 0; ME_SIZE = 160; ME_DAMP = 110;
@@ -388,6 +428,26 @@ extern "C" int PSPME_Init(void) {
 	ME_FMCYC = 0;
 #endif
 	int tableId = meLibDefaultInit();
+	if (tableId >= 0) meAlive_ = 1;
+	/* calibrate the load meter: wait for the loop, then time the idle
+	   spin rate against the main core's clock. Done here, before the
+	   audio pump posts its first job, so the sample really is idle. */
+	if (meAlive_) {
+		int guard = 0;
+		while (!ME_READY && guard++ < 1000000) {}
+		if (ME_READY) {
+			unsigned int t0 = sceKernelGetSystemTimeLow();
+			unsigned int h0 = ME_HB;
+			sceKernelDelayThread(50000);
+			unsigned int dt = sceKernelGetSystemTimeLow() - t0;
+			unsigned int dh = ME_HB - h0;
+			if (dt > 10000 && dh)
+				meIdleHz_ = (unsigned int)((unsigned long long)dh *
+				                           1000000ull / dt);
+			meLoadHB_ = ME_HB;
+			meLoadT_ = sceKernelGetSystemTimeLow();
+		}
+	}
 	/* The power lock that used to live here is gone: the sleep/wake
 	   handlers above quiesce the core across a suspend (hold reset,
 	   ME_READY down, reboot from the resident image at wake), so the
@@ -443,6 +503,7 @@ extern "C" unsigned int PSPME_SleepCount(void) { return meSleepCount_; }
 extern "C" unsigned int PSPME_WakeCount(void)  { return meWakeCount_; }
 
 extern "C" void PSPME_Shutdown(void) {
+	meAlive_ = 0;
 	ME_EXIT_ = 1;
 	int retry = 0;
 	while (ME_READY && ME_BUSY && ++retry <= 5) sceKernelDelayThread(100000);

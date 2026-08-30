@@ -1,4 +1,8 @@
 #include "SongView.h"
+
+#ifdef PSP_ME_OFFLOAD
+extern "C" int PSPME_LoadPercent(void);   // the ME's own busy share
+#endif
 #include "Application/AppWindow.h"
 #include "Application/Commands/ApplicationCommandDispatcher.h"
 #include "Application/Mixer/MixerService.h"
@@ -1073,48 +1077,15 @@ void SongView::DrawSidePanel() {
     app.OpScope(PANEL_X * 8 + 5, 47, 92, 21, running ? scopeTick : 0, 1);
 
     // --- mix: memory, tempo, project, midi, battery ----------------
-    DrawPanel(PANEL_X, 10, 12, 5, "mix");
+    DrawPanel(PANEL_X, 10, 12, 9, "info");
 
-    // A dropout is one block missing its deadline. The plain figure is
-    // an average smoothed over eight blocks, so a spike to three
-    // hundred per cent moves it a few points and is gone before
-    // anybody looks: a machine can glitch steadily while it reads
-    // twenty. When a block has recently overrun, the worst one is
-    // shown instead, with an exclamation mark rather than a per cent
-    // sign and in the mute colour, so it reads as a warning at a
-    // glance. That lives on the title strip, which already carries a
-    // dsp figure -- printing it twice on one screen wasted the only
-    // row this panel had spare.
-    int dsp = running ? AudioStats::GetDspPercent() : 0;
-    int peak = running ? AudioStats::GetDspPeak() : 0;
-    bool over = (peak > 100);
-    int dspShown = over ? peak : dsp;
-    if (dspShown > 999) dspShown = 999;
-
-    // The row it freed. Samples live in RAM because streaming them off
-    // the Memory Stick is not viable on this machine, so what is left
-    // is what decides whether the next sample loads -- and there was
-    // no way to find out until it did not. The bar fills as memory is
-    // taken; the figure beside it is what remains, because that is the
-    // one somebody is about to make a decision with.
+    // dsp and memory moved to the status bar every screen carries --
+    // this panel keeps what only the song screen can say
     System *sys = System::GetInstance();
-    unsigned int memUsed = sys->GetMemoryUsage();
-    unsigned int memFree = sys->GetMemoryFree();
-    if (memFree > 0) {
-        unsigned int memTotal = memUsed + memFree;
-        int memPct = (int)((unsigned long long)memUsed * 100 / memTotal);
-        // The label carries the warning, because the row is a bar and
-        // nothing else: there is no figure to turn red.
-        float freeMb = (float)memFree / (1024.0f * 1024.0f);
-        SetColor(freeMb < MEM_LOW_MB ? CD_MUTE : CD_ROW2);
-        DrawString(PANEL_TXT, 11, "mem", props);
-        app.OpBar(PANEL_TXT * 8 + 26, 11 * 8 + 1, 34, memPct * 34 / 100,
-                  false);
-    }
 
     int bpm = viewData_->project_->GetTempo();
     SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 12, "bpm", props);
+    DrawString(PANEL_TXT, 11, "bpm", props);
     sprintf(buf, "%3d", bpm);
     /* Following an external clock, the tempo is not ours to set and
        the useful question is whether we have caught it yet. Play
@@ -1126,10 +1097,10 @@ void SongView::DrawSidePanel() {
     } else {
         SetColor(CD_HILITE2);
     }
-    DrawString(36, 12, buf, props);
+    DrawString(36, 11, buf, props);
 
     SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 13, "prj", props);
+    DrawString(PANEL_TXT, 12, "prj", props);
     char name[8];
     strncpy(name, songname_.substr(0, 5) == "lgpt_"
                       ? songname_.c_str() + 5
@@ -1138,14 +1109,14 @@ void SongView::DrawSidePanel() {
     name[7] = 0;
     SetColor(CD_NORMAL);
     sprintf(buf, "%7s", name);
-    DrawString(32, 13, buf, props);
+    DrawString(32, 12, buf, props);
 
     /* What the adapter is doing, not what the config file was told.
        This row printed the configured device name, which read PSPMIDI
        with nothing plugged in -- so the one place on screen that looked
        like it answered "is my adapter working" always said yes. */
     SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 14, "mid", props);
+    DrawString(PANEL_TXT, 13, "mid", props);
     MidiService *midi = MidiService::GetInstance();
     MidiLinkState mls = midi ? midi->GetLinkState() : MLS_NODRIVER;
     const char *midTxt;
@@ -1173,13 +1144,13 @@ void SongView::DrawSidePanel() {
     }
     sprintf(buf, "%8s", midTxt);
     SetColor(midCol);
-    DrawString(31, 14, buf, props);
+    DrawString(31, 13, buf, props);
 
     int batt = sys->GetBatteryLevel();
     if (batt >= 0) {
         if (batt > 999) batt = 999;
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 15, "bat", props);
+        DrawString(PANEL_TXT, 14, "bat", props);
         // The low battery warning blinks on the wall clock, not once
         // per draw. This panel is one of the animated ones, so it
         // repaints every UI frame -- inverting on each repaint made a
@@ -1199,15 +1170,76 @@ void SongView::DrawSidePanel() {
         props.invert_ = invertBatt_;
         sprintf(buf, "%3d%%", batt);
         SetColor(battWarn_ ? CD_HILITE2 : CD_NORMAL);
-        DrawString(35, 15, buf, props);
+        DrawString(35, 14, buf, props);
         props.invert_ = false;
     }
 
     // --- live: queue + mute state per channel ----------------------
-    DrawPanel(PANEL_X, 17, 12, 2, "live");
+    // --- health figures, same panel: dsp avg^peak, the ME's own
+    // busy share, sample RAM left, and silent blocks served ---------
+    {
+        int dsp = running ? AudioStats::GetDspPercent() : 0;
+        int pk = running ? AudioStats::GetDspPeak() : 0;
+        if (dsp < 0) dsp = 0;
+        if (pk < 0) pk = 0;
+        if (dsp > 999) dsp = 999;
+        if (pk > 999) pk = 999;
+        SetColor(CD_ROW2);
+        DrawString(PANEL_TXT, 15, "dsp", props);
+        char vbuf[12];
+        // the average, until a block actually blows its deadline --
+        // then the worst recent block with a "!", in the warning
+        // colour, for as long as the peak-hold remembers it. Showing
+        // the peak full-time read as numbers the machine "never hit":
+        // a single spiked block is invisible in the average by design,
+        // and parading it next to a calm figure just looked broken.
+        if (pk > 100) {
+            snprintf(vbuf, sizeof(vbuf), "%3d!", pk);
+            SetColor(CD_MUTE);
+        } else {
+            snprintf(vbuf, sizeof(vbuf), "%3d%%", dsp);
+            SetColor(CD_HILITE2);
+        }
+        DrawString(35, 15, vbuf, props);
+
+        int me = -1;
+#ifdef PSP_ME_OFFLOAD
+        me = PSPME_LoadPercent();
+#endif
+        SetColor(CD_ROW2);
+        DrawString(PANEL_TXT, 16, "me", props);
+        if (me >= 0) {
+            if (me > 999) me = 999;
+            snprintf(vbuf, sizeof(vbuf), "%3d%%", me);
+            SetColor((me > 100) ? CD_MUTE : CD_HILITE2);
+        } else {
+            snprintf(vbuf, sizeof(vbuf), "  --");
+            SetColor(CD_ROW);
+        }
+        DrawString(35, 16, vbuf, props);
+
+        unsigned int memFree = sys->GetMemoryFree();
+        int tenths = (int)((unsigned long long)memFree * 10 / (1024 * 1024));
+        SetColor(CD_ROW2);
+        DrawString(PANEL_TXT, 17, "mem", props);
+        snprintf(vbuf, sizeof(vbuf), "%2d.%dM", tenths / 10, tenths % 10);
+        SetColor((tenths < 20) ? CD_MUTE : CD_NORMAL);
+        DrawString(34, 17, vbuf, props);
+
+        int und = AudioStats::GetUnderruns();
+        if (und < 0) und = 0;
+        if (und > 9999) und = 9999;
+        SetColor(CD_ROW2);
+        DrawString(PANEL_TXT, 18, "und", props);
+        snprintf(vbuf, sizeof(vbuf), "%4d", und);
+        SetColor(und ? CD_MUTE : CD_NORMAL);
+        DrawString(35, 18, vbuf, props);
+    }
+
+    DrawPanel(PANEL_X, 21, 12, 2, "live");
     SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 18, "cue", props);
-    DrawString(PANEL_TXT, 19, "mut", props);
+    DrawString(PANEL_TXT, 22, "cue", props);
+    DrawString(PANEL_TXT, 23, "mut", props);
     bool liveMode = (player->GetSequencerMode() == SM_LIVE);
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         char c[2] = {'-', 0};
@@ -1237,7 +1269,7 @@ void SongView::DrawSidePanel() {
         } else {
             SetColor(CD_ROW);
         }
-        DrawString(31 + i, 18, c, props);
+        DrawString(31 + i, 22, c, props);
         if (player->IsChannelMuted(i)) {
             c[0] = 'm';
             SetColor(CD_MUTE);
@@ -1245,7 +1277,7 @@ void SongView::DrawSidePanel() {
             c[0] = '-';
             SetColor(CD_ROW);
         }
-        DrawString(31 + i, 19, c, props);
+        DrawString(31 + i, 23, c, props);
     }
 
     // --- title-strip live figures: dsp / clip, tempo, play time ----
@@ -1255,21 +1287,13 @@ void SongView::DrawSidePanel() {
     int se = time % 60;
     if (bpm < 0) bpm = 0;
     if (bpm > 999) bpm = 999;
-    // The dsp field is drawn on its own so it can carry its own
-    // colour: clipping and an overrun are both things you want to see
-    // without reading, and neither can be spelled in a single string
-    // shared with the tempo and the clock.
+    // CLIP keeps its slot -- it is a signal, not a statistic. The
+    // dsp figure moved to the status bar every screen carries.
     if (player->Clipped()) {
         sprintf(buf, "CLIP   ");
         SetColor(CD_MUTE);
-    } else if (over) {
-        sprintf(buf, "dsp%3d!", dspShown);
-        SetColor(CD_MUTE);
-    } else {
-        sprintf(buf, "dsp%3d%%", dspShown);
-        SetColor(CD_HILITE2);
+        DrawString(19, 0, buf, props);
     }
-    DrawString(19, 0, buf, props);
     sprintf(buf, " %3dbpm %02d:%02d", bpm, mi, se);
     SetColor(CD_HILITE2);
     DrawString(26, 0, buf, props);

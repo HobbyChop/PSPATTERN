@@ -1,4 +1,5 @@
 #include "Player.h"
+#include "Services/Audio/AudioStats.h"
 #include "LiveQueue.h"
 #include "MaybeRoll.h"
 #include "MidiNoteInput.h"
@@ -89,6 +90,9 @@ bool Player::IsChannelMuted(int channel) {
 void Player::Start(PlayMode mode, bool forceSongMode) {
 
     mixer_->Lock();
+
+    // the bar's underrun figure describes THIS run
+    AudioStats::ResetUnderruns();
 
     lastBeatCount_ = 0;
 

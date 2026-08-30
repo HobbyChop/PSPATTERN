@@ -108,6 +108,12 @@ void ResetDspPeak() {
 	peakHold_=0 ;
 }
 
+static volatile int underruns_ = 0 ;
+
+void AddUnderrun() { underruns_++ ; }
+int GetUnderruns() { return underruns_ ; }
+void ResetUnderruns() { underruns_ = 0 ; }
+
 int GetDspPercent() {
 	return dspPercent_ ;
 }

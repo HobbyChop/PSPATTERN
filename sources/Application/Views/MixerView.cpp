@@ -987,8 +987,6 @@ void MixerView::DrawVuBars() {
 
     // live figures on the title strip
     char buf[48];
-    int dsp = running ? AudioStats::GetDspPercent() : 0;
-    if (dsp > 99) dsp = 99;
     int bpm = viewData_->project_->GetTempo();
     int time = running ? int(player->GetPlayTime()) : 0;
     if (time < 0) time = 0;
@@ -1012,8 +1010,9 @@ void MixerView::DrawVuBars() {
         unsigned int sat = running
             ? MixerService::GetInstance()->GetSaturationPercent() : 0;
         int master = viewData_->project_->GetMasterVolume();
-        sprintf(buf, "sat%2d%% m%3d dsp%2d%%", sat > 99 ? 99 : sat,
-                master, dsp > 99 ? 99 : dsp);
+        // dsp moved to the status bar; sat and the master fader are
+        // the two figures only this screen can explain
+        sprintf(buf, "sat%2d%% m%3d       ", sat > 99 ? 99 : sat, master);
     }
     SetColor(CD_HILITE2);
     DrawString(19, 0, buf, props);

@@ -1,3 +1,30 @@
+PSPATTERN 0.19.0a
+
+    The song screen's mix panel becomes the info panel, and it now
+        tells you how the machine itself is doing: the render load
+        (quiet until a block actually misses its deadline, then the
+        worst recent figure with an exclamation mark), how busy the
+        second processor is with the send effects, the sample memory
+        still free, and how many times the audio queue ran dry since
+        play started. Underruns were never counted before; now the
+        moment the driver serves silence, it shows.
+
+    The second processor's load is measured without a clock on that
+        core -- it has none worth the name. Its idle loop already
+        beats a heartbeat; a job stops the beating, so the load is
+        the drop in heartbeat rate against a rate calibrated once at
+        boot. The two obvious clock sources were tried first: one
+        does not tick on this silicon, and reading the other from
+        that core killed it outright.
+
+PSPATTERN 0.18.1a
+
+    The preview is a key. SELECT plays the instrument for exactly as
+        long as it is held: press for note on, release for note off.
+        The latch, the retrigger tap and the half-second hold-to-stop
+        are gone -- tap between preset steps and you are browsing the
+        bank by ear, one held note at a time.
+
 PSPATTERN 0.18.0a
 
     The SELECT button works. It was only ever wired through

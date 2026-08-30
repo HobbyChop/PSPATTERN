@@ -35,6 +35,14 @@ namespace AudioStats {
 	 * the usual way rather than as a figure nobody trusts. */
 	void ExcludeMicros(unsigned int us) ;
 
+	/* Starvation: the driver served its silent buffer because the
+	   render queue was empty -- the thing the prebuffer exists to
+	   prevent, one count per silent serve. Reset when the transport
+	   starts, so the figure always describes THIS run. */
+	void AddUnderrun() ;
+	int GetUnderruns() ;
+	void ResetUnderruns() ;
+
 	// UI side
 	int GetDspPercent() ;
 

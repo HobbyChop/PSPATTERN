@@ -79,9 +79,8 @@ private:
 	   runs outside every field call and every notify walk. */
 	bool rebuildPending_ ;
 	bool applyTypePending_ ;
-	bool auditionLatch_ ;
+	bool auditionLatch_ ;   // true while SELECT is held (note sounding)
 	unsigned char auditionNote_ ;
-	unsigned long selectDownAt_ ;
 	/* the preset row on the identity ladder. presetVar_ is rebuilt on
 	   every fill (the list changes when a preset is saved); loading is
 	   DEFERRED like everything else that rebuilds this screen. */
