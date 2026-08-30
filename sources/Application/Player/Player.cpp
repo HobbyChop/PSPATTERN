@@ -2,6 +2,9 @@
 
 #ifdef PLATFORM_PSP
 extern "C" unsigned int PSPMidi_LastClockStampUs(void);
+#ifdef PSP_ME_OFFLOAD
+extern "C" void PSPME_SpectrumEnable(int on);
+#endif
 #endif
 #include "Services/Audio/AudioStats.h"
 #include "LiveQueue.h"
@@ -97,6 +100,9 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
 
     // the bar's underrun figure describes THIS run
     AudioStats::ResetUnderruns();
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+    PSPME_SpectrumEnable(1);   // the spectrum runs only while playing
+#endif
 
     lastBeatCount_ = 0;
 
@@ -209,6 +215,9 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
 }
 
 void Player::Stop() {
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+    PSPME_SpectrumEnable(0);   // stopped: no FFTs of silence
+#endif
 
     // Nothing that stops should still be waiting to start.
     armed_=false ;
@@ -459,7 +468,7 @@ void Player::OnSongStartButton(unsigned int from,unsigned int to,bool requestSto
 
        Stopping is still immediate and still local: a song you want
        stopped should stop when you say so, leader or no leader. */
-    if (!fromSync && !requestStop && !isRunning_ && project_ && project_->GetMidiSync()!=0) {
+    if (!fromSync && !requestStop && !isRunning_ && GetSyncMode()==SYNC_FOLLOW) {
         armed_=!armed_ ;
         return ;
     }
@@ -619,6 +628,14 @@ void Player::OnMidiClock() {
 
 bool Player::IsClockLocked() { return clockSync_.Locked() ; }
 
+Player::SyncMode Player::GetSyncMode() {
+    const char *m = Config::GetInstance()->GetValue("MIDISYNCMODE");
+    if (!m) return SYNC_LEADER;   // out-of-box: sends clock, as ever
+    if (m[0] == 'F' || m[0] == 'f') return SYNC_FOLLOW;
+    if (m[0] == 'O' || m[0] == 'o') return SYNC_OFF;
+    return SYNC_LEADER;
+}
+
 void Player::CancelArm() { armed_=false ; }
 
 bool Player::IsRunning() { return isRunning_; }
@@ -713,7 +730,7 @@ void Player::Update(Observable &o,I_ObservableData *d) {
         /* Following: the loop owns the tempo, and it is a float,
            because whole beats per minute are too coarse a step to hold
            a phase with. Otherwise the project's own tempo stands. */
-        bool following = project_->GetMidiSync() != 0;
+        bool following = GetSyncMode() == SYNC_FOLLOW;
         if (following) {
             sync->SetTempoFine(clockSync_.Tempo());
             // The screen should say what is actually being played, but

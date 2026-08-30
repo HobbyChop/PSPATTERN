@@ -121,13 +121,6 @@ static void LoadCallback(View &v,ModalView &dialog) {
 	}
 } ;
 
-static void QuitCallback(View &v,ModalView &dialog) {
-    MixerService::GetInstance()->SetRenderMode(0);
-    if (dialog.GetReturnCode()==MBL_YES) {
-		((ProjectView &)v).OnQuit() ;
-	}
-} ;
-
 static void PurgeCallback(View &v,ModalView &dialog) {
 	((ProjectView &)v).OnPurgeInstruments(dialog.GetReturnCode()==MBL_YES) ;
 } ;
@@ -196,12 +189,10 @@ ProjectView::ProjectView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	UIPillField *pf=new UIPillField(position,*v,"gain   ",2) ;
 	T_SimpleList<UIField>::Insert(pf) ;
 
-	position=GUIPoint(2,21) ;
-	v = project_->FindVariable(VAR_MIDISYNC);
-	UIStepperField *sy=new UIStepperField(position,*v,"sync   ","%s",0,
-	                                      MAX_MIDISYNC_MODE-1) ;
-	T_SimpleList<UIField>::Insert(sy) ;
-
+	/* the sync field moved to the CONFIG screen (mode in the SYNC
+	   panel): who owns the clock is a property of the rig -- which
+	   cable goes where -- not of the song. The project variable stays
+	   in the file format, ignored, so old songs load untouched. */
 	position=GUIPoint(2,19) ;
 	v = project_->FindVariable(VAR_MIDIDEVICE);
 	NAssert(v);
@@ -245,11 +236,10 @@ ProjectView::ProjectView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	                          project_->MAX_RENDER_MODE - 1, 1, 2);
 	T_SimpleList<UIField>::Insert(field);
 
-	position=GUIPoint(23,19) ;
-	a1 = new UIActionField("exit", ACTION_QUIT, position);
-	a1->AddObserver(*this);
-	T_SimpleList<UIField>::Insert(a1);
-
+	/* No exit action any more: quitting to the XMB is what the HOME
+	   button is for, and the OS path is the one Sony hardened. The
+	   in-app path froze the machine on the way out often enough that
+	   removing it beat debugging a road nobody needs to walk. */
 }
 
 ProjectView::~ProjectView() {
@@ -405,12 +395,7 @@ void ProjectView::Update(Observable &,I_ObservableData *data) {
             DoModal(mb, LoadCallback);
             break;
         }
-        case ACTION_QUIT: {
-            MessageBox *mb = new MessageBox(*this, "Quit and lose faith ?",
-                                            MBBF_YES | MBBF_NO);
-            DoModal(mb, QuitCallback);
-            break;
-        }
+
         case ACTION_TEMPO_CHANGED:
 			break ;
 		default:

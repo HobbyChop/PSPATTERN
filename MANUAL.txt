@@ -731,26 +731,29 @@ the sends are doing.
   gain     unity or boost
   device   MIDI output device
   rate     audio sample rate
-  sync     follow an external MIDI clock
 
 The file column has load, save, save as, two compaction tools, and a
 render switch.
 
 MIDI CLOCK
 
-The tracker sends MIDI clock whenever it plays, twenty four pulses to
-the quarter note as the standard asks, with a start when the transport
-starts and a stop when it stops. Gear plugged into the adapter follows
-the tracker with nothing to switch on. To silence it, add
+Who owns the clock is a property of the rig, not the song, so it
+lives on the config screen: mode, in the SYNC panel, with three
+positions.
 
-  <MIDISENDSYNC value="NO"/>
+LEADER, the default, sends MIDI clock while playing -- twenty four
+pulses to the quarter note as the standard asks, with a start and a
+stop -- and every byte is scheduled to land on the beat you HEAR,
+not the beat the software decided a moment earlier. Gear plugged
+into the adapter follows the tracker with nothing to switch on. If
+your downstream gear is itself slow to sound, sendo on the config
+screen shifts the outgoing stream: milliseconds, signed, positive
+sends later. Zero is right for nearly everything.
 
-to config.xml beside the EBOOT.
-
-The sync setting above is the other direction: on Follow the tracker
-takes its tempo from an incoming clock instead of running its own.
-Following is opt in, because a stray clock byte from a device you left
-plugged in should not take the transport away from you.
+FOLLOW takes the tempo from an incoming clock instead of running
+its own. OFF does neither. Following is opt in, because a stray
+clock byte from a device you left plugged in should not take the
+transport away from you.
 
 On Follow the leader owns the transport, so START does not start the
 song. It arms it: the bottom row reads

@@ -91,6 +91,10 @@ public:
        the difference is the phase error the loop closes. */
     void OnMidiClock() ;
     bool IsClockLocked() ;
+    /* Machine-level sync role from config (MIDISYNCMODE): the rig
+       decides who owns the clock, not the song. */
+    enum SyncMode { SYNC_OFF = 0, SYNC_LEADER = 1, SYNC_FOLLOW = 2 };
+    static SyncMode GetSyncMode();
 
     bool IsRunning();
     bool Clipped() ;

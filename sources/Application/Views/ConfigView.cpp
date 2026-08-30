@@ -16,6 +16,10 @@ static const char *THEME_OPTS[] = {"SUNSET","ICEBOX","EMBER","GRAPHITE"} ;
 static const char *FONT_OPTS[]  = {"CUSTOM","0","1","2"} ;
 static const char *BUF_OPTS[]   = {"64","128","256","512","1024"} ;
 static const char *YES_NO[]     = {"YES","NO"} ;   // default-on toggles
+// who owns the clock: LEADER sends it, FOLLOW obeys one, OFF neither.
+// Ordered so RIGHT steps toward more active (off > follow > leader),
+// matching how every other toggle on this screen reads.
+static const char *SYNC_OPTS[]  = {"OFF","FOLLOW","LEADER"} ;
 static const char *NO_YES[]     = {"NO","YES"} ;   // default-off toggles
 
 static int optIndex(const char *val,const char *const *opts,int n,int def) {
@@ -47,7 +51,14 @@ ConfigView::ConfigView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	// earlier. The audio pipeline is measured and compensated; this
 	// covers what cannot be measured from inside (the leader's own
 	// output latency, the adapter hop). Applies at the next play start.
-	addInt (18,"synco  ", "MIDISYNCOFFSET", -50,100, 50, false) ;
+	// clock out (leader mode) on/off, then the two trims: synco for
+	// following (positive plays earlier), sendo for leading (positive
+	// sends later, 0 = aligned with what this machine is heard
+	// playing). Follow itself is armed on the PROJECT screen's sync
+	// field, next to the tempo it affects.
+	addList(21,"mode   ", "MIDISYNCMODE",    SYNC_OPTS,3, 2, false, false) ;
+	addInt (22,"synco  ", "MIDISYNCOFFSET", -50,100, 50, false) ;
+	addInt (23,"sendo  ", "MIDISENDOFFSET", -100,100, 0, false) ;
 
 	// BEHAVIOUR
 	// autosave: YES by default; NO for a live set, where a Memory
@@ -198,16 +209,20 @@ void ConfigView::DrawView() {
 
 	DrawPanel(1,5,20,4,"DISPLAY") ;    // theme, font, alt-rows
 	DrawPanel(1,10,20,4,"AUDIO") ;     // buffer, prebuffer, me offload
-	DrawPanel(1,15,20,3,"ENGINES") ;   // fm
+	DrawPanel(1,15,20,3,"ENGINES") ;   // fm, asave
+	// ENGINES' bottom rule owns row 19, and every panel needs the row
+	// under its rule free -- row 20 starts the next frame safely
+	DrawPanel(1,20,20,3,"SYNC") ;      // clock out, synco, sendo
 
 	FieldView::Redraw() ;
 
 	GUITextProperties props ;
 	SetColor(CD_ROW2) ;
-	DrawString(2,20,"* takes effect after a reboot",props) ;
+	// below the SYNC panel (its frame ends at row 24)
+	DrawString(2,25,"* takes effect after a reboot",props) ;
 	if (rebootPending_) {
 		SetColor(CD_HILITE2) ;
-		DrawString(2,21,"reboot pending",props) ;
+		DrawString(2,26,"reboot pending",props) ;
 	}
 	SetColor(CD_NORMAL) ;
 

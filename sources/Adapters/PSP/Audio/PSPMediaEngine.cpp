@@ -422,6 +422,8 @@ extern "C" int PSPME_Collect(fixed **out) {
 	return produced;
 }
 
+static unsigned int meLastPostUs_ = 0;  // job-idle detector for the meter
+
 extern "C" void PSPME_Post(const fixed *dlyAcc, const fixed *revAcc,
                            int n, int fb, int dlyLen, int runDly) {
 	if (n > ME_MAXN) n = ME_MAXN;
@@ -435,6 +437,7 @@ extern "C" void PSPME_Post(const fixed *dlyAcc, const fixed *revAcc,
 	ME_RUNDLY = (unsigned int)runDly; ME_N = (unsigned int)n;
 	mePrevN_ = n;
 	meLibSync();
+	meLastPostUs_ = sceKernelGetSystemTimeLow();
 	ME_BUSY = 1;
 	meLibSync();
 }
@@ -471,6 +474,19 @@ extern "C" int PSPME_LoadPercent(void) {
 	meLoadHB_ = hb;
 	meLoadT_ = now;
 	unsigned long long rate = (unsigned long long)dhb * 1000000ull / dt;
+	/* The boot-time calibration ran on a QUIET bus (no display DMA, no
+	   render traffic); runtime contention slows the idle spin even when
+	   the core does nothing, which read as a permanent ~15%% of phantom
+	   load after every stop. The main core KNOWS when the ME is idle --
+	   nothing has been posted for half a second -- so in that state the
+	   honest figure is zero by definition, and the observed spin rate
+	   IS the true contended-idle baseline: adopt it. The playing figure
+	   then measures against real-world idle, not a boot-time ideal. */
+	if (now - meLastPostUs_ > 500000) {
+		meIdleHz_ = (unsigned int)rate;
+		meLoadPct_ = 0;
+		return 0;
+	}
 	int pct = 100 - (int)(rate * 100 / meIdleHz_);
 	if (pct < 0) pct = 0;
 	if (pct > 100) pct = 100;
@@ -550,8 +566,15 @@ static void meSpectrum(void) {
 	}
 }
 
+/* The transport gates the feed: a stopped song fed the ME thirty
+   silent FFTs a second, which the meter dutifully reported as ~2-6%%
+   of phantom load while the panel showed nothing at all. */
+static volatile int meSpecOn_ = 0;
+extern "C" void PSPME_SpectrumEnable(int on) { meSpecOn_ = on ? 1 : 0; }
+
 /* main side: feed the finished master, at most ~30 times a second */
 extern "C" void PSPME_SpectrumFeed(short *interleaved, int frames) {
+	if (!meSpecOn_) return;
 	if (!meAlive_ || !ME_READY || !meSpecIn) return;
 	if (frames < SPEC_N) return;
 	static unsigned int lastFeed = 0;
@@ -718,19 +741,30 @@ extern "C" unsigned int PSPME_SleepCount(void) { return meSleepCount_; }
 extern "C" unsigned int PSPME_WakeCount(void)  { return meWakeCount_; }
 
 extern "C" void PSPME_Shutdown(void) {
+	/* ORDER MATTERS -- the audio thread is still rendering while this
+	   runs (SDL only stops at atexit). The old sequence freed the
+	   shared buffers FIRST and dropped ME_READY last, so a render
+	   mid-flight could post into freed memory: the exit-through-the-
+	   menu crash. Now: ready down (renders take the scalar path from
+	   the next block), core out, RESET HELD, a grace delay for any
+	   render already past the ready check -- and only then the frees,
+	   with both cores provably unable to touch them. */
 	meAlive_ = 0;
+	ME_READY = 0;
+	meLibSync();
 	ME_EXIT_ = 1;
+	meLibSync();
 	int retry = 0;
-	while (ME_READY && ME_BUSY && ++retry <= 5) sceKernelDelayThread(100000);
+	while (ME_BUSY && ++retry <= 5) sceKernelDelayThread(100000);
+	// held in reset: a halted-but-unreset ME across a suspend is the
+	// guaranteed hang (project rule); held in reset it is inert
+	// whatever the power switch does during shutdown
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;
+	meLibSync();
+	sceKernelDelayThread(30 * 1000);
 	if (meDlyIn) meLibAllocUncached32(&meDlyInH_, 0);
 	if (meRevIn) meLibAllocUncached32(&meRevInH_, 0);
 	if (meOut)   meLibAllocUncached32(&meOutH_,   0);
-	// leave the core HELD IN RESET: a halted-but-unreset ME across a
-	// suspend is the guaranteed hang (project rule); held in reset it
-	// is inert whatever the power switch does during shutdown
-	ME_READY = 0;
-	HW_SYS_RESET_ENABLE = SC_HW_RESET;
-	meLibSync();
 }
 
 extern "C" unsigned int PSPME_Ready(void)     { return (unsigned int)ME_READY; }

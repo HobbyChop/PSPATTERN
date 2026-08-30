@@ -1,7 +1,9 @@
 #include "MidiService.h"
 #include "Application/Model/Config.h"
+#include "Application/Player/Player.h"
 #include "Application/Player/SyncMaster.h"
 #include "Services/Audio/AudioDriver.h"
+#include "Services/Audio/Audio.h"
 #include "System/Console/Trace.h"
 #include "System/Timer/Timer.h"
 
@@ -12,6 +14,10 @@
 MidiService::MidiService()
     : T_SimpleList<MidiOutDevice>(true), inList_(true), device_(0),
       sendSync_(true) {
+    rtHead_ = rtTail_ = 0;
+    rtThread_ = 0;
+    sendoMs_ = 0;
+    sendSyncNow_ = false;
     for (int i = 0; i < MIDI_MAX_BUFFERS; i++) {
         queues_[i] = new T_SimpleList<MidiMessage>(true);
     }
@@ -82,14 +88,112 @@ void MidiService::QueueMessage(MidiMessage &m) {
 
 void MidiService::Trigger() {
     AdvancePlayQueue();
-    if (device_ && sendSync_) {
+    if (device_ && sendSyncNow_) {
         SyncMaster *sm = SyncMaster::GetInstance();
         if (sm->MidiSlice()) {
-            MidiMessage msg;
-            msg.status_ = 0xF8;
-            QueueMessage(msg);
+            PostRealtime(0xF8);
         }
     }
+}
+
+/* ---- leader-mode clock scheduler ---------------------------------- */
+
+#ifdef PLATFORM_PSP
+#include <pspthreadman.h>
+
+class MidiClockSender : public SysThread {
+  public:
+    MidiClockSender(MidiService &s) : svc_(s) {}
+    virtual bool Execute() {
+        /* above the interface threads, below the audio: a late clock
+           byte is jitter the follower hears */
+        sceKernelChangeThreadPriority(0, 0x13);
+        while (!shouldTerminate()) {
+            if (!svc_.ClockSenderStep()) sceKernelDelayThread(500);
+        }
+        return true;
+    }
+  private:
+    MidiService &svc_;
+};
+
+unsigned int MidiService::clockLeadUs() {
+    /* the OUT mirror of the follow mode's measured lead: a tick decided
+       now is HEARD after the queued audio (prebuffer plus the hardware
+       fragment) plus the slice being rendered around it */
+    unsigned int us = 0;
+    Audio *audio = Audio::GetInstance();
+    if (audio) {
+        int rate = audio->GetSampleRate();
+        int frames = audio->GetAudioBufferSize() *
+                     (audio->GetAudioPreBufferCount() + 1);
+        if (rate > 0) us = (unsigned int)((long long)frames * 1000000 / rate);
+    }
+    SyncMaster *sm = SyncMaster::GetInstance();
+    int bpm = sm ? sm->GetTempo() : 0;
+    if (bpm > 0) us += (unsigned int)(2500000 / bpm);   // one tick
+    int total = (int)us + sendoMs_ * 1000;
+    if (total < 0) total = 0;
+    return (unsigned int)total;
+}
+
+void MidiService::PostRealtime(unsigned char status) {
+    if (!device_) return;
+    if (status == 0xFA) {
+        /* start: (re)read the trim, and start the sender if needed */
+        const char *t = Config::GetInstance()->GetValue("MIDISENDOFFSET");
+        sendoMs_ = t ? atoi(t) : 0;
+        if (!rtThread_) {
+            rtThread_ = new MidiClockSender(*this);
+            rtThread_->Start();
+        }
+    }
+    if (!rtThread_) { postDirect(status); return; }
+    int next = (rtHead_ + 1) % RT_RING;
+    if (next == rtTail_) return;   // full: drop rather than block audio
+    rtRing_[rtHead_].status_ = status;
+    rtRing_[rtHead_].dueUs_ = sceKernelGetSystemTimeLow() + clockLeadUs();
+    rtHead_ = next;
+}
+
+/* One scheduler cycle. Returns false when there was nothing to do
+   (the thread then idles briefly). */
+bool MidiService::ClockSenderStep() {
+    if (rtTail_ == rtHead_) return false;
+    RtEvent ev = rtRing_[rtTail_];
+    unsigned int now = sceKernelGetSystemTimeLow();
+    int wait = (int)(ev.dueUs_ - now);
+    if (wait > 400) {
+        sceKernelDelayThread(wait > 4000 ? 2000 : (wait - 200));
+        return true;   // re-check: more may have queued meanwhile
+    }
+    while ((int)(ev.dueUs_ - sceKernelGetSystemTimeLow()) > 2) {}
+    {
+        /* the fragment-flush path and this thread share the device
+           (and the prx TX ring is single-producer) */
+        SysMutexLocker locker(queueMutex_);
+        if (device_) {
+            MidiMessage m;
+            m.status_ = ev.status_;
+            device_->SendMessage(m);
+        }
+    }
+    rtTail_ = (rtTail_ + 1) % RT_RING;
+    return true;
+}
+
+#else  /* non-PSP builds keep the fragment-quantised path */
+
+unsigned int MidiService::clockLeadUs() { return 0; }
+bool MidiService::ClockSenderStep() { return false; }
+void MidiService::PostRealtime(unsigned char status) { postDirect(status); }
+
+#endif
+
+void MidiService::postDirect(unsigned char status) {
+    MidiMessage msg;
+    msg.status_ = status;
+    QueueMessage(msg);
 }
 
 void MidiService::AdvancePlayQueue() {
@@ -166,6 +270,15 @@ void MidiService::startDevice() {
 void MidiService::stopDevice() {
     if (device_) {
         device_->Stop();
+#ifdef PLATFORM_PSP
+        // the clock sender writes to the device from its own thread;
+        // ask it out before the device goes (pump precedent: request,
+        // not joined -- it exits within one short wait)
+        if (rtThread_) {
+            rtThread_->RequestTermination();
+            rtThread_ = 0;
+        }
+#endif
         device_->Close();
     }
     device_ = 0;
@@ -183,10 +296,12 @@ void MidiService::OnPlayerStart() {
         startDevice();
     }
 
-    if (sendSync_) {
-        MidiMessage msg;
-        msg.status_ = 0xFA;
-        QueueMessage(msg);
+    /* the rig decides: clock goes out only when this machine is the
+       LEADER (config screen, SYNC panel). MIDISENDSYNC=NO from the
+       old config format still hard-mutes it. */
+    sendSyncNow_ = sendSync_ && (Player::GetSyncMode() == Player::SYNC_LEADER);
+    if (sendSyncNow_) {
+        PostRealtime(0xFA);
     }
 };
 
@@ -194,9 +309,7 @@ void MidiService::OnPlayerStart() {
  * queues midi stop message when player stops
  */
 void MidiService::OnPlayerStop() {
-    if (sendSync_) {
-        MidiMessage msg;
-        msg.status_ = 0xFC;
-        QueueMessage(msg);
+    if (sendSyncNow_) {
+        PostRealtime(0xFC);
     }
 };

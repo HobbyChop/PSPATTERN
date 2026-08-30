@@ -14,6 +14,7 @@
 #include <time.h>
 #include <pspdebug.h>
 #include <pspctrl.h>
+#include <pspthreadman.h>
 #include <psppower.h>
 #include <sys/time.h>
 #include <malloc.h>
@@ -184,6 +185,12 @@ int PSPSystem::GetBatteryLevel() {
 } ;
 
 void PSPSystem::Shutdown() {
+	// Quiesce the audio FIRST: the render thread posts to the ME and
+	// sends MIDI until the callback stops asking, and both of those
+	// are about to be torn down. One paused callback plus a grace
+	// delay and the machine is quiet before anything is freed.
+	SDL_PauseAudio(1) ;
+	sceKernelDelayThread(80 * 1000) ;
 	PSPUsbMidiLink::Unload() ;
 } ;
 

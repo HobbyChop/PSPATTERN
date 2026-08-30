@@ -30,6 +30,8 @@ enum MidiLinkState {
     MLS_READY,      // an adapter is connected
 };
 
+#include "System/Process/Process.h"
+
 class MidiService : public T_Factory<MidiService>,
                     public T_SimpleList<MidiOutDevice>,
                     public I_Observer {
@@ -105,7 +107,36 @@ class MidiService : public T_Factory<MidiService>,
     MidiInMerger *merger_;
     int midiDelay_;
     int tickToFlush_;
-    bool sendSync_;
+    bool sendSync_;      // legacy MIDISENDSYNC hard-mute (config file)
+    bool sendSyncNow_;   // this run: leader mode AND not hard-muted
     SysMutex queueMutex_;
+
+    /* LEADER-MODE CLOCK SCHEDULER (PSP).
+
+       The note queue is flushed on audio-fragment boundaries, which is
+       fine for notes but quantises the outgoing 0xF8 stream to fragment
+       size AND sends it at tick-DECISION time -- so downstream gear ran
+       one audio pipeline EARLY against what this machine was heard
+       playing, with fragment-sized jitter on top.
+
+       Realtime bytes (clock, start, stop) go through this instead: a
+       ring of (status, due-microseconds) drained by a high-priority
+       thread that sleeps until each byte is due and writes it straight
+       to the device. Due = decision time + the same measured audible
+       latency the follow mode compensates (pipe + slice in flight) +
+       the sendo trim -- so the wire carries the clock of what is HEARD,
+       to sub-millisecond, at any tempo and any buffer setting. */
+  public:
+    void PostRealtime(unsigned char status);
+    bool ClockSenderStep();           // one wait/send cycle (thread shim)
+  private:
+    void postDirect(unsigned char status);   // fallback: old queue path
+    unsigned int clockLeadUs();
+    struct RtEvent { unsigned char status_; unsigned int dueUs_; };
+    static const int RT_RING = 64;
+    RtEvent rtRing_[RT_RING];
+    volatile int rtHead_, rtTail_;
+    SysThread *rtThread_;
+    int sendoMs_;                     // trim, read at each start
 };
 #endif

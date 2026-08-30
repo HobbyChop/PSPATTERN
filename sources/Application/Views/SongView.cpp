@@ -1098,7 +1098,7 @@ void SongView::DrawSidePanel() {
        colour once the loop is holding, mute colour while it is still
        chasing -- so a tempo that will not settle is visible instead of
        being something you have to hear. */
-    if (viewData_->project_->GetMidiSync() != 0 && running) {
+    if (Player::GetSyncMode() == Player::SYNC_FOLLOW && running) {
         SetColor(player->IsClockLocked() ? CD_PLAY : CD_MUTE);
     } else {
         SetColor(CD_HILITE2);

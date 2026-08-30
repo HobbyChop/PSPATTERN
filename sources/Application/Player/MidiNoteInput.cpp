@@ -38,12 +38,12 @@ void MidiNoteInput::SetProject(Project *project) {
    player, which holds it against its own slices. */
 void MidiNoteInput::onClock() {
 
-	if ((!project_)||(project_->GetMidiSync()==0)) return ;
+	if (Player::GetSyncMode()!=Player::SYNC_FOLLOW) return ;
 	Player::GetInstance()->OnMidiClock() ;
 } ;
 
 void MidiNoteInput::onStart(bool fromTop) {
-	if ((!project_)||(project_->GetMidiSync()==0)) return ;
+	if (Player::GetSyncMode()!=Player::SYNC_FOLLOW) return ;
 	clockCount_=0 ;
 	lastQuarterMs_=0 ;
 	Player *player=Player::GetInstance() ;
@@ -58,7 +58,7 @@ void MidiNoteInput::onStart(bool fromTop) {
 } ;
 
 void MidiNoteInput::onStop() {
-	if ((!project_)||(project_->GetMidiSync()==0)) return ;
+	if (Player::GetSyncMode()!=Player::SYNC_FOLLOW) return ;
 	clockCount_=0 ;
 	lastQuarterMs_=0 ;
 	Player *player=Player::GetInstance() ;

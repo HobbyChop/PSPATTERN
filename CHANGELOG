@@ -1,3 +1,33 @@
+PSPATTERN 0.23.0a
+
+    Leader mode earns its name. Outgoing MIDI clock used to leave at
+        the moment a tick was DECIDED, quantised to audio fragments
+        -- so downstream gear ran one audio pipeline early against
+        what this machine was heard playing. A dedicated sender now
+        schedules every clock, start and stop byte for the moment
+        its beat is HEARD, sub-millisecond, at any tempo and any
+        buffer setting. sendo on the config screen trims for gear
+        that is slow to sound; zero suits nearly everything.
+
+    Who owns the clock moved to where it belongs. The sync role is a
+        property of the rig -- which cable goes where -- not of the
+        song, so it is now mode in the config screen's SYNC panel:
+        LEADER (the default), FOLLOW, or OFF. The per-song sync
+        field is gone; old songs load untouched.
+
+    The second processor's meter tells the truth at rest. It read a
+        steady fifteen percent with the song stopped: a spectrum
+        that kept computing silence, and a load reference measured
+        on a bus quieter than the one the machine actually runs on.
+        The spectrum now sleeps with the transport, idle is reported
+        as the zero it provably is, and the reference recalibrates
+        itself against real conditions.
+
+    The exit option on the project screen is gone. Quitting is what
+        the HOME button is for -- the road the system hardened --
+        and the in-app path froze often enough that closing it beat
+        maintaining it.
+
 PSPATTERN 0.22.0a
 
     UPDATE BOTH FILES: this release changes usbmidi.prx for the first
