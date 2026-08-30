@@ -22,7 +22,7 @@ public:
 	virtual ~PSPUsbMidiInDevice() ;
 
 	// called from the pump thread
-	void onPacket(unsigned char *pkt) ;
+	void onPacket(unsigned char *pkt, unsigned int tsUs = 0) ;
 
 protected:
 	virtual bool initDriver() ;

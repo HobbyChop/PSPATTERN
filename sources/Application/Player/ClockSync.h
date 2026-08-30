@@ -43,10 +43,38 @@ public:
 		tempo_ = bpm ;
 		settle_ = 0 ;
 		avgErr_ = 0.0f ;
+		fastErr_ = 0.0f ;
 		locked_ = false ;
+		acqT0_ = 0 ;
+		acqTick0_ = 0 ;
+		acqDone_ = false ;
+		grossRun_ = 0 ;
 	}
 
-	void OnLeaderTick() { leaderTicks_++ ; update() ; }
+	/* nowMs: the machine clock at the byte's arrival, 0 if unknown.
+	   With it, the first beat's worth of ticks is timed and the base
+	   tempo SNAPPED to the measurement -- a song saved at 120 under a
+	   140 leader used to crawl there through the integral for tens of
+	   seconds, audibly flat the whole way. One beat of listening gets
+	   within a hair and the loop polishes the rest. */
+	void OnLeaderTick(unsigned long nowMs = 0) {
+		leaderTicks_++ ;
+		if (nowMs && !acqDone_) {
+			if (!acqT0_) { acqT0_ = nowMs ; acqTick0_ = leaderTicks_ ; }
+			else if (leaderTicks_ - acqTick0_ >= 24) {
+				unsigned long el = nowMs - acqT0_ ;
+				if (el > 100) {
+					float m = 2500.0f * float(leaderTicks_ - acqTick0_)
+					          / float(el) ;
+					if (m < 30.0f) m = 30.0f ;
+					if (m > 400.0f) m = 400.0f ;
+					if (m - base_ > 3.0f || base_ - m > 3.0f) base_ = m ;
+				}
+				acqDone_ = true ;
+			}
+		}
+		update() ;
+	}
 	void OnPlayerTick() { playerTicks_++ ; }
 
 	/* How far AHEAD of the leader's count the song should run,
@@ -94,6 +122,26 @@ private:
 		if (err > 24.0f) err = 24.0f ;
 		if (err < -24.0f) err = -24.0f ;
 
+		/* A position that stays pinned at the clamp for four straight
+		   beats is not going to be chased down: something pathological
+		   happened (a stall, a leader jump). Re-anchor the counts and
+		   carry on at the learned tempo -- wrong phase accepted once
+		   beats a permanently skewed tempo trying to close a beat that
+		   keeps receding. */
+		if (err >= 24.0f || err <= -24.0f) {
+			if (++grossRun_ > 96) {
+				playerTicks_ = leaderTicks_ ;
+				fastErr_ = 0.0f ;
+				avgErr_ = 0.0f ;
+				settle_ = 0 ;
+				grossRun_ = 0 ;
+				tempo_ = base_ ;
+				return ;
+			}
+		} else {
+			grossRun_ = 0 ;
+		}
+
 		/* The integral learns the tempo, and it has to be fed a
 		   SMOOTHED error rather than the raw one.
 
@@ -112,8 +160,17 @@ private:
 		if (base_ < 30.0f) base_ = 30.0f ;
 		if (base_ > 400.0f) base_ = 400.0f ;
 
-		// The proportional term closes the current gap.
-		tempo_ = base_ * (1.0f + 0.010f * err) ;
+		/* The proportional term closes the current gap -- fed a FAST
+		   smoothing of the error, not the raw count difference. The
+		   USB pump hands clock bytes over in clumps of up to 20ms, so
+		   the raw error square-waves by two or three ticks at clump
+		   rate; a P term chasing that wobbled the tempo a few percent
+		   fifty times a second, which is audible wow that no amount of
+		   integral could remove. Smoothing at a quarter per tick keeps
+		   the response inside a few ticks while the clumps average
+		   away. */
+		fastErr_ += (err - fastErr_) * 0.25f ;
+		tempo_ = base_ * (1.0f + 0.010f * fastErr_) ;
 		if (tempo_ < 30.0f) tempo_ = 30.0f ;
 		if (tempo_ > 400.0f) tempo_ = 400.0f ;
 
@@ -140,13 +197,24 @@ private:
 
 	/* The lead in ticks depends on the tempo, since a tick is
 	   shorter at 160 than at 90. Recomputed rather than stored
-	   so a tempo change does not leave it stale. */
-	float leadTicks() const { return leadMs_ * tempo_ / 2500.0f ; }
+	   so a tempo change does not leave it stale.
+
+	   The +1: one full slice sits between DECIDING a tick and its
+	   audio joining the queue, and a slice IS a tick long -- a
+	   tempo-dependent latency the millisecond lead cannot carry
+	   (it would need re-trimming at every tempo). In tick units it
+	   is exactly one, at any tempo, so it lives here. */
+	float leadTicks() const { return leadMs_ * tempo_ / 2500.0f + 1.0f ; }
 
 	unsigned int leaderTicks_ ;
 	unsigned int playerTicks_ ;
 	float base_ ;
 	float avgErr_ ;
+	float fastErr_ ;
+	unsigned long acqT0_ ;
+	unsigned int acqTick0_ ;
+	bool acqDone_ ;
+	unsigned int grossRun_ ;
 	float leadMs_ ;
 	float tempo_ ;
 	unsigned char settle_ ;

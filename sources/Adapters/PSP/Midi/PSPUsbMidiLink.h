@@ -14,6 +14,10 @@ int pspUsbMidiWrite(const unsigned char *pkt);
 int pspUsbMidiConnected(void);
 int pspUsbMidiWaitData(unsigned int timeout_us);
 int pspUsbMidiStatus(void);
+/* Present when pspUsbMidiStatus() has bit 0x80 set (newer prx): the
+   packet plus its KERNEL arrival time in microseconds -- stamped at
+   the USB bulk completion, upstream of every thread wake. */
+int pspUsbMidiReadTs(unsigned char *pkt, unsigned int *ts_us);
 }
 
 class PSPUsbMidiLink {

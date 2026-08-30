@@ -35,12 +35,19 @@ ConfigView::ConfigView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	addInt (8, "arows *", "ALTROWNUMBER", 1,16, 4,        true) ;
 
 	// AUDIO
-	addList(11,"buffer*", "AUDIOBUFFERSIZE", BUF_OPTS,5, 2, true, false) ;
-	addInt (12,"prebuf*", "AUDIOPREBUFFER",  2,12, 6,         true) ;
+	addList(11,"buffer*", "AUDIOBUFFERSIZE", BUF_OPTS,5, 1, true, false) ;
+	addInt (12,"prebuf*", "AUDIOPREBUFFER",  2,12, 5,         true) ;
 	addList(13,"me fx *", "ME_OFFLOAD",       YES_NO,2, 0, true, false) ;
 
 	// ENGINES
 	addList(16,"fm     ", "FM_ENGINE",        YES_NO,2, 0, false, false) ;
+
+	// SYNC
+	// trim for MIDI clock follow, milliseconds, positive = play
+	// earlier. The audio pipeline is measured and compensated; this
+	// covers what cannot be measured from inside (the leader's own
+	// output latency, the adapter hop). Applies at the next play start.
+	addInt (18,"synco  ", "MIDISYNCOFFSET", -50,100, 50, false) ;
 
 	// BEHAVIOUR
 	// autosave: YES by default; NO for a live set, where a Memory

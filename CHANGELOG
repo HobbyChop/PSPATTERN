@@ -1,3 +1,28 @@
+PSPATTERN 0.22.0a
+
+    UPDATE BOTH FILES: this release changes usbmidi.prx for the first
+        time in many versions. Copy the new EBOOT.PBP AND the new
+        usbmidi.prx to the card together; an old prx still works but
+        loses the sync improvement below.
+
+    MIDI clock follow locks in phase, not just in tempo. The loop
+        feeds on counts the USB pump cannot lose, smooths the bursts
+        the pump cannot help, measures the leader's tempo inside the
+        first beat, and the driver now stamps every clock byte with
+        its kernel arrival time -- wire time, upstream of every
+        thread wake. The tracker runs early by its own measured
+        latency at any tempo and any buffer setting, so the synco
+        trim (new on the config screen) describes only your gear:
+        dial it once against your DAW -- around 50 for a computer
+        over a USB interface -- and it holds through tempo changes,
+        buffer changes and whole sets.
+
+    Faster defaults, earned. The audio pipeline ships at 128 x 5
+        (14.5ms, down from 35) because after the playback hardening
+        a maxed-out song holds it with zero underruns -- and the und
+        figure on the song screen referees the claim on your songs.
+        64 is proven on a slim unit if you want the tightest feel.
+
 PSPATTERN 0.21.0a
 
     The rock-solid release. A thirty-two-agent audit hunted every way

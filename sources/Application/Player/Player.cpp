@@ -1,4 +1,8 @@
 #include "Player.h"
+
+#ifdef PLATFORM_PSP
+extern "C" unsigned int PSPMidi_LastClockStampUs(void);
+#endif
 #include "Services/Audio/AudioStats.h"
 #include "LiveQueue.h"
 #include "MaybeRoll.h"
@@ -576,7 +580,11 @@ float Player::syncLeadMs() {
 	Audio *audio=Audio::GetInstance() ;
 	if (audio) {
 		int rate=audio->GetSampleRate() ;
-		int frames=audio->GetAudioBufferSize()*audio->GetAudioPreBufferCount() ;
+		/* +1 fragment: the SDL backend double-buffers into the audio
+		   hardware past the prebuffer it reports. Measured once with a
+		   scope against the headphone jack would be better; counted at
+		   all beats leaving it to the trim. */
+		int frames=audio->GetAudioBufferSize()*(audio->GetAudioPreBufferCount()+1) ;
 		if (rate>0 && frames>0) {
 			lead=1000.0f*float(frames)/float(rate) ;
 		}
@@ -595,7 +603,18 @@ void Player::OnMidiClock() {
     // Clocks before the song starts have nothing to be compared
     // against; the count is zeroed at the leader's start anyway.
     if (!isRunning_) return ;
-    clockSync_.OnLeaderTick() ;
+    unsigned long clockMs = System::GetInstance()->GetClock() ;
+#ifdef PLATFORM_PSP
+    {
+        /* The prx stamps each clock byte at the USB completion in
+           kernel context -- upstream of every thread wake this side.
+           Prefer that time base when it exists; deltas are all the
+           loop uses, so the different epoch does not matter. */
+        unsigned int us = PSPMidi_LastClockStampUs() ;
+        if (us) clockMs = us / 1000u ;
+    }
+#endif
+    clockSync_.OnLeaderTick(clockMs) ;
 }
 
 bool Player::IsClockLocked() { return clockSync_.Locked() ; }

@@ -779,22 +779,18 @@ SYNC OFFSET
 Locking the two clocks together is not the same as the two being
 heard together. What gets aligned is the moment the tracker decides a
 tick; what you hear is that tick coming out of the audio buffer some
-time later -- 35ms at the default buffer settings. The tracker
-therefore runs early by the size of its own buffer, which it knows,
-so that the sound lands on time.
+time later. The tracker measures its own share -- the audio pipe, the
+slice in flight -- and runs early by exactly that, at any tempo and
+any buffer setting.
 
 What it cannot know is the rest of the chain: how long a clock byte
-takes to reach it, and what your own gear's output latency is. If it
-still sits early or late against the leader, trim it with
-
-  <MIDISYNCOFFSET value="10"/>
-
-in config.xml. The value is milliseconds and it is signed. A positive
-number plays earlier, a negative number plays later. Change it by five
-or ten at a time; a tick at 120bpm is only 21ms.
-
-Making the audio buffer smaller reduces the latency it is correcting
-for in the first place, at the usual cost.
+takes to reach it, and what your own gear's output latency is. Trim
+that once with synco on the config screen (also MIDISYNCOFFSET in
+config.xml): milliseconds, signed, positive plays earlier, applied at
+the next play start. Around 50 suits a typical computer DAW over a
+USB interface; a hardware sequencer wants nearer zero. Because the
+measured share tracks your settings, the number you dial describes
+only your gear -- it survives tempo and buffer changes.
 
 
 THE CONFIG SCREEN
