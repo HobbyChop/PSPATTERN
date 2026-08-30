@@ -295,8 +295,24 @@ void AppWindow::uiTick() {
         static bool armed[2] = {true, true};
         static unsigned long nextFire[2] = {0, 0};
         int vals[2] = {ax, ay};
+        /* CARDINAL CLAMP. The axes used to fire independently, so a
+           push at forty degrees fired horizontal AND vertical -- the
+           "it went somewhere I did not aim" complaint. One tick, one
+           axis: the clearly dominant one fires, the other is treated
+           as centred. A push too close to a true diagonal (margin
+           under 16 of 128) fires NOTHING -- a deliberate dead wedge,
+           so an ambiguous thumb angle waits for a clear one instead
+           of guessing. Rolling off the diagonal onto a cardinal fires
+           immediately, because the suppressed axis re-arms while it
+           is being ignored. */
+        int axAbs = (ax < 0) ? -ax : ax;
+        int ayAbs = (ay < 0) ? -ay : ay;
+        int domAxis = (axAbs >= ayAbs) ? 0 : 1;
+        int domMargin = (axAbs >= ayAbs) ? (axAbs - ayAbs) : (ayAbs - axAbs);
+        bool diagonal = (domMargin < 16) && (axAbs > 25 || ayAbs > 25);
         for (int axis = 0; axis < 2; axis++) {
             int v = vals[axis];
+            if (axis != domAxis || diagonal) v = 0;
             int mag = (v < 0) ? -v : v;
             int dir = (axis == 0) ? ((v < 0) ? 0 : 1) : ((v < 0) ? 2 : 3);
             if (edit) {

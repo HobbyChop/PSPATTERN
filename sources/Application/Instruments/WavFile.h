@@ -32,6 +32,7 @@ private:
 	int size_ ; // number of samples
 	int sampleRate_ ; // sample rate
 	int channelCount_ ; // mono / stereo
+	bool isFloat_ ;        // source is 32-bit IEEE float (converted on load)
 	int bytePerSample_ ; // original file is in 8/16bit
 	int dataPosition_ ; // offset in file to get to data
 

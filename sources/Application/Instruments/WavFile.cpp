@@ -130,7 +130,7 @@ WavFile *WavFile::Open(const char *path) {
         memcpy(&size, wav->readBuffer_,4) ;
         size = Swap32(size) ;
         Trace::Debug("WavFile::Open(): skipping JUNK with size=%d", size);
-        position+=size;
+        position+=size+(size&1);   // JUNK pads to even too
         position += wav->readBlock(position, 4);
         memcpy(&chunk,wav->readBuffer_,4) ;
 		chunk = Swap32(chunk);
@@ -157,18 +157,12 @@ WavFile *WavFile::Open(const char *path) {
 	}
 	int offset=size-16 ;
 
-	// Read compression
+	// Read compression -- validated AFTER the extensible unwrap below
 
 	unsigned short comp ;
 	position+=wav->readBlock(position,2) ;
 	memcpy(&comp,wav->readBuffer_,2) ;
 	comp = Swap16(comp);
-
-	if (comp!=1) {
-		Trace::Error("Unsupported compression") ;
-		delete wav ;
-		return 0 ;
-	}
 
 	// Read NumChannels (mono/Stereo)
 
@@ -194,17 +188,45 @@ WavFile *WavFile::Open(const char *path) {
 	memcpy(&bitPerSample,wav->readBuffer_,2) ;
 	bitPerSample = Swap16(bitPerSample);
 		
-	if ((bitPerSample!=16)&&(bitPerSample!=8)) {
-		Trace::Error("Only 8/16 bit supported") ;
+	/* WAVE_FORMAT_EXTENSIBLE: modern exporters write this wrapper
+	   around perfectly ordinary PCM -- the REAL format tag hides in
+	   the first two bytes of the trailing GUID. Files like these were
+	   the classic "my 16-bit wav will not load" report. */
+	if (comp==0xFFFE && offset>=10) {
+		position+=8 ;   // cbSize, valid bits, channel mask
+		position+=wav->readBlock(position,2) ;
+		memcpy(&comp,wav->readBuffer_,2) ;
+		comp = Swap16(comp);
+		offset-=10 ;
+	}
+
+	wav->isFloat_=false ;
+	if (comp==3) {
+		// IEEE float: 32-bit only, converted to 16 on load
+		if (bitPerSample!=32) {
+			Trace::Error("Float wav must be 32 bit") ;
+			delete wav ;
+			return 0 ;
+		}
+		wav->isFloat_=true ;
+	} else if (comp!=1) {
+		Trace::Error("Unsupported compression %d",comp) ;
+		delete wav ;
+		return 0 ;
+	}
+
+	if ((bitPerSample!=8)&&(bitPerSample!=16)&&
+	    (bitPerSample!=24)&&(bitPerSample!=32)) {
+		Trace::Error("Only 8/16/24/32 bit supported") ;
 		delete wav ;
 		return 0 ;
 	} ;
 	bitPerSample/=8 ;
-	wav->bytePerSample_=bitPerSample ;
+	wav->bytePerSample_=bitPerSample ;   // SOURCE width; RAM is always 16
 
 	// some bad files have bigger chunks
 
-	if (offset) {
+	if (offset>0) {
 		position+=offset ;
 	}
 
@@ -221,7 +243,9 @@ WavFile *WavFile::Open(const char *path) {
 		memcpy(&size,wav->readBuffer_,4) ;
 		size = Swap32(size);
 
-		position+=size ;
+		// RIFF pads odd chunks to even; a 7-byte LIST without the
+		// pad desynced the walk one byte and 'data' was never found
+		position+=size+(size&1) ;
 		position+=wav->readBlock(position,4) ;
 		memcpy(&chunk,wav->readBuffer_,4) ;
 		chunk = Swap32(chunk);
@@ -278,10 +302,55 @@ long WavFile::readBlock(long start,long size) {
 } ;
 
 
+/* Convert one chunk of raw file samples to the 16-bit the whole
+   program speaks. Explicit little-endian byte math, so it is correct
+   on any host without the Swap macros. */
+static void wavConvert(const unsigned char *src, short *dst, int n,
+                       int srcBytes, bool isFloat) {
+	switch (srcBytes) {
+	case 1:
+		for (int i = 0; i < n; i++)
+			dst[i] = (short)(((int)src[i] - 128) * 256);
+		break;
+	case 2:
+		for (int i = 0; i < n; i++)
+			dst[i] = (short)(src[i*2] | (src[i*2+1] << 8));
+		break;
+	case 3:
+		// top sixteen of the twenty four
+		for (int i = 0; i < n; i++)
+			dst[i] = (short)(src[i*3+1] | (src[i*3+2] << 8));
+		break;
+	case 4:
+		if (isFloat) {
+			for (int i = 0; i < n; i++) {
+				unsigned int u = src[i*4] | (src[i*4+1] << 8) |
+				                 (src[i*4+2] << 16) |
+				                 ((unsigned int)src[i*4+3] << 24);
+				float f;
+				memcpy(&f, &u, 4);
+				if (f > 1.0f) f = 1.0f;
+				if (f < -1.0f) f = -1.0f;
+				dst[i] = (short)(f * 32767.0f);
+			}
+		} else {
+			// 32-bit int: top sixteen
+			for (int i = 0; i < n; i++)
+				dst[i] = (short)(src[i*4+2] | (src[i*4+3] << 8));
+		}
+		break;
+	}
+}
+
 bool WavFile::GetBuffer(long start,long size) {
 
-	// compute the sample buffer size we need,
-	// allocate if needed
+	/* One converting reader for every source width. The destination
+	   is ALWAYS 16-bit in RAM; the file may be 8, 16, 24 or 32-float
+	   (24/32 are what modern exporters produce, and rejecting them
+	   was most of "my sample will not load"). Raw bytes go through
+	   readBuffer_ a chunk at a time and convert on the way in -- a
+	   source wider than 16 bits cannot be read into the destination
+	   and converted in place, it would not fit. */
 
 	int sampleBufferSize=2*channelCount_*size ;
 	if (sampleBufferSize>sampleBufferSize_) {
@@ -290,68 +359,33 @@ bool WavFile::GetBuffer(long start,long size) {
 		sampleBufferSize_=sampleBufferSize ;
 	}
 
-  if (!samples_)
-  {
-    Trace::Error("Failed to allocate %d samples",sampleBufferSize);
-  }
-
-	// compute the file buffer size we need to read
-
-	int bufferSize=size*channelCount_*bytePerSample_ ;
-	int bufferStart=dataPosition_+start*channelCount_*bytePerSample_ ;
-
-	// Read the buffer but in small chunk to let the system breathe
-	// if the files are big
-
-	int count=bufferSize ;
-	int offset=0 ;
-	char *ptr=(char *)samples_ ;
-
-	if (bufferChunkSize_>0) {
-		// the deliberate trickle: small chunks with a sleep between,
-		// so a big load does not starve whatever else is running
-		int readSize=bufferChunkSize_ ;
-		while (count>0) {
-			readSize=(count>readSize)?readSize:count ;
-			readBlock(bufferStart,readSize) ;
-			memcpy(ptr+offset,readBuffer_,readSize) ;
-			bufferStart+=readSize ;
-			count-=readSize ;
-			offset+=readSize ;
-			TimeService::GetInstance()->Sleep(1) ;
-		}
-	} else {
-		// bulk load: straight into the destination in big sequential
-		// reads. The old path went through readBlock 4KB at a time --
-		// a seek, a read into a bounce buffer, and a memcpy per chunk,
-		// when the reads are contiguous and the destination is right
-		// there.
-		file_->Seek(bufferStart,SEEK_SET) ;
-		while (count>0) {
-			int readSize=(count>131072)?131072:count ;
-			file_->Read(ptr+offset,readSize,1) ;
-			count-=readSize ;
-			offset+=readSize ;
-		}
+	if (!samples_) {
+		Trace::Error("Failed to allocate %d samples",sampleBufferSize);
+		return false ;
 	}
 
+	long srcFrame=(long)channelCount_*bytePerSample_ ;
+	long bufferStart=dataPosition_+start*srcFrame ;
+	long left=size*channelCount_ ;         // samples still to produce
+	short *out=samples_ ;
 
-        // expand 8 bit data if needed
+	// trickle when asked (big loads breathe), 128KB strides otherwise
+	int rawChunk=(bufferChunkSize_>0)?bufferChunkSize_:131072 ;
+	rawChunk-=rawChunk%bytePerSample_ ;
+	if (rawChunk<bytePerSample_) rawChunk=bytePerSample_ ;
 
-	unsigned char *src=(unsigned char *)samples_ ;
-	short *dst=samples_ ;
-	for (int i=size-1;i>=0;i--) {
-		if (bytePerSample_==1) {
-			dst[i]=(src[i]-128)*256 ;
-		} else {
-			*dst=Swap16(*dst) ;
-			dst++ ;
-			if (channelCount_>1) {
-				*dst=Swap16(*dst) ;
-				dst++ ;
-			}
-		}
-	} 
+	while (left>0) {
+		int samplesThis=rawChunk/bytePerSample_ ;
+		if (samplesThis>left) samplesThis=(int)left ;
+		int rawThis=samplesThis*bytePerSample_ ;
+		readBlock(bufferStart,rawThis) ;
+		wavConvert((unsigned char *)readBuffer_,out,samplesThis,
+		           bytePerSample_,isFloat_) ;
+		bufferStart+=rawThis ;
+		out+=samplesThis ;
+		left-=samplesThis ;
+		if (bufferChunkSize_>0) TimeService::GetInstance()->Sleep(1) ;
+	}
 	return true ;
 } ;
 

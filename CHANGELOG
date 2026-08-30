@@ -1,3 +1,27 @@
+PSPATTERN 0.24.0a
+
+    The thumbstick moves where you aim. The two stick axes used to
+        fire independently, so a push at forty degrees moved the
+        cursor two directions at once. Now one tick fires one axis:
+        the clearly dominant one wins, and a push sitting right on a
+        diagonal deliberately does nothing until the angle commits.
+
+    (And from 0.23.1a, now public: the wav loader speaks every
+        dialect -- EXTENSIBLE headers, odd metadata chunks, 24-bit,
+        32-bit float -- proven by a generated-file test suite. If a
+        wav refuses to load now, send the file; it is genuinely
+        unusual.)
+
+PSPATTERN 0.23.1a
+
+    The sample loader speaks every WAV dialect. Files wrapped in the
+        EXTENSIBLE header modern DAWs write, files with odd-sized
+        metadata chunks, 24-bit exports, 32-bit float, 32-bit int:
+        all of them load now, converted to 16-bit on the way in. If a
+        wav refused to load before, drop it in again -- and if one
+        still refuses, please send the file itself: it is now
+        something genuinely unusual.
+
 PSPATTERN 0.23.0a
 
     Leader mode earns its name. Outgoing MIDI clock used to leave at

@@ -528,7 +528,10 @@ table command.
 14. SAMPLES AND SOUNDFONTS
 
 A sample instrument plays one of the built in drums, a wav file, or a
-preset from a soundfont. Each project carries its own set.
+preset from a soundfont. Each project carries its own set. Any normal
+wav loads: 8, 16 or 24 bit, 32-bit float, mono or stereo, whatever
+header dialect the exporter wrote -- everything becomes 16-bit in
+memory. If a wav refuses to load it is genuinely unusual; send it in.
 
 WHERE FILES GO
 
