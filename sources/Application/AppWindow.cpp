@@ -1,4 +1,8 @@
 #include "AppWindow.h"
+
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+extern "C" int PSPME_ReadSpectrum(int *bars32);
+#endif
 #include "Application/Version.h"
 #include "Application/Commands/ApplicationCommandDispatcher.h"
 #include "Application/Commands/EventDispatcher.h"
@@ -72,6 +76,13 @@ int AppWindow::charHeight_ = 8;
    nobody is using the machine at all. Ten seconds of no buttons is not
    a pause for thought, it is somebody who has put it down. */
 #define AUTOSAVE_IDLE_MS 10000
+/* And how long the OUTPUT has to have been silent. Stopping the song
+   is not silence: release tails and the reverb -- freeze especially --
+   ring on after STOP, and the write starves the audio thread just as
+   audibly then as during playback. The force backstop still wins
+   eventually, so a frozen tail cannot hold the recovery file hostage
+   forever. */
+#define AUTOSAVE_TAIL_MS 3000
 
 static void RecoverCallback(View &v, ModalView &dialog) {
     instance->RecoverAutosave(dialog.GetReturnCode() == MBL_YES);
@@ -883,6 +894,15 @@ void AppWindow::OpWave(int x, int y, int w, int h, int kind) {
     setOp(op);
 }
 
+void AppWindow::OpSpectrum(int x, int y, int w, int h, int tick) {
+    // tick keeps the op "changed" every animation frame, same trick as
+    // the scope, or the repaint-on-diff logic freezes the bars
+    OverlayOp op = {OOP_SPECT, 1, 0, 0,
+                    (short)x, (short)y, (short)w,
+                    (short)h, (short)tick, 0, 0, 0};
+    setOp(op);
+}
+
 void AppWindow::OpScope(int x, int y, int w, int h, int tick, int channel) {
     // colA_ carries the channel: 0 left, 1 right
     OverlayOp op = {OOP_SCOPE, 1, (unsigned char)(channel & 1), 0,
@@ -1320,6 +1340,41 @@ void AppWindow::flushOverlayOps() {
                     GUIWindow::DrawRect(fx);
                 }
             }
+            break;
+        }
+        case OOP_SPECT: {
+            // 32 log-spaced bars from the ME's idle-lane FFT of the
+            // finished master. Data is display-only and racy by design.
+            GUIColor pc2 = opColor(OC_PANEL);
+            GUIWindow::SetColor(pc2);
+            GUIRect bg2(o.x_, o.y_, o.x_ + o.w_, o.y_ + o.h_);
+            GUIWindow::DrawRect(bg2);
+            if (o.w_ < 34 || o.h_ < 4) break;
+            // stopped = cleared, exactly like the scope above it: the
+            // op's tick freezes at stop, so whatever was drawn last
+            // would otherwise sit there looking like held audio
+            if (!Player::GetInstance()->IsRunning()) break;
+            int bars[32];
+            int have = 0;
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+            have = PSPME_ReadSpectrum(bars);
+#endif
+            if (!have) break;   // core down: an empty panel, not junk
+            GUIColor sc2 = colorForProp(CD_HILITE1);
+            GUIWindow::SetColor(sc2);
+            GetImpWindow()->SetBatchRects(true);
+            int bw = o.w_ / 32;
+            int x0 = o.x_ + (o.w_ - bw * 32) / 2;
+            for (int b = 0; b < 32; b++) {
+                int hh = (bars[b] * (o.h_ - 2)) / 255;
+                if (hh <= 0) continue;
+                if (hh > o.h_ - 2) hh = o.h_ - 2;
+                GUIRect bar(x0 + b * bw, o.y_ + o.h_ - 1 - hh,
+                            x0 + b * bw + (bw > 1 ? bw - 1 : 1),
+                            o.y_ + o.h_ - 1);
+                GUIWindow::DrawRect(bar);
+            }
+            GetImpWindow()->SetBatchRects(false);
             break;
         }
         case OOP_SCOPE: {
@@ -2286,6 +2341,15 @@ void AppWindow::autoSaveTick() {
     if ((now - _lastAutosaveCheck) < AUTOSAVE_CHECK_MS) return;
     _lastAutosaveCheck = now;
 
+    /* A live set must never lose input or a tail to a file write.
+       AUTOSAVE NO -- editable on the config screen, effective
+       immediately -- disarms the whole machine for the night. Manual
+       save still works; the recovery file just stops being written. */
+    {
+        const char *as = Config::GetInstance()->GetValue("AUTOSAVE");
+        if (as && (as[0] == 'N' || as[0] == 'n')) return;
+    }
+
     PersistencyService *persist = PersistencyService::GetInstance();
     unsigned int current = persist->Checksum();
     if (current == _savedChecksum) {
@@ -2336,6 +2400,10 @@ void AppWindow::autoSaveTick() {
        minutes. Manual save is still there for anyone who wants it
        sooner. */
     if (Player::GetInstance()->IsRunning()) {
+        return;
+    }
+    if (AudioStats::QuietMs() < AUTOSAVE_TAIL_MS &&
+        (now - _dirtySince) < AUTOSAVE_FORCE_MS) {
         return;
     }
 

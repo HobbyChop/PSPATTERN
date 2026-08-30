@@ -209,6 +209,19 @@ static int revSize_ = 160 ;        // 0..255 -> feedback
 static int revDamp_ = 110 ;        // 0..255 -> hf loss per pass
 static int freeze_ = 0 ;           // reverb infinite hold (0/1)
 static int drive_ = 0 ;            // 0..255 wet-bus drive
+/* The wet-tail behaviours. All integer, all bypassed at 0, and the
+   SAME shifts run on the ME -- the two mirrors must not drift apart
+   or a suspend (which falls back here) changes the record's sound. */
+static int duck_ = 0 ;             // input level ducks the reverb tail
+static int gate_ = 0 ;             // tail passes only while input is up
+static int comp_ = 0 ;             // one-knob glue on the combined wet
+static int locut_ = 0 ;            // one-pole HP on the reverb input
+static int width_ = 0 ;            // mid/side widen on the tail
+static int dtone_ = 0 ;            // one-pole LP inside the delay loop
+// scalar-mirror state (the ME keeps its own copies core-side)
+static int fxEnv_ = 0, fxGateG_ = 256, fxCEnv_ = 0 ;
+static fixed lcLpL_ = 0, lcLpR_ = 0 ;
+static int dfL_ = 0, dfR_ = 0 ;
 
 static bool ready_ = false ;
 
@@ -419,6 +432,12 @@ extern "C" void PSPME_ReverbSize(int s) ;
 extern "C" void PSPME_ReverbDamp(int d) ;
 extern "C" void PSPME_Freeze(int f) ;
 extern "C" void PSPME_Drive(int d) ;
+extern "C" void PSPME_Duck(int v) ;
+extern "C" void PSPME_Gate(int v) ;
+extern "C" void PSPME_Comp(int v) ;
+extern "C" void PSPME_Locut(int v) ;
+extern "C" void PSPME_Width(int v) ;
+extern "C" void PSPME_Dtone(int v) ;
 #endif
 void SetReverbSize(int s)    { revSize_ = s < 0 ? 0 : (s > 255 ? 255 : s) ;
 #ifdef PSP_FDN_REVERB
@@ -446,6 +465,18 @@ void SetDrive(int d)         { drive_ = d < 0 ? 0 : (d > 255 ? 255 : d) ;
 	PSPME_Drive(drive_) ;
 #endif
 }
+#ifdef PSP_ME_OFFLOAD
+#define SFX_CROSS(FN,V) FN(V) ;
+#else
+#define SFX_CROSS(FN,V)
+#endif
+void SetReverbDuck(int v)   { duck_  = v<0?0:(v>255?255:v) ; SFX_CROSS(PSPME_Duck,duck_) }
+void SetReverbGate(int v)   { gate_  = v<0?0:(v>255?255:v) ; SFX_CROSS(PSPME_Gate,gate_) }
+void SetComp(int v)         { comp_  = v<0?0:(v>255?255:v) ; SFX_CROSS(PSPME_Comp,comp_) }
+void SetReverbLowcut(int v) { locut_ = v<0?0:(v>255?255:v) ; SFX_CROSS(PSPME_Locut,locut_) }
+void SetReverbWidth(int v)  { width_ = v<0?0:(v>255?255:v) ; SFX_CROSS(PSPME_Width,width_) }
+void SetDelayTone(int v)    { dtone_ = v<0?0:(v>255?255:v) ; SFX_CROSS(PSPME_Dtone,dtone_) }
+#undef SFX_CROSS
 
 bool Active() { return dlyFed_ || revFed_ ; }
 
@@ -694,8 +725,16 @@ static void processBank(fixed *buffer, int samplecount) {
 		int fbR = inR + ((outL * fb) >> 8) ;
 		if (fbL > 32767) fbL = 32767 ; if (fbL < -32768) fbL = -32768 ;
 		if (fbR > 32767) fbR = 32767 ; if (fbR < -32768) fbR = -32768 ;
-		BK.dlyL_[BK.dlyPos_] = (short)fbL ;
-		BK.dlyR_[BK.dlyPos_] = (short)fbR ;
+		// tone: every repeat through the loop darkens. Coefficient
+		// 256-tone, so tone 0 is a BIT-EXACT pass-through of the old
+		// delay -- old songs cannot tell this stage exists.
+		{
+			int a = 256 - dtone_ ;
+			dfL_ += ((fbL - dfL_) * a) >> 8 ;
+			dfR_ += ((fbR - dfR_) * a) >> 8 ;
+		}
+		BK.dlyL_[BK.dlyPos_] = (short)dfL_ ;
+		BK.dlyR_[BK.dlyPos_] = (short)dfR_ ;
 		if (++BK.dlyPos_ >= BK.dlyLenS_) BK.dlyPos_ = 0 ;
 		}
 
@@ -704,6 +743,15 @@ static void processBank(fixed *buffer, int samplecount) {
 		fixed rIn[2] ;
 		rIn[0] = clampfx((long long)BK.revAcc_[i * 2] + (dOutL >> 2)) ;
 		rIn[1] = clampfx((long long)BK.revAcc_[i * 2 + 1] + (dOutR >> 2)) ;
+		// locut: one-pole HP on what ENTERS the tail -- the low-mid
+		// mud a frozen hold recirculates forever dies here instead
+		if (locut_) {
+			int c = 1 + (locut_ >> 4) ;   // ~27..440Hz corner
+			lcLpL_ += (fixed)(((long long)(rIn[0] - lcLpL_) * c) >> 8) ;
+			lcLpR_ += (fixed)(((long long)(rIn[1] - lcLpR_) * c) >> 8) ;
+			rIn[0] = clampfx((long long)rIn[0] - lcLpL_) ;
+			rIn[1] = clampfx((long long)rIn[1] - lcLpR_) ;
+		}
 
 		fixed wet[2] = { 0, 0 } ;
 #ifdef PSP_FDN_REVERB
@@ -838,8 +886,58 @@ static void processBank(fixed *buffer, int samplecount) {
 		// more than full scale. Left alone the delay and the reverb
 		// together measured twice that, which is a whole bus worth of
 		// the master's headroom spent on the effects.
+		// duck & gate: keyed on the reverb SEND level, applied to the
+		// tail only -- the delay stays honest so echoes still answer
+		{
+			int kl = BK.revAcc_[i * 2] ; if (kl < 0) kl = -kl ;
+			int kr = BK.revAcc_[i * 2 + 1] ; if (kr < 0) kr = -kr ;
+			int key = ((kl >> 15) + (kr >> 15)) >> 1 ;
+			if (key > fxEnv_) fxEnv_ += (key - fxEnv_) >> 2 ;
+			else fxEnv_ -= (fxEnv_ - key) >> 9 ;
+			int wetG = 256 ;
+			if (duck_) {
+				int dg = (fxEnv_ * duck_) >> 14 ;
+				if (dg > 224) dg = 224 ;
+				wetG = 256 - dg ;
+			}
+			if (gate_) {
+				int open = (fxEnv_ > (gate_ << 5)) ? 256 : 0 ;
+				fxGateG_ += (open - fxGateG_) >> 3 ;
+				wetG = (wetG * fxGateG_) >> 8 ;
+			}
+			if (wetG != 256) {
+				wet[0] = (fixed)(((long long)wet[0] * wetG) >> 8) ;
+				wet[1] = (fixed)(((long long)wet[1] * wetG) >> 8) ;
+			}
+			if (width_) {
+				fixed m = (wet[0] >> 1) + (wet[1] >> 1) ;
+				fixed sd = (fixed)(((long long)((wet[0] >> 1) - (wet[1] >> 1))
+				                    * (256 + width_)) >> 8) ;
+				wet[0] = clampfx((long long)m + sd) ;
+				wet[1] = clampfx((long long)m - sd) ;
+			}
+		}
 		fixed wl = clampfx((long long)dOutL + wet[0]) ;
 		fixed wr = clampfx((long long)dOutR + wet[1]) ;
+		// comp: one-knob glue on the combined wet, BEFORE drive so the
+		// saturator sees an evened signal instead of doing the evening
+		if (comp_) {
+			int ml = (int)(wl < 0 ? -wl : wl) >> 15 ;
+			int mr = (int)(wr < 0 ? -wr : wr) >> 15 ;
+			if (mr > ml) ml = mr ;
+			if (ml > fxCEnv_) fxCEnv_ += (ml - fxCEnv_) >> 3 ;
+			else fxCEnv_ -= (fxCEnv_ - ml) >> 8 ;
+			int th = 24576 - comp_ * 64 ;
+			int g = 256 ;
+			if (fxCEnv_ > th) {
+				int red = ((fxCEnv_ - th) * comp_) >> 16 ;
+				if (red > 192) red = 192 ;
+				g = 256 - red ;
+			}
+			int tg = (g * (256 + (comp_ >> 1))) >> 8 ;
+			wl = clampfx(((long long)wl * tg) >> 8) ;
+			wr = clampfx(((long long)wr * tg) >> 8) ;
+		}
 		if (driveOn) {
 			wl = fl2fp(sfxSoftClip(fp2fl(wl) * driveG)) ;
 			wr = fl2fp(sfxSoftClip(fp2fl(wr) * driveG)) ;
@@ -997,7 +1095,11 @@ bool Return::Render(fixed *buffer, int samplecount) {
 	// ahead of the deferred/immediate split, because the ME path carries
 	// its own one-block deferral and supersedes the DEFERREDFX single-
 	// core timing experiment entirely.
-	if (PSPME_Ready()) {
+	// a slice longer than the ME's buffers (below ~54 BPM) used to be
+	// silently truncated at post while the wet ring kept consuming the
+	// full slice -- the send bus starved a little more every block.
+	// The scalar path has no such cap, so very low tempos run there.
+	if (PSPME_Ready() && samplecount <= 2048) {
 		processBankMe(buffer, samplecount) ;
 		dlyFed_ = revFed_ = false ;
 		return true ;

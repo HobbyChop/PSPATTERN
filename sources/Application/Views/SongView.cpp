@@ -1074,7 +1074,13 @@ void SongView::DrawSidePanel() {
        mix. Both still span the full width, so neither loses any of
        the time window. */
     app.OpScope(PANEL_X * 8 + 5, 24, 92, 21, running ? scopeTick : 0, 0);
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+    // the second trace was the right channel -- near-identical to the
+    // left on most mixes. The ME's spectrum earns the space better.
+    app.OpSpectrum(PANEL_X * 8 + 5, 47, 92, 21, running ? scopeTick : 0);
+#else
     app.OpScope(PANEL_X * 8 + 5, 47, 92, 21, running ? scopeTick : 0, 1);
+#endif
 
     // --- mix: memory, tempo, project, midi, battery ----------------
     DrawPanel(PANEL_X, 10, 12, 9, "info");

@@ -45,6 +45,12 @@ namespace SendFx {
 	void SetReverbDamp(int d) ;         // 0..255
 	void SetReverbFreeze(int f) ;       // 0/1 infinite hold
 	void SetDrive(int d) ;              // 0..255 wet-bus drive
+	void SetReverbDuck(int d) ;         // 0..255 input ducks the tail
+	void SetReverbGate(int g) ;         // 0..255 gate threshold on input
+	void SetComp(int c) ;               // 0..255 one-knob wet compressor
+	void SetReverbLowcut(int c) ;       // 0..255 HP on the reverb input
+	void SetReverbWidth(int w) ;        // 0..255 extra stereo width
+	void SetDelayTone(int t) ;          // 0..255 LP in the feedback loop
 
 	enum { DIV_16, DIV_8T, DIV_8, DIV_D8, DIV_4, DIV_D4, DIV_2,
 	       DIV_COUNT } ;

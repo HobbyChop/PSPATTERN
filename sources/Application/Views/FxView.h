@@ -30,6 +30,7 @@ private:
 
 	// reverb + its behaviours
 	Variable *vSize_,*vDamp_,*vFreeze_,*vDuck_,*vGate_ ;
+	Variable *vLocut_,*vWidth_,*vDtone_ ;
 	// delay
 	Variable *vTime_,*vFdbk_ ;
 	// character

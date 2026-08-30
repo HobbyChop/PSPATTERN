@@ -1,3 +1,34 @@
+PSPATTERN 0.20.0a
+
+    The dead knobs live. duck, gate and comp on the FX screen have
+        been sliders with nothing behind them since they shipped;
+        now the send you feed the reverb ducks its tail, gates it
+        for the drum trick, and a one-knob compressor glues the wet
+        bus before the drive saturates it. Three new knobs join
+        them: locut cuts the mud out of what enters the tail --
+        freeze stops turning to sludge -- width spreads the reverb
+        past the edges of the room, and tone filters inside the
+        delay's feedback loop so every repeat dies a little darker,
+        like tape. All of it runs on the second processor with an
+        identical arithmetic mirror on the main one, and a delay
+        knob at zero is bit-exact silence about its own existence.
+
+    A spectrum of the mix, under the scope. The second processor
+        computes it in its spare moments -- it never delays a note
+        -- and the song screen draws it: bass left, air right,
+        cleared the moment the song stops.
+
+    Autosave learned manners. It already refused to write during
+        playback; now it also waits for the OUTPUT to be silent, so
+        a tail ringing past the end of a song is never chewed by
+        the Memory Stick. And for the stage there is an asave
+        switch on the config screen: set NO and the machine never
+        touches the stick on its own, effective immediately.
+
+    Below 54 BPM the send bus slowly starved -- jobs longer than the
+        second processor's buffers were quietly truncated. Those
+        tempos now take the single-core path, which has no such cap.
+
 PSPATTERN 0.19.0a
 
     The song screen's mix panel becomes the info panel, and it now

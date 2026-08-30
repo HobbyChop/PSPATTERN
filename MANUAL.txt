@@ -110,7 +110,9 @@ only when a block actually misses its deadline), me is how busy the
 second processor is with the send effects, mem is the sample memory
 still free, and und counts the times the audio queue ran dry since
 play started -- zero is the only good number. The scope above it draws
-the master output, one trace per channel.
+the master output; under it, a spectrum of the mix, computed by the
+second processor in its spare moments -- bass on the left, air on
+the right. Both clear when the song stops.
 
 L and X mutes the channel under the cursor.
 
@@ -695,12 +697,24 @@ Bring it back to zero by turning channels down, or the master, or both.
 
 THE FX SCREEN
 
-The send effects have a screen of their own. The reverb rows set size
-and damping; freeze holds the tail the reverb has and recirculates
-it, and drive pushes the wet signal into a soft clipper. The delay
-rows set time, feedback and amount. Below them, pick a channel and
-give it its own phaser or chorus -- a rate and a depth each, per
-channel, on top of whatever the sends are doing.
+The send effects have a screen of their own. The reverb rows set
+size and damping; freeze holds the tail the reverb has and
+recirculates it; duck lets what you send push the tail down out of
+the way, and gate only lets the tail through while the send is
+above the threshold -- the gated-reverb drum trick. locut is a low
+cut on what enters the tail, which is the cure for a frozen hold
+turning to mud, and width spreads the tail wider than the room.
+
+The delay rows set time and feedback; tone is a filter inside the
+feedback loop, so every repeat comes back darker, the way a tape
+echo dies. At zero the delay is exactly what it always was.
+
+drive pushes the combined wet signal into a soft clipper, and comp
+is a one-knob compressor on the wet bus that runs before the drive,
+so the drive saturates an evened signal instead of doing the
+evening. Below them, pick a channel and give it its own phaser or
+chorus -- a rate and a depth each, per channel, on top of whatever
+the sends are doing.
 
 
 17. THE PROJECT SCREEN
@@ -790,6 +804,18 @@ you a reboot is needed. Everything saves by itself when you leave
 the screen.
 
 
+AUTOSAVE
+
+The machine writes a crash-recovery file on its own -- but only when
+the transport is stopped, nothing has changed for a while, no button
+has been touched for longer, and the OUTPUT has been silent for a few
+seconds, so a reverb tail ringing past the end of a song is never
+chewed by the Memory Stick write. Playing live, set asave to NO on
+the config screen (or AUTOSAVE NO in config.xml) and the machine will
+never touch the stick on its own at all. It applies immediately, and
+manual saving is not affected.
+
+
 18. SAVING AND RENDERING
 
 Save song writes to the current project folder. Save song as makes a new
@@ -827,9 +853,6 @@ below full scale and are known to be too quiet.
 
   A few stray pixels are drawn on the bottom rule of the oscillator
   panel underneath the ring slider. It is cosmetic.
-
-  The duck and gate rows on the fx screen store their values but the
-  processing behind them is not connected yet.
 
 
 21. LICENCE

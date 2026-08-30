@@ -43,6 +43,13 @@ namespace AudioStats {
 	int GetUnderruns() ;
 	void ResetUnderruns() ;
 
+	/* How long the OUTPUT has been effectively silent, in ms. The
+	   transport being stopped says nothing about the speaker: release
+	   tails and the reverb keep sounding after STOP. The autosave
+	   uses this so its Memory Stick write cannot chew an audible
+	   tail. */
+	int QuietMs() ;
+
 	// UI side
 	int GetDspPercent() ;
 

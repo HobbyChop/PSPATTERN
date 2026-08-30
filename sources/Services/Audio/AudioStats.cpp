@@ -31,6 +31,7 @@ static int curCount_=0 ;
 static volatile int dspPercent_=0 ;
 // peak hold, and the countdown of blocks before it starts falling
 static volatile int dspPeak_=0 ;
+static volatile unsigned int lastLoudUs_ = 0 ;
 static int peakHold_=0 ;
 // about a second and a half at 641 frames a block
 #define DSP_PEAK_HOLD 100
@@ -44,9 +45,19 @@ void BeginBlock() {
 	excluded_=0 ;
 }
 
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+extern "C" void PSPME_SpectrumFeed(short *interleaved, int frames) ;
+#endif
+
 void EndBlock(short *buf,int frames,bool interlaced) {
 
 	if (frames<=0) return ;
+
+	// hand the FINISHED master to the second core's idle-lane FFT --
+	// this is the one place the final mix exists as one buffer
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+	if (interlaced) PSPME_SpectrumFeed(buf,frames) ;
+#endif
 
 	// dsp: render micros vs the block's realtime budget, smoothed
 	unsigned int spent=statsMicros()-blockStart_ ;
@@ -69,6 +80,20 @@ void EndBlock(short *buf,int frames,bool interlaced) {
 		} else if (dspPeak_>dspPercent_) {
 			dspPeak_-- ;
 		}
+	}
+
+	// silence tracking for the autosave gate: a strided max is plenty
+	// -- a tail loud enough to be chewed audibly is loud enough to hit
+	// every 16th frame. ~-44dB counts as silent.
+	{
+		int pk=0 ;
+		int step=16*(interlaced?2:1) ;
+		int total=frames*(interlaced?2:1) ;
+		for (int i=0;i<total;i+=step) {
+			int v=buf[i] ; if (v<0) v=-v ;
+			if (v>pk) pk=v ;
+		}
+		if (pk>200) lastLoudUs_=statsMicros() ;
 	}
 
 	// scope: peak envelope of the left channel, one bucket per column.
@@ -111,6 +136,12 @@ void ResetDspPeak() {
 static volatile int underruns_ = 0 ;
 
 void AddUnderrun() { underruns_++ ; }
+
+int QuietMs() {
+	unsigned int last=lastLoudUs_ ;
+	if (!last) return 1<<30 ;   // never been loud
+	return (int)((statsMicros()-last)/1000u) ;
+}
 int GetUnderruns() { return underruns_ ; }
 void ResetUnderruns() { underruns_ = 0 ; }
 

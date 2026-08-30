@@ -42,6 +42,12 @@ ConfigView::ConfigView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	// ENGINES
 	addList(16,"fm     ", "FM_ENGINE",        NO_YES,2, 0, false, false) ;
 
+	// BEHAVIOUR
+	// autosave: YES by default; NO for a live set, where a Memory
+	// Stick write (frozen input, chewed tails) must never happen.
+	// Applies immediately -- the autosave tick reads it every pass.
+	addList(17,"asave  ", "AUTOSAVE",         YES_NO,2, 0, false, false) ;
+
 	themeApplied_=settings_[0].ui->GetInt() ;   // the theme row is first
 }
 

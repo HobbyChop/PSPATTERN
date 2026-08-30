@@ -36,6 +36,7 @@
 #include <me-core-mapper/me-core.h>
 #include <psppower.h>
 #include <pspkernel.h>
+#include <math.h>
 
 #undef PSP_VFPU_REVERB          /* the ME uses the scalar FDN path */
 #define FDN_FLUSH_DENORMALS      /* the ME FPU traps on subnormals */
@@ -69,6 +70,14 @@ meLibSetSharedUncached32(32);
 // duck/gate/comp/phaser/chorus effects wired in later phases.
 #define ME_FREEZE (meLibSharedMemory[16])  // reverb infinite hold (0/1)
 #define ME_DRIVE  (meLibSharedMemory[17])  // wet-bus drive amount (0..255)
+#define ME_DUCK   (meLibSharedMemory[18])  // input ducks the tail (0..255)
+#define ME_GATE   (meLibSharedMemory[19])  // gate threshold (0..255)
+#define ME_COMP   (meLibSharedMemory[20])  // wet glue compressor (0..255)
+#define ME_LOCUT  (meLibSharedMemory[21])  // reverb input HP (0..255)
+#define ME_WIDTH  (meLibSharedMemory[22])  // tail extra width (0..255)
+#define ME_DTONE  (meLibSharedMemory[23])  // delay feedback LP (0..255)
+#define ME_SPECREQ  (meLibSharedMemory[24]) // main: FFT request sequence
+#define ME_SPECDONE (meLibSharedMemory[25]) // ME: last sequence finished
 
 // Interleaved-stereo I/O, all uncached. Two inputs (the delay and reverb
 // send accumulators) and one output (the finished wet).
@@ -162,6 +171,8 @@ static void fmProbeRun(void) {
 #endif
 
 // The second core's program: run the whole send bank each posted block.
+static void meSpectrum(void);   // idle-lane FFT, defined below
+
 void meLibOnProcess(void) {
 	// Enable FPU flush-to-zero (FS, FCR31 bit 24); re-assert CU1 first.
 	asm volatile(
@@ -188,6 +199,14 @@ void meLibOnProcess(void) {
 	// samples' average, run the network once, hold the wet between.
 	int   revPhase = 0;
 	fixed revSum0 = 0, revSum1 = 0, revHold0 = 0, revHold1 = 0;
+	// wet-tail behaviour state (same integer math as the scalar
+	// mirror in SendFx.cpp -- keep them IDENTICAL, a suspend swaps
+	// paths mid-song). Wiped by standby with the rest of the core;
+	// all of it re-settles within a block.
+	int fxEnv = 0, fxGateG = 256, fxCEnv = 0;
+	unsigned int specDone = ME_SPECDONE;   // survives wake via the word
+	fixed lcLpL = 0, lcLpR = 0;
+	int dfL = 0, dfR = 0;
 
 	while (ME_EXIT_ == 0) {
 		ME_HB++;
@@ -210,6 +229,9 @@ void meLibOnProcess(void) {
 				if (dp != lastDamp) { meRev_.SetDamp(dp); lastDamp = dp; }
 			}
 			int drive = (int)ME_DRIVE;
+			int duck = (int)ME_DUCK, gate = (int)ME_GATE;
+			int comp = (int)ME_COMP, locut = (int)ME_LOCUT;
+			int width = (int)ME_WIDTH, dtone = (int)ME_DTONE;
 
 			short *dlyL   = (short *)ME_DLYL;
 			short *dlyR   = (short *)ME_DLYR;
@@ -229,11 +251,24 @@ void meLibOnProcess(void) {
 					int fbR = inR + ((outL * fb) >> 8);
 					if (fbL >  32767) fbL =  32767; if (fbL < -32768) fbL = -32768;
 					if (fbR >  32767) fbR =  32767; if (fbR < -32768) fbR = -32768;
-					dlyL[dlyPos] = (short)fbL; dlyR[dlyPos] = (short)fbR;
+					// tone 0 = bit-exact pass-through (coeff 256)
+					{
+						int a = 256 - dtone;
+						dfL += ((fbL - dfL) * a) >> 8;
+						dfR += ((fbR - dfR) * a) >> 8;
+					}
+					dlyL[dlyPos] = (short)dfL; dlyR[dlyPos] = (short)dfR;
 					if (++dlyPos >= dlyLen) dlyPos = 0;
 				}
 				fixed rInL = meClampfx((long long)revIn[k * 2]     + (dOutL >> 2));
 				fixed rInR = meClampfx((long long)revIn[k * 2 + 1] + (dOutR >> 2));
+				if (locut) {
+					int c = 1 + (locut >> 4);
+					lcLpL += (fixed)(((long long)(rInL - lcLpL) * c) >> 8);
+					lcLpR += (fixed)(((long long)(rInR - lcLpR) * c) >> 8);
+					rInL = meClampfx((long long)rInL - lcLpL);
+					rInR = meClampfx((long long)rInR - lcLpR);
+				}
 				revSum0 += rInL >> 1;
 				revSum1 += rInR >> 1;
 				if (++revPhase >= 2) {
@@ -247,8 +282,55 @@ void meLibOnProcess(void) {
 					revHold1 = fl2fp(meSoftClip(oR * 0.3f));
 					revSum0 = revSum1 = 0;
 				}
-				fixed wl = meClampfx((long long)dOutL + revHold0);
-				fixed wr = meClampfx((long long)dOutR + revHold1);
+				fixed rvL = revHold0, rvR = revHold1;
+				{
+					int kl = (int)revIn[k * 2] ; if (kl < 0) kl = -kl;
+					int kr = (int)revIn[k * 2 + 1] ; if (kr < 0) kr = -kr;
+					int key = ((kl >> 15) + (kr >> 15)) >> 1;
+					if (key > fxEnv) fxEnv += (key - fxEnv) >> 2;
+					else fxEnv -= (fxEnv - key) >> 9;
+					int wetG = 256;
+					if (duck) {
+						int dg = (fxEnv * duck) >> 14;
+						if (dg > 224) dg = 224;
+						wetG = 256 - dg;
+					}
+					if (gate) {
+						int open = (fxEnv > (gate << 5)) ? 256 : 0;
+						fxGateG += (open - fxGateG) >> 3;
+						wetG = (wetG * fxGateG) >> 8;
+					}
+					if (wetG != 256) {
+						rvL = (fixed)(((long long)rvL * wetG) >> 8);
+						rvR = (fixed)(((long long)rvR * wetG) >> 8);
+					}
+					if (width) {
+						fixed m = (rvL >> 1) + (rvR >> 1);
+						fixed sd = (fixed)(((long long)((rvL >> 1) - (rvR >> 1))
+						                    * (256 + width)) >> 8);
+						rvL = meClampfx((long long)m + sd);
+						rvR = meClampfx((long long)m - sd);
+					}
+				}
+				fixed wl = meClampfx((long long)dOutL + rvL);
+				fixed wr = meClampfx((long long)dOutR + rvR);
+				if (comp) {
+					int ml = (int)(wl < 0 ? -wl : wl) >> 15;
+					int mr = (int)(wr < 0 ? -wr : wr) >> 15;
+					if (mr > ml) ml = mr;
+					if (ml > fxCEnv) fxCEnv += (ml - fxCEnv) >> 3;
+					else fxCEnv -= (fxCEnv - ml) >> 8;
+					int th = 24576 - comp * 64;
+					int g = 256;
+					if (fxCEnv > th) {
+						int red = ((fxCEnv - th) * comp) >> 16;
+						if (red > 192) red = 192;
+						g = 256 - red;
+					}
+					int tg = (g * (256 + (comp >> 1))) >> 8;
+					wl = meClampfx(((long long)wl * tg) >> 8);
+					wr = meClampfx(((long long)wr * tg) >> 8);
+				}
 				if (drive) {
 					float g = 1.0f + drive * (3.0f / 255.0f);
 					wl = fl2fp(meSoftClip(fp2fl(wl) * g));
@@ -260,6 +342,15 @@ void meLibOnProcess(void) {
 			meLibSync();       // land all out[] stores in RAM before the flag
 			ME_BUSY = 0;
 			ME_JOBS++;
+		} else {
+			// idle lane: the spectrum FFT runs ONLY when no job is
+			// posted, so send audio never waits on eye candy
+			unsigned int rq = ME_SPECREQ;
+			if (rq != specDone) {
+				meSpectrum();
+				specDone = rq;
+				ME_SPECDONE = rq;
+			}
 		}
 		meLibDelayPipeline();
 	}
@@ -387,6 +478,102 @@ extern "C" int PSPME_LoadPercent(void) {
 	return pct;
 }
 
+#define PSPME_KNOB(FN, WORD) extern "C" void FN(int v) { 	static int last = -1; 	if (v == last) return; 	last = v; 	if (!meAlive_) return; 	WORD = (unsigned int)v; 	meLibSync(); }
+PSPME_KNOB(PSPME_Duck,  ME_DUCK)
+PSPME_KNOB(PSPME_Gate,  ME_GATE)
+PSPME_KNOB(PSPME_Comp,  ME_COMP)
+PSPME_KNOB(PSPME_Locut, ME_LOCUT)
+PSPME_KNOB(PSPME_Width, ME_WIDTH)
+PSPME_KNOB(PSPME_Dtone, ME_DTONE)
+#undef PSPME_KNOB
+
+/* ---- spectrum analyzer: idle-lane FFT for the UI ------------------
+   Main taps the FINISHED master (AudioStats::EndBlock), downmixes 256
+   frames to mono into an uncached buffer and bumps ME_SPECREQ. The ME
+   runs a 256-point real FFT ONLY on idle spins (else-if after the job
+   check, so send audio is never delayed), collapses 127 bins into 32
+   log-spaced bars and writes them uncached for the song screen.
+
+   Tables are computed by the MAIN core here in Init, BEFORE the ME
+   boots: the ME's boot-time dcache invalidate makes them visible, the
+   same one-time handoff the reverb instance already rides. The work
+   arrays are ME-private and stay in its cache. Display only: a wiped
+   core (suspend) just leaves the bars at zero until wake. */
+#define SPEC_N 256
+static short *meSpecIn = 0;        // 256 mono samples, uncached
+static int *meSpecOut = 0;         // 32 bar levels 0..255, uncached
+static volatile u32 *meSpecInW_ = 0, *meSpecOutW_ = 0;
+static Uncached32 meSpecInH_ = { &meSpecInW_, 0 };
+static Uncached32 meSpecOutH_ = { &meSpecOutW_, 0 };
+static float specWin_[SPEC_N];
+static float specTwR_[SPEC_N / 2], specTwI_[SPEC_N / 2];
+static unsigned char specRev_[SPEC_N];
+static unsigned char specGLo_[32], specGHi_[32];
+static float specRe_[SPEC_N], specIm_[SPEC_N];   // ME-private work
+
+static void meSpectrum(void) {
+	short *in = meSpecIn;
+	if (!in || !meSpecOut) return;
+	for (int i = 0; i < SPEC_N; i++) {
+		int j = specRev_[i];
+		specRe_[i] = (float)in[j] * specWin_[j];
+		specIm_[i] = 0.0f;
+	}
+	for (int len = 2; len <= SPEC_N; len <<= 1) {
+		int half = len >> 1, step = SPEC_N / len;
+		for (int i = 0; i < SPEC_N; i += len) {
+			for (int k = 0; k < half; k++) {
+				float twr = specTwR_[k * step], twi = specTwI_[k * step];
+				float ar = specRe_[i + k + half], ai = specIm_[i + k + half];
+				float xr = ar * twr - ai * twi;
+				float xi = ar * twi + ai * twr;
+				specRe_[i + k + half] = specRe_[i + k] - xr;
+				specIm_[i + k + half] = specIm_[i + k] - xi;
+				specRe_[i + k] += xr;
+				specIm_[i + k] += xi;
+			}
+		}
+	}
+	for (int b = 0; b < 32; b++) {
+		float m = 0.0f;
+		for (int k = specGLo_[b]; k <= specGHi_[b]; k++) {
+			float p = specRe_[k] * specRe_[k] + specIm_[k] * specIm_[k];
+			if (p > m) m = p;
+		}
+		// log scale: quiet floor around 2^18 power, ~26 doublings of
+		// power to full scale, mapped onto 0..255
+		float l = logf(m + 1.0f) * 1.4426950f;   // log2
+		int v = (int)((l - 18.0f) * 10.0f);
+		if (v < 0) v = 0;
+		if (v > 255) v = 255;
+		meSpecOut[b] = v;
+	}
+}
+
+/* main side: feed the finished master, at most ~30 times a second */
+extern "C" void PSPME_SpectrumFeed(short *interleaved, int frames) {
+	if (!meAlive_ || !ME_READY || !meSpecIn) return;
+	if (frames < SPEC_N) return;
+	static unsigned int lastFeed = 0;
+	unsigned int now = sceKernelGetSystemTimeLow();
+	if (now - lastFeed < 33000) return;
+	lastFeed = now;
+	short *tail = interleaved + (frames - SPEC_N) * 2;
+	for (int i = 0; i < SPEC_N; i++) {
+		meSpecIn[i] = (short)(((int)tail[i * 2] + (int)tail[i * 2 + 1]) >> 1);
+	}
+	ME_SPECREQ = ME_SPECREQ + 1;
+	meLibSync();
+}
+
+/* main side: latest bar set for the overlay. 0 = nothing to draw. */
+extern "C" int PSPME_ReadSpectrum(int *bars32) {
+	if (!meAlive_ || !ME_READY || !meSpecOut) return 0;
+	if (ME_SPECDONE == 0) return 0;
+	for (int i = 0; i < 32; i++) bars32[i] = meSpecOut[i];
+	return 1;
+}
+
 extern "C" int PSPME_Init(void) {
 	ME_EXIT_ = 0; ME_BUSY = 0; ME_N = 0; ME_READY = 0; ME_HB = 0; ME_JOBS = 0;
 	ME_DLYL = 0; ME_DLYR = 0; ME_DLYMAX = 0; ME_SIZE = 160; ME_DAMP = 110;
@@ -427,6 +614,34 @@ extern "C" int PSPME_Init(void) {
 	ME_FMBUF = (unsigned int)fmBuf;   // already uncached
 	ME_FMCYC = 0;
 #endif
+	/* spectrum tables, filled by the MAIN core while the ME is still
+	   down -- its boot-time invalidate is the handoff */
+	for (int i = 0; i < SPEC_N; i++) {
+		specWin_[i] = 0.5f - 0.5f * cosf(2.0f * 3.14159265f * i / SPEC_N);
+		unsigned int r = 0, v = (unsigned int)i;
+		for (int b = 0; b < 8; b++) { r = (r << 1) | (v & 1); v >>= 1; }
+		specRev_[i] = (unsigned char)r;
+	}
+	for (int k = 0; k < SPEC_N / 2; k++) {
+		float a = -2.0f * 3.14159265f * k / SPEC_N;
+		specTwR_[k] = cosf(a);
+		specTwI_[k] = sinf(a);
+	}
+	for (int b = 0; b < 32; b++) {
+		int lo = (int)powf(127.0f, b / 32.0f);
+		int hi = (int)powf(127.0f, (b + 1) / 32.0f);
+		if (lo < 1) lo = 1;
+		if (hi < lo) hi = lo;
+		if (hi > 127) hi = 127;
+		specGLo_[b] = (unsigned char)lo;
+		specGHi_[b] = (unsigned char)hi;
+	}
+	meLibAllocUncached32(&meSpecInH_, SPEC_N / 2);   // 256 shorts
+	meLibAllocUncached32(&meSpecOutH_, 32);          // 32 words
+	meSpecIn = (short *)meSpecInW_;
+	meSpecOut = (int *)meSpecOutW_;
+	if (meSpecOut) for (int i = 0; i < 32; i++) meSpecOut[i] = 0;
+
 	int tableId = meLibDefaultInit();
 	if (tableId >= 0) meAlive_ = 1;
 	/* calibrate the load meter: wait for the loop, then time the idle

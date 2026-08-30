@@ -28,6 +28,8 @@ FxView::FxView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	  T_SimpleList<UIField>::Insert(f) ; }
 	SLIDER(vDuck_, mx->GetReverbDuck(),  255, 2,9,  "duck  ")
 	SLIDER(vGate_, mx->GetReverbGate(),  255, 2,10, "gate  ")
+	SLIDER(vLocut_,mx->GetReverbLowcut(),255, 2,11, "locut ")
+	SLIDER(vWidth_,mx->GetReverbWidth(), 255, 2,12, "width ")
 
 	// ---- DELAY (left column) ----
 	pos=GUIPoint(2,14) ;
@@ -37,6 +39,7 @@ FxView::FxView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	                                       SendFx::DIV_COUNT-1) ;
 	  T_SimpleList<UIField>::Insert(f) ; }
 	SLIDER(vFdbk_, mx->GetDelayFeedback(),250, 2,15, "fdbk  ")
+	SLIDER(vDtone_,mx->GetDelayTone(),   255, 2,16, "tone  ")
 
 	// ---- character (right column) ----
 	SLIDER(vDrive_, mx->GetDrive(),      255, 21,6,  "amt  ")
@@ -58,6 +61,7 @@ FxView::FxView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 
 FxView::~FxView() {
 	delete vSize_ ; delete vDamp_ ; delete vFreeze_ ; delete vDuck_ ; delete vGate_ ;
+	delete vLocut_ ; delete vWidth_ ; delete vDtone_ ;
 	delete vTime_ ; delete vFdbk_ ;
 	delete vDrive_ ; delete vComp_ ;
 	delete vChan_ ;
@@ -81,6 +85,9 @@ void FxView::syncToModel() {
 	mx->SetReverbFreeze(vFreeze_->GetInt()) ;
 	mx->SetReverbDuck(vDuck_->GetInt()) ;
 	mx->SetReverbGate(vGate_->GetInt()) ;
+	mx->SetReverbLowcut(vLocut_->GetInt()) ;
+	mx->SetReverbWidth(vWidth_->GetInt()) ;
+	mx->SetDelayTone(vDtone_->GetInt()) ;
 	mx->SetDelayDivision(vTime_->GetInt()) ;
 	mx->SetDelayFeedback(vFdbk_->GetInt()) ;
 	mx->SetDrive(vDrive_->GetInt()) ;
@@ -100,6 +107,9 @@ void FxView::syncFromModel() {
 	vFreeze_->SetInt(mx->GetReverbFreeze()) ;
 	vDuck_->SetInt(mx->GetReverbDuck()) ;
 	vGate_->SetInt(mx->GetReverbGate()) ;
+	vLocut_->SetInt(mx->GetReverbLowcut()) ;
+	vWidth_->SetInt(mx->GetReverbWidth()) ;
+	vDtone_->SetInt(mx->GetDelayTone()) ;
 	vTime_->SetInt(mx->GetDelayDivision()) ;
 	vFdbk_->SetInt(mx->GetDelayFeedback()) ;
 	vDrive_->SetInt(mx->GetDrive()) ;
@@ -142,9 +152,10 @@ void FxView::DrawView() {
 	// a '*' in the panel title marks an effect that is engaged, so
 	// what's on reads at a glance without checking every value
 	Mixer *mx=Mixer::GetInstance() ;
-	bool revFx=mx->GetReverbFreeze()||mx->GetReverbDuck()||mx->GetReverbGate() ;
+	bool revFx=mx->GetReverbFreeze()||mx->GetReverbDuck()||mx->GetReverbGate()
+	          ||mx->GetReverbLowcut()||mx->GetReverbWidth() ;
 	DrawPanel(1,5,18,7,  revFx?"REVERB *":"REVERB") ;
-	DrawPanel(1,13,18,4, "DELAY") ;
+	DrawPanel(1,13,18,4, mx->GetDelayTone()?"DELAY *":"DELAY") ;
 	DrawPanel(21,5,17,3,  mx->GetDrive()?"DRIVE *":"DRIVE") ;
 	DrawPanel(21,9,17,3,  mx->GetComp()?"COMP *":"COMP") ;
 	bool ins=mx->GetChannelPhaserDepth(curCh_)||mx->GetChannelChorusDepth(curCh_) ;

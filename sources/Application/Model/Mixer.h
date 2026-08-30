@@ -81,6 +81,13 @@ public:
     inline void SetChorusDepth(int v) { fx2_[7] = (unsigned char)v; };
     inline int GetChorusRate() { return fx2_[8]; };
     inline void SetChorusRate(int v) { fx2_[8] = (unsigned char)v; };
+    // all three default 0 = bypass, so old songs sound untouched
+    inline int GetReverbLowcut() { return fx2_[9]; };
+    inline void SetReverbLowcut(int v) { fx2_[9] = (unsigned char)v; };
+    inline int GetReverbWidth() { return fx2_[10]; };
+    inline void SetReverbWidth(int v) { fx2_[10] = (unsigned char)v; };
+    inline int GetDelayTone() { return fx2_[11]; };
+    inline void SetDelayTone(int v) { fx2_[11] = (unsigned char)v; };
 
 	virtual unsigned int Checksum(unsigned int h) ;
 	virtual void SaveContent(TiXmlNode *node) ;

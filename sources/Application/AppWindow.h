@@ -137,6 +137,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     // pass a changing tick while audio runs so it repaints)
     // channel 0 is left, 1 is right
     void OpScope(int x, int y, int w, int h, int tick = 0, int channel = 0);
+    void OpSpectrum(int x, int y, int w, int h, int tick = 0);
 
     /* A bar between the background and the play colour, at any
        intensity from 0 to 255.
@@ -223,7 +224,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     unsigned char _charScreen[1200];
     unsigned char _charScreenProp[1200];
 
-    enum OverlayOpType { OOP_RECT, OOP_FRAME, OOP_BAR, OOP_ADSR, OOP_WAVE, OOP_VBAR, OOP_SCOPE, OOP_GLOW };
+    enum OverlayOpType { OOP_RECT, OOP_FRAME, OOP_BAR, OOP_ADSR, OOP_WAVE, OOP_VBAR, OOP_SCOPE, OOP_GLOW, OOP_SPECT };
     struct OverlayOp {
         unsigned char type_, layer_, colA_, focused_;
         short x_, y_, w_, h_;

@@ -140,7 +140,10 @@ void PlayerMixer::Update(Observable &o,I_ObservableData *d) {
   // the two effects themselves, and the tempo the delay locks to
   ms->SetSendFxParams(mixer->GetDelayDivision(),mixer->GetDelayFeedback(),
                       mixer->GetReverbSize(),mixer->GetReverbDamp());
-  ms->SetSendFx2(mixer->GetReverbFreeze(),mixer->GetDrive());
+  ms->SetSendFx2(mixer->GetReverbFreeze(),mixer->GetDrive(),
+                 mixer->GetReverbDuck(),mixer->GetReverbGate(),
+                 mixer->GetComp(),mixer->GetReverbLowcut(),
+                 mixer->GetReverbWidth(),mixer->GetDelayTone());
   SendFx::SetTempo(project_->GetTempo());
   ms->SetPregain(project_->GetPregain());
   ms->SetSoftclip(project_->GetSoftclip(), project_->GetSoftclipGain());

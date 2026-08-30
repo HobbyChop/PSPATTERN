@@ -279,9 +279,16 @@ void MixerService::SetSendFxParams(int division,int feedback,
 	SendFx::SetReverbDamp(damp) ;
 }
 
-void MixerService::SetSendFx2(int freeze,int drive) {
+void MixerService::SetSendFx2(int freeze,int drive,int duck,int gate,
+                              int comp,int locut,int width,int dtone) {
 	SendFx::SetReverbFreeze(freeze) ;
 	SendFx::SetDrive(drive) ;
+	SendFx::SetReverbDuck(duck) ;
+	SendFx::SetReverbGate(gate) ;
+	SendFx::SetComp(comp) ;
+	SendFx::SetReverbLowcut(locut) ;
+	SendFx::SetReverbWidth(width) ;
+	SendFx::SetDelayTone(dtone) ;
 }
 
 void MixerService::Execute(FourCC id,float value) {

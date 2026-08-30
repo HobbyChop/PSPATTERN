@@ -47,7 +47,8 @@ public:
     void SetSendFxParams(int division,int feedback,int size,int damp);
     // The fold-in effects (freeze/drive now; more later), pushed every
     // tick alongside SetSendFxParams.
-    void SetSendFx2(int freeze,int drive);
+    void SetSendFx2(int freeze,int drive,int duck,int gate,int comp,
+                    int locut,int width,int dtone);
     unsigned int GetMasterPeakLevel() const;
     bool TakeMasterClipLatch();
     // What share of the last block the master sum spent pinned at the
