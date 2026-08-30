@@ -1,3 +1,48 @@
+PSPATTERN 0.18.0a
+
+    The SELECT button works. It was only ever wired through
+        mapping.xml, so any card whose copy predated the line had a
+        dead button and no way to know -- the instrument preview and
+        the song bookmarks both. The mapping is now built in like
+        every other button; no card file needs updating.
+
+    Preset browsing is a browser now. Stepping the row loads silently;
+        SELECT is what demos the sound. The "--" entry is a place you
+        can come back to: the sound is snapshotted when browsing
+        leaves it and restored when you step back, so surfing the
+        bank can always be backed out of. X cancels the save-name
+        dialog. And presets whose names came back from the card in
+        uppercase -- FAT returns short names that way -- no longer
+        show a stray extension and fail to load.
+
+    The factory bank grows to a hundred and nine sounds. TONE gains a
+        drum kit -- kick, snare, hat, zap -- and chip voices at exact
+        NES duty cycles; PDX gains CZ brass, an 808 with glide and
+        the warp-wobble growl; VAX covers the dance floor with a
+        reese, rave stabs and a trance pluck; FM adds slap bass,
+        tubular bells, a music box and a talkbox; VOX now sings in
+        male and female choirs, growls, whistles and dials a modem.
+
+PSPATTERN 0.17.0a
+
+    Synth presets. The synth page grows a third rung on the identity
+        ladder: type, engine, and now preset. Left and right step
+        through the bank and stepping IS loading -- with the audition
+        latched, surfing the row plays each sound as it lands, so you
+        choose with your ears. Tap O on the row to save the current
+        sound under a name of your own; it lands beside the factory
+        set in presets/ next to the EBOOT, as plain name=value text
+        you can read, edit or share.
+
+    Fifty factory sounds ship in the folder, ten per engine, each
+        designed against what its engine's code actually renders --
+        noise hats and wind from TONE, a wah clav and a hard sync
+        from PDX, an acid line and a ring-mod clang from VAX, a
+        drawbar organ and a gamelan from FM, whispers and a Dalek
+        from VOX. Loading a preset never drags a table along, and a
+        preset that names an engine you have hidden still loads and
+        plays -- choosing it by name is opting in.
+
 PSPATTERN 0.16.0a
 
     Standby works. Slide the power switch and the machine sleeps;

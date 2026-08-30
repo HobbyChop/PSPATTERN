@@ -5,7 +5,7 @@ PSPATTERN MANUAL
 
 PSPATTERN is a music tracker for the Sony PSP. You build a song from
 patterns of notes, and the PSP generates the sound. It has a sampler, a
-four engine synthesiser, a built in drum kit, a delay and a reverb, and
+five engine synthesiser, a built in drum kit, a delay and a reverb, and
 MIDI in and out through the PSP-MIDI adapter.
 
   Website and guide   https://pspattern.hobbychop.com
@@ -47,14 +47,17 @@ The manual refers to the PSP buttons by the names printed on them.
   X          Cross. The secondary modifier.
   L and R    The shoulder triggers.
   START      Start and stop playback.
+  SELECT     Marking on the grids, audition on the instrument screen.
   D-pad      Move the cursor.
+  Nub        The analog stick. Browses and edits on the instrument
+             screen.
 
 Most editing is a modifier held with a direction. Holding O and pressing
 left or right changes a value by one. Holding O and pressing up or down
 changes it by sixteen, or by ten on the velocity column.
 
-Holding R and pressing a direction moves between screens. R with a
-direction is always the map and never anything else, which is why
+Hold R and the screen map appears; directions walk it, and releasing
+R jumps. R is always the map and never anything else, which is why
 muting and soloing are held with L instead. The bottom line of every
 screen lists the moves available from where you are. It does not list
 all of them. Copying, cloning, soloing and the rest are in section 8.
@@ -62,7 +65,13 @@ all of them. Copying, cloning, soloing and the rest are in section 8.
 
 4. SCREENS
 
-There are seven screens. R plus a direction moves between them.
+Hold R and a map of the screens appears with your current one
+highlighted. Directions walk the highlight; release R to jump. The
+map is laid out the way the screens relate:
+
+  project  config  groove
+  song     chain   phrase  instr
+  fx       mixer   table   table
 
   SONG        the arrangement grid, one column per channel
   CHAIN       the list of phrases a song slot plays
@@ -70,14 +79,19 @@ There are seven screens. R plus a direction moves between them.
   TABLE       a small automation sequence attached to a step
   GROOVE      per step timing
   INSTRUMENT  the sound design page
+  MIXER       levels, filters, sends and the master EQ
+  FX          the send effects and per channel inserts
   PROJECT     tempo, master level, file operations
+  CONFIG      the settings from config.xml, editable in place
 
-The song screen is the top level. From it, R and right opens the chain
-under the cursor. From a chain, R and right opens a phrase. From a
-phrase, R and down opens its table, R and up opens the groove, and R and
-right opens the instrument.
+The table appears twice because it is reachable two ways: under
+phrase it is the table the phrase is running, under instr it is the
+table that instrument owns.
 
-R and left moves back the way you came.
+Jumps carry your place with them. Landing on the phrase screen from
+the song screen opens the phrase reachable through the cell you were
+standing on, however many levels the jump crossed, exactly as
+stepping through the chain first would have.
 
 
 5. THE SONG SCREEN
@@ -407,8 +421,28 @@ type, a feedback stage, an attenuator and an amplitude envelope.
 MIDI sends notes out of the PSP-MIDI adapter. It has a channel, volume,
 note length, pitch bend range and four CC slots.
 
-SYNTH generates sound on the PSP. Pick one of four engines on the second
-row.
+SYNTH generates sound on the PSP. Pick one of five engines on the
+second row.
+
+THE INSTRUMENT DECK
+
+The screen splits the controls by job. The d-pad owns identity: left
+and right step the type, the engine, or the preset, and up and down
+move between those three rows. It never wanders into the parameters.
+The analog nub owns the parameters: alone it walks between them, and
+with O held it turns the focused value -- slowly near the centre for
+precision, faster as you push. The d-pad with O held edits too, one
+step at a time, and if your nub is worn out, X with a direction does
+what the nub does.
+
+L with a direction is the only control that changes which instrument
+slot you are editing.
+
+SELECT plays the current instrument so you can hear what you are
+shaping; press it again and the note retriggers. Hold it half a
+second and release to stop the note. The audition follows you as you
+step types, engines and presets, which is what makes the preset row
+browsable by ear.
 
 
 12. THE SYNTH ENGINES
@@ -431,6 +465,33 @@ the operator on the left modulates the one on the right, a space
 separates independent branches, and any operator not followed by a
 greater than sign reaches the output. Each operator has a ratio, level,
 detune and its own envelope.
+
+VOX is a formant engine, a voice rather than an instrument. The
+cutoff control morphs the sound between two vowels of your choosing,
+picked on the vowel a and vowel b rows, and the source wave, pulse
+width and a noise source colour the throat behind them. Point the
+LFO at flt and the vowels move on their own, which is where the
+talking comes from.
+
+PRESETS
+
+The third row of the synth page is the preset. Left and right step
+through the bank and stepping loads: land on a name and that sound
+is in the slot, engine and all. Browsing is silent -- press SELECT
+to hear the one you are on. The "--" entry is where you started:
+the sound is snapshotted the moment browsing leaves it, and
+stepping back restores it, so the bank can always be backed out
+of. O with up or down jumps sixteen at a time.
+
+Tap O on the preset row to save what you have under a name of your
+own; X backs out of the name dialog. Presets live in the presets
+folder next to the EBOOT as plain name=value text files, one per
+sound -- readable, editable and small enough to share. More than a
+hundred come with this build, and yours land beside them. A preset
+stores the sound alone; it never carries a table with it.
+
+Loading a preset that names the FM engine works even while FM is
+hidden in config -- picking a preset by name is opting in.
 
 
 13. HARD SYNC AND RING MODULATION
@@ -630,6 +691,15 @@ wrong and you cannot see why.
 
 Bring it back to zero by turning channels down, or the master, or both.
 
+THE FX SCREEN
+
+The send effects have a screen of their own. The reverb rows set size
+and damping; freeze holds the tail the reverb has and recirculates
+it, and drive pushes the wet signal into a soft clipper. The delay
+rows set time, feedback and amount. Below them, pick a channel and
+give it its own phaser or chorus -- a rate and a depth each, per
+channel, on top of whatever the sends are doing.
+
 
 17. THE PROJECT SCREEN
 
@@ -709,6 +779,15 @@ Making the audio buffer smaller reduces the latency it is correcting
 for in the first place, at the usual cost.
 
 
+THE CONFIG SCREEN
+
+The settings from config.xml, editable on the machine. Theme changes
+apply as you step through them, so you pick by looking. Rows marked
+with a star are read once at boot -- the screen saves them and tells
+you a reboot is needed. Everything saves by itself when you leave
+the screen.
+
+
 18. SAVING AND RENDERING
 
 Save song writes to the current project folder. Save song as makes a new
@@ -746,6 +825,9 @@ below full scale and are known to be too quiet.
 
   A few stray pixels are drawn on the bottom rule of the oscillator
   panel underneath the ring slider. It is cosmetic.
+
+  The duck and gate rows on the fx screen store their values but the
+  processing behind them is not connected yet.
 
 
 21. LICENCE

@@ -32,4 +32,5 @@ tar -cf - --exclude=.git --exclude=dist --exclude=games --exclude=samples . | ws
 mkdir -p dist/PSP
 wsl -e bash -c "cp /root/pt/projects/buildPSP/EBOOT.PBP '$DST_WSL/dist/PSP/'"
 cp projects/resources/PSP/INSTALL_HOW_TO.txt projects/resources/PSP/mapping.xml projects/resources/PSP/config.xml projects/resources/PSP/custom_font.xml dist/PSP/ 2>/dev/null || true
+mkdir -p dist/PSP/presets && cp projects/resources/PSP/presets/*.ptx dist/PSP/presets/ 2>/dev/null || true
 echo "OK: dist/PSP/EBOOT.PBP"

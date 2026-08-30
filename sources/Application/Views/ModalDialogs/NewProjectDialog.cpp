@@ -185,6 +185,12 @@ void NewProjectDialog::ProcessButtonMask(unsigned short mask, bool pressed) {
             return;
         }
         return;
+    } else if (mask == EPBM_B) {
+        // X backs out of the dialog from anywhere outside the keyboard:
+        // nothing written, nothing changed. (Inside the keyboard it
+        // stays backspace, and START leaves the keyboard first.)
+        EndModal(0);
+        return;
     } else if (mask & EPBM_A) {
         if (mask == EPBM_A) {
             std::string randomName = "";

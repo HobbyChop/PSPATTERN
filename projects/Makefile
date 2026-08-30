@@ -260,7 +260,7 @@ COMMONFILES := \
 	char.o n_assert.o fixed.o wildcard.o DspBench.o \
 	SyncMaster.o TablePlayback.o Player.o MidiNoteInput.o \
 	Table.o TableView.o\
-	InstrumentBank.o WavFileWriter.o WavFile.o MidiInstrument.o SynthInstrument.o Filters.o SampleVariable.o SampleInstrument.o SamplePool.o DrumKit.o CommandList.o FxPrinter.o\
+	InstrumentBank.o SynthPresets.o WavFileWriter.o WavFile.o MidiInstrument.o SynthInstrument.o Filters.o SampleVariable.o SampleInstrument.o SamplePool.o DrumKit.o CommandList.o FxPrinter.o\
 	PersistencyService.o Persistent.o \
 	Observable.o SingletonRegistry.o \
 	Audio.o AudioMixer.o MasterEq.o AudioOutDriver.o AudioDriver.o AudioStats.o SendFx.o \

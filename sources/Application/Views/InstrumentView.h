@@ -6,11 +6,14 @@
 #include "Foundation/Observable.h"
 #include "Foundation/Variables/WatchedVariable.h"
 #include "ViewData.h"
+#include "Application/Instruments/SynthPresets.h"
+#include <vector>
 
 class SynthInstrument ;
 
 class InstrumentView: public FieldView, public I_Observer {
 public:
+	void OnSavePreset(const char *name) ;   // modal save-dialog callback
 	InstrumentView(GUIWindow &w,ViewData *data) ;
 	virtual ~InstrumentView() ;
 
@@ -38,6 +41,8 @@ protected:
 	void cycleType(int step) ;
 	// d-pad up/down: step the synth engine (skips hidden FM)
 	void cycleEngine(int step) ;
+	// the preset row: stepping loads (deferred)
+	void checkPresetStep() ;
 	void onInstrumentChange() ;
 	void fillSampleParameters() ;
 	void fillMidiParameters() ;
@@ -77,5 +82,22 @@ private:
 	bool auditionLatch_ ;
 	unsigned char auditionNote_ ;
 	unsigned long selectDownAt_ ;
+	/* the preset row on the identity ladder. presetVar_ is rebuilt on
+	   every fill (the list changes when a preset is saved); loading is
+	   DEFERRED like everything else that rebuilds this screen. */
+	Variable *presetVar_ ;
+	std::vector<const char *> presetList_ ;
+	int presetShown_ ;
+	bool presetPending_ ;
+	int pendingPreset_ ;
+	/* "--" is a place you can come back to: the sound is snapshotted
+	   when browsing leaves it, and stepping back restores it. */
+	SynthPresets::ParamSnapshot presetUndo_ ;
+	bool presetUndoValid_ ;
+	bool presetRestorePending_ ;
+	/* true while a load/restore replays its SetStrings: Update must
+	   sit out the burst (no per-notify retrigger, no queued rebuild)
+	   because the deferred branch does both, once, afterwards */
+	bool presetApplying_ ;
 } ;
 #endif

@@ -161,6 +161,11 @@ void PSPSystem::Boot(int argc,char **argv) {
 	eventManager_->MapAppButton("but:0:4",APP_BUTTON_L) ;
 	eventManager_->MapAppButton("but:0:5",APP_BUTTON_R) ;
 	eventManager_->MapAppButton("but:0:11",APP_BUTTON_START) ;
+	// SELECT rides the same built-in rails as every other button. It
+	// used to be mapped only by mapping.xml, so a card whose copy
+	// predates the select line had a dead button -- audition and the
+	// song bookmarks both -- and nothing on screen to say why.
+	eventManager_->MapAppButton("but:0:10",APP_BUTTON_SELECT) ;
 
 } ;
 

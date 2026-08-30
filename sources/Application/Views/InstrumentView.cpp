@@ -14,7 +14,9 @@
 #include "BaseClasses/UIPillField.h"
 #include "BaseClasses/UIStepperField.h"
 #include "Foundation/Variables/Variable.h"
+#include "Application/Instruments/SynthPresets.h"
 #include "ModalDialogs/ImportSampleDialog.h"
+#include "ModalDialogs/NewProjectDialog.h"
 #include "ModalDialogs/MessageBox.h"
 #include "System/System/System.h"
 
@@ -22,10 +24,18 @@ void ImportSampleDialogCallback(View &v, ModalView &dialog) {
     ((InstrumentView &)v).OnFocus();
 }
 
+static void SavePresetCallback(View &v, ModalView &dialog) {
+	NewProjectDialog &npd=(NewProjectDialog &)dialog ;
+	if (dialog.GetReturnCode()>0) {
+		((InstrumentView &)v).OnSavePreset(npd.GetName().c_str()) ;
+	}
+}
+
 extern char *InstrumentTypeData[] ;
 
 #define IVP_TYPE MAKE_FOURCC('T','Y','P','E')
 #define IVP_SLOT MAKE_FOURCC('S','L','O','T')
+#define IVP_PRESET MAKE_FOURCC('P','R','S','T')
 
 InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):FieldView(w,data),
 	typeVar_("type",IVP_TYPE,(char**)InstrumentTypeData,IT_LAST,0),
@@ -42,6 +52,14 @@ InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):FieldView(w,data),
 	auditionLatch_=false ;
 	auditionNote_=60 ;
 	selectDownAt_=0 ;
+	presetVar_=0 ;
+	presetShown_=0 ;
+	presetPending_=false ;
+	pendingPreset_=0 ;
+	presetUndoValid_=false ;
+	presetRestorePending_=false ;
+	presetApplying_=false ;
+	SynthPresets::Scan() ;
 	typeVar_.AddObserver(*this) ;
 	slotVar_.AddObserver(*this) ;
 	onInstrumentChange() ;
@@ -51,6 +69,7 @@ InstrumentView::~InstrumentView() {
 	// unhook, or the instrument keeps a dangling observer pointer and
 	// its next notify is a wild vtable call
 	if (current_) current_->RemoveObserver(*this) ;
+	if (presetVar_) delete presetVar_ ;
 }
 
 InstrumentType InstrumentView::getInstrumentType() {
@@ -78,6 +97,13 @@ void InstrumentView::onInstrumentChange() {
 		// defensive: drop any stale registration on the incoming one
 		// before the re-add below
 		current_->RemoveObserver(*this) ;
+		// a different object under the deck (slot walk or type flip):
+		// the preset label described the OLD sound, drop it to "--"
+		// and the snapshot with it
+		presetShown_=0 ;
+		presetUndoValid_=false ;
+		presetUndo_.clear() ;
+		presetRestorePending_=false ;
 	} ;
 	T_SimpleList<UIField>::Empty() ;
 
@@ -370,6 +396,23 @@ void InstrumentView::fillSynthParameters() {
 	UIPillField *pf=new UIPillField(pos,*v,"engine ",SET_LAST,
 	                                fmEnabled?-1:SET_FM) ;
 	T_SimpleList<UIField>::Insert(pf) ;
+
+	// the preset row: third rung of the identity ladder. Stepping it
+	// LOADS (deferred -- see DrawView), O-tap on it SAVES under a new
+	// name. Entry 0 is "--", the unloaded state.
+	presetList_.clear() ;
+	presetList_.push_back("--") ;
+	for (int pi=0;pi<SynthPresets::Count();pi++)
+		presetList_.push_back(SynthPresets::Name(pi)) ;
+	if (presetShown_>=(int)presetList_.size()) presetShown_=0 ;
+	if (presetVar_) delete presetVar_ ;
+	presetVar_=new Variable("preset",IVP_PRESET,
+	                        (char**)&presetList_[0],
+	                        (int)presetList_.size(),presetShown_) ;
+	pos=GUIPoint(6,4) ;
+	UIStepperField *prf=new UIStepperField(pos,*presetVar_,"preset ","%s",
+	                                       0,(int)presetList_.size()-1) ;
+	T_SimpleList<UIField>::Insert(prf) ;
 
 	// ---- left column: OSC (content rows 6-13) ----
 	// two-option waves are pills; longer lists step. FM has no
@@ -723,7 +766,7 @@ void InstrumentView::applyTypeChange() {
 // TYPE and ENGINE only -- the wave row sits among the parameters and
 // belongs to the stick like any other variable.
 static bool ivIsSelectorId(FourCC id) {
-	return id==IVP_TYPE||id==SYP_ENGINE ;
+	return id==IVP_TYPE||id==SYP_ENGINE||id==IVP_PRESET ;
 }
 
 void InstrumentView::auditionStart() {
@@ -779,6 +822,56 @@ void InstrumentView::cycleEngine(int step) {
 	isDirty_=true ;
 } ;
 
+/* Stepping the preset row IS loading: whenever its ui variable moved
+   (d-pad ladder or O+arrows), queue the deferred load. Index 0 ("--")
+   is the unloaded state and loads nothing. */
+void InstrumentView::checkPresetStep() {
+	if (!presetVar_) return ;
+	int pv=presetVar_->GetInt() ;
+	if (pv==presetShown_) return ;
+	// leaving "--": snapshot the sound about to be overwritten, so the
+	// row is a browser, not a one-way door. Taken here, BEFORE the
+	// deferred load runs, so the values are still the original ones.
+	if (presetShown_==0&&pv>0) {
+		InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+		I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
+		if (instr&&instr->GetType()==IT_SYNTH) {
+			SynthPresets::Capture(instr,presetUndo_) ;
+			presetUndoValid_=true ;
+		}
+	}
+	presetShown_=pv ;
+	if (pv>0) {
+		pendingPreset_=pv-1 ;
+		presetPending_=true ;   // applied at the top of the next DrawView
+	} else if (presetUndoValid_) {
+		presetRestorePending_=true ;   // back to "--": restore the sound
+	}
+	isDirty_=true ;
+} ;
+
+void InstrumentView::OnSavePreset(const char *name) {
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
+	if (!instr||instr->GetType()!=IT_SYNTH) return ;
+	if (!SynthPresets::Save(name,instr)) {
+		View::SetNotification("preset save failed") ;
+		return ;
+	}
+	SynthPresets::Scan() ;
+	// land the row on the saved name so the label confirms the save
+	presetShown_=0 ;
+	for (int pi=0;pi<SynthPresets::Count();pi++) {
+		if (!strcmp(SynthPresets::Name(pi),name)) { presetShown_=pi+1 ; break ; }
+	}
+	lastFocusID_=IVP_PRESET ;
+	rebuildPending_=true ;   // modal callback: same deferred discipline
+	char msg[40] ;
+	snprintf(msg,sizeof(msg),"saved preset %s",name) ;
+	View::SetNotification(msg) ;
+	isDirty_=true ;
+} ;
+
 /* The nub owns the parameters: alone it WALKS the focus between the
    fields (all four directions); with O held it TURNS the focused value
    (left/right fine, up/down coarse -- the O+arrows grammar on an
@@ -790,6 +883,7 @@ void InstrumentView::OnNubFlick(int dir, unsigned short mask) {
 		UIField *f=GetFocus() ;
 		if (!f) return ;
 		f->ProcessArrow(bits[dir&3]) ;
+		checkPresetStep() ;   // the nub can step the preset row too
 	} else {
 		// walk -- but never REST on the ladder: type/engine/wave belong
 		// to the d-pad. A step that lands there keeps going in the same
@@ -971,6 +1065,7 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 			} else if (mask&(EPBM_LEFT|EPBM_RIGHT)) {
 				lastFocusID_=((UIIntVarField *)sel[cur])->GetVariableID() ;
 				sel[cur]->ProcessArrow(mask&(EPBM_LEFT|EPBM_RIGHT)) ;
+				checkPresetStep() ;
 			} else if ((mask&EPBM_UP)&&cur>0) {
 				SetFocus(sel[cur-1]) ;
 				lastFocusID_=((UIIntVarField *)sel[cur-1])->GetVariableID() ;
@@ -993,7 +1088,17 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		return ;
 	}
 
+	if (mask==EPBM_A&&presetVar_) {
+		UIField *pf2=GetFocus() ;
+		if (pf2&&((UIIntVarField *)pf2)->GetVariableID()==IVP_PRESET) {
+			NewProjectDialog *mb=new NewProjectDialog(*this,Path("bin:presets")) ;
+			DoModal(mb,SavePresetCallback) ;
+			return ;
+		}
+	}
+
 	FieldView::ProcessButtonMask(mask) ;
+	checkPresetStep() ;
 
     Player *player=Player::GetInstance() ;
 	// B Modifier
@@ -1113,6 +1218,56 @@ void InstrumentView::DrawView() {
 		rebuildPending_=false ;
 		applyTypeChange() ;
 		if (auditionLatch_) auditionRetrigger() ;
+	} else if (presetPending_) {
+		// preset load = a burst of SetStrings, each notifying; do it
+		// here for the same reason as the type swap, then rebuild once
+		presetPending_=false ;
+		InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+		I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
+		if (instr&&instr->GetType()==IT_SYNTH) {
+			/* Serialize with the audio thread and silence any voice
+			   still rendering this object -- an engine flip under a
+			   sounding voice tears its state (the applyTypeChange
+			   lesson). The audition comes back via the retrigger
+			   below, on the finished sound. */
+			MixerService *ms=MixerService::GetInstance() ;
+			ms->Lock() ;
+			Player::GetInstance()->CutInstrument(instr) ;
+			presetApplying_=true ;
+			SynthPresets::Load(pendingPreset_,instr) ;
+			presetApplying_=false ;
+			ms->Unlock() ;
+		}
+		rebuildPending_=false ;
+		lastFocusID_=IVP_PRESET ;
+		onInstrumentChange() ;
+		// browsing is SILENT by request: the cut above ended any
+		// ringing preview, and only SELECT demos the new sound
+		auditionLatch_=false ;
+		selectDownAt_=0 ;
+	} else if (presetRestorePending_) {
+		// the browse backed out: replay the snapshot taken when it
+		// began, then drop it -- edits made back on "--" must be the
+		// base of the NEXT browse, not this stale copy
+		presetRestorePending_=false ;
+		InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+		I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
+		if (instr&&instr->GetType()==IT_SYNTH&&presetUndoValid_) {
+			MixerService *ms=MixerService::GetInstance() ;
+			ms->Lock() ;
+			Player::GetInstance()->CutInstrument(instr) ;
+			presetApplying_=true ;
+			SynthPresets::Restore(presetUndo_,instr) ;
+			presetApplying_=false ;
+			ms->Unlock() ;
+		}
+		presetUndoValid_=false ;
+		presetUndo_.clear() ;
+		rebuildPending_=false ;
+		lastFocusID_=IVP_PRESET ;
+		onInstrumentChange() ;
+		auditionLatch_=false ;   // silent here too: SELECT demos
+		selectDownAt_=0 ;
 	} else if (rebuildPending_) {
 		rebuildPending_=false ;
 		onInstrumentChange() ;
@@ -1272,6 +1427,13 @@ void InstrumentView::drawSynthChrome() {
 void InstrumentView::OnFocus() { onInstrumentChange(); }
 
 void InstrumentView::Update(Observable &o,I_ObservableData *d) {
+
+	// a preset load/restore is a burst of ~55 SetStrings, each landing
+	// here. Reacting to each one (a rebuild flag is cheap, but the
+	// audition retrigger is a note restart RACING the audio thread)
+	// wedged the preview voice. The deferred branch rebuilds and
+	// retriggers exactly once when the burst is done.
+	if (presetApplying_) return ;
 
 	if (&o==(Observable *)&slotVar_) {
 		if (refreshingSlot_) return ;
