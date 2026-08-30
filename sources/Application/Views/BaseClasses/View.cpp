@@ -134,6 +134,10 @@ void View::SetDirty(bool isDirty) {
 	isDirty_=true ;
 } ;
 
+void View::ApplyDeferred() {
+	if (modalView_) modalView_->ApplyDeferred() ;
+}
+
 void View::ProcessButton(unsigned short mask, bool pressed) {
 	isDirty_=false ;
 	if (modalView_) {

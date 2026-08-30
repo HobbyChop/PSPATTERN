@@ -30,6 +30,9 @@ namespace SynthPresets {
 	typedef std::vector<std::pair<std::string,std::string> > ParamSnapshot ;
 	void Capture(I_Instrument *instr, ParamSnapshot &out) ;
 	void Restore(const ParamSnapshot &snap, I_Instrument *instr) ;
+	/* file -> pairs, NO apply: callers read the stick outside the
+	   mixer lock, then Restore under it */
+	bool ReadPreset(int i, ParamSnapshot &out) ;
 } ;
 
 #endif

@@ -40,7 +40,7 @@ ConfigView::ConfigView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	addList(13,"me fx *", "ME_OFFLOAD",       YES_NO,2, 0, true, false) ;
 
 	// ENGINES
-	addList(16,"fm     ", "FM_ENGINE",        NO_YES,2, 0, false, false) ;
+	addList(16,"fm     ", "FM_ENGINE",        YES_NO,2, 0, false, false) ;
 
 	// BEHAVIOUR
 	// autosave: YES by default; NO for a live set, where a Memory
@@ -119,15 +119,26 @@ void ConfigView::commit() {
 	if (!changed) return ;
 	if (themeChanged)
 		((AppWindow &)w_).ApplyTheme() ;      // live palette + repaint
-	if (cfg->Save()) {
-		if (rebootNeeded) {
-			rebootPending_=true ;
-			View::SetNotification("saved - reboot to apply") ;
-		} else {
-			View::SetNotification("settings saved") ;
-		}
+	// values are already live in Config's memory; the STICK write is
+	// deferred to the pre-redraw hook, outside the input-path mixer
+	// lock this method runs under (20-150ms of render starvation
+	// otherwise, audible if the song was playing)
+	s_diskPending_=true ;
+	if (rebootNeeded) {
+		rebootPending_=true ;
+		View::SetNotification("saved - reboot to apply") ;
 	} else {
-		View::SetNotification("SAVE FAILED - check the stick") ;
+		View::SetNotification("settings saved") ;
+	}
+}
+
+bool ConfigView::s_diskPending_=false ;
+
+void ConfigView::CommitPendingToDisk() {
+	if (!s_diskPending_) return ;
+	s_diskPending_=false ;
+	if (!Config::GetInstance()->Save()) {
+		Trace::Error("config save failed - check the stick") ;
 	}
 }
 

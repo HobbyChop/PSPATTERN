@@ -62,7 +62,12 @@ void AudioDriver::AddBuffer(short *buffer,int samplecount) {
   if (!isPlaying_) return ;
 
   if (len>SOUND_BUFFER_MAX) {
+      // truncate, never overrun: the consumer copies size_ bytes into
+      // a buffer sized against SOUND_BUFFER_MAX, so an oversized slice
+      // used to write past it INSIDE the audio callback. A truncated
+      // slice is one click; the overrun was heap corruption.
       Trace::Error("Alert: buffer size exceeded") ;
+      len=SOUND_BUFFER_MAX ;
   }
 
   if (pool_[poolQueuePosition_].buffer_!=0) {
@@ -84,16 +89,22 @@ void AudioDriver::AddBuffer(short *buffer,int samplecount) {
      spareSize_[q]=0 ;
   } ;
 
+  // fill a local first: the callback thread polls buffer_ as the
+  // "slot ready" flag, so the pointer must be published LAST -- the
+  // old order set it before the memcpy and the size, and a callback
+  // landing in that window played a stale slice
+  char *blk ;
   if (spare_[q]) {
-     pool_[q].buffer_=spare_[q] ;
+     blk=spare_[q] ;
      spare_[q]=0 ;
   } else {
-     pool_[q].buffer_=(char*) ((short *)SYS_MALLOC(len)) ;
+     blk=(char*) ((short *)SYS_MALLOC(len)) ;
      spareSize_[q]=len ;
   } ;
 
-  SYS_MEMCPY(pool_[q].buffer_,(char *)buffer,len) ;
+  SYS_MEMCPY(blk,(char *)buffer,len) ;
   pool_[q].size_=len ;
+  pool_[q].buffer_=blk ;
   poolQueuePosition_=(q+1)%SOUND_BUFFER_COUNT ;
 	hasData_=true ;
 }

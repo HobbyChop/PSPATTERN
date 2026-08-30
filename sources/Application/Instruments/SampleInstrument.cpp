@@ -1357,6 +1357,8 @@ void SampleInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
         if (!source_)
             return;
         int wavSize = source_->GetSize(rp->midiNote_);
+        if (wavSize <= 0) break;   // a sizeless sample made the
+                                   // wraparound loops below spin forever
         float chkSize = wavSize / 256.0f;
         int absShft = value >> 8;
         if (absShft != 0) {

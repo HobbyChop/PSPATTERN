@@ -52,7 +52,12 @@ static int    accSamples_ = 0 ;
  *
  * A ring makes the deferral a number of SAMPLES rather than a number
  * of calls, so how the samples are chunked stops mattering. */
-#define WET_RING_FRAMES 2048
+/* 8192, up from 2048: the old ring could not even hold the nominal
+   5-block prime above tiny slices, so the collect-miss cushion was
+   zero below ~162 BPM -- and once a miss ate the lead, nothing ever
+   rebuilt it. 64KB of static RAM buys a cushion that exists at every
+   tempo the ME serves, and the re-prime below keeps it alive. */
+#define WET_RING_FRAMES 8192
 static fixed  wetRing_[WET_RING_FRAMES * 2] ;
 static int    wetRead_ = 0 ;
 static int    wetFill_ = 0 ;
@@ -986,7 +991,11 @@ static void wetEmit(fixed *out, int n) {
 
 // what the worker finished goes behind whatever is already queued
 static void wetAppend(const fixed *src, int n) {
-	if (wetFill_ + n > WET_RING_FRAMES) return ;   // cannot happen; do not corrupt
+	// overflow (a tempo jump shrinking the slice under queued lead)
+	// keeps what fits instead of dropping the whole finished block --
+	// a seam beats a hole
+	if (wetFill_ + n > WET_RING_FRAMES) n = WET_RING_FRAMES - wetFill_ ;
+	if (n <= 0) return ;
 	int w = (wetRead_ + wetFill_) % WET_RING_FRAMES ;
 	for (int i = 0 ; i < n ; i++) {
 		int k = (w + i) % WET_RING_FRAMES ;
@@ -1038,9 +1047,20 @@ static void processBankMe(fixed *buffer, int samplecount) {
 	// each take so an isolated overrun (a knob move rebuilding coefficients)
 	// is absorbed as a few ms of return latency instead of a dropout.
 	if (mePrimePending_) {
+		// two blocks of lead: enough that one late job (a knob move
+		// rebuilding coefficients) is latency, not a dropout -- and
+		// small enough that the send return is not audibly laggy
 		memset(BK.wet_, 0, samplecount * 2 * sizeof(fixed)) ;
-		for (int i = 0 ; i < 5 ; i++) wetAppend(BK.wet_, samplecount) ;
+		for (int i = 0 ; i < 2 ; i++) wetAppend(BK.wet_, samplecount) ;
 		mePrimePending_ = false ;
+	} else if (wetFill_ < samplecount &&
+	           wetFill_ + 2 * samplecount <= WET_RING_FRAMES) {
+		// the cushion was spent by a miss and, left alone, would stay
+		// spent for the rest of the take: every later miss would be a
+		// fresh hole. Re-prime one silent block -- one block of extra
+		// return latency, once, instead of a dropout every time.
+		memset(BK.wet_, 0, samplecount * 2 * sizeof(fixed)) ;
+		wetAppend(BK.wet_, samplecount) ;
 	}
 	wetEmit(buffer, samplecount) ;
 	int n = samplecount ; if (n > 2048) n = 2048 ;
@@ -1099,10 +1119,37 @@ bool Return::Render(fixed *buffer, int samplecount) {
 	// silently truncated at post while the wet ring kept consuming the
 	// full slice -- the send bus starved a little more every block.
 	// The scalar path has no such cap, so very low tempos run there.
-	if (PSPME_Ready() && samplecount <= 2048) {
-		processBankMe(buffer, samplecount) ;
-		dlyFed_ = revFed_ = false ;
-		return true ;
+	{
+		bool wantMe = PSPME_Ready() && samplecount <= 2048 ;
+		/* The two paths SHARE the delay lines but not their cache view
+		   or write position: the ME writes them uncached while this
+		   core's scalar path reads/writes them cached, and each side
+		   keeps its own dlyPos. Crossing over (suspend, the 54 BPM
+		   boundary, an ME_READY flap) used to replay wrong-position
+		   ghosts from a stale cache. A crossing now starts the delay
+		   clean: lines zeroed and written back, position reset, ring
+		   re-primed. A cut tail at a rare transition beats garble. */
+		static int lastMe_ = -1 ;
+		if ((int)wantMe != lastMe_) {
+			if (lastMe_ != -1) {
+				if (BK.dlyL_) {
+					memset(BK.dlyL_, 0, SENDFX_MAX_DELAY * sizeof(short)) ;
+					pushOut(BK.dlyL_, SENDFX_MAX_DELAY * sizeof(short)) ;
+				}
+				if (BK.dlyR_) {
+					memset(BK.dlyR_, 0, SENDFX_MAX_DELAY * sizeof(short)) ;
+					pushOut(BK.dlyR_, SENDFX_MAX_DELAY * sizeof(short)) ;
+				}
+				BK.dlyPos_ = 0 ;
+				wetReset() ;
+			}
+			lastMe_ = (int)wantMe ;
+		}
+		if (wantMe) {
+			processBankMe(buffer, samplecount) ;
+			dlyFed_ = revFed_ = false ;
+			return true ;
+		}
 	}
 #endif
 	if (!deferred_) {

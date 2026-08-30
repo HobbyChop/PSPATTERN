@@ -1,5 +1,6 @@
 #include "AudioMixer.h"
 #include "System/System/System.h"
+#include "Services/Audio/AudioStats.h"
 #include <math.h>
 
 #define MAX_POSITIVE_FIXED i2fp(32767)
@@ -202,7 +203,13 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
             It costs nothing until somebody moves a band: Render
             returns immediately while every band is flat, which is
             where they all start. */
-         eq_.Render(buffer, samplecount);
+         {
+             // timed for the panel's vfpu figure; a flat EQ returns
+             // immediately and measures as nothing
+             unsigned int _t0 = AudioStats::Micros();
+             eq_.Render(buffer, samplecount);
+             AudioStats::AddVfpuMicros(AudioStats::Micros() - _t0);
+         }
 
          /* The master fader is no longer here. It is applied to every
             source on the way INTO the sum -- see SetPreSumGain -- so

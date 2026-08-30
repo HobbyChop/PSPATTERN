@@ -647,6 +647,12 @@ void AppWindow::ClearRect(GUIRect &r) {
 
 void AppWindow::Redraw() {
 
+    // deferred work that needs the mixer lock (preset loads, type
+    // swaps, file writes) runs HERE, before drawMutex_ is taken --
+    // see View::ApplyDeferred for the deadlock this prevents
+    if (_currentView) _currentView->ApplyDeferred();
+    ConfigView::CommitPendingToDisk();
+
     SysMutexLocker locker(drawMutex_);
 
     if (_currentView) {

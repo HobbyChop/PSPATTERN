@@ -107,8 +107,9 @@ The info panel on the right carries the tempo, the project name, the
 MIDI adapter, the battery, and the machine's health: dsp is the render
 load (it turns into the worst recent figure with an exclamation mark
 only when a block actually misses its deadline), me is how busy the
-second processor is with the send effects, mem is the sample memory
-still free, and und counts the times the audio queue ran dry since
+second processor is with the send effects, vfpu is the share of the
+render spent in vector code, mem is the sample memory still free,
+and und counts the times the audio queue ran dry since
 play started -- zero is the only good number. The scope above it draws
 the master output; under it, a spectrum of the mix, computed by the
 second processor in its spare moments -- bass on the left, air on
@@ -494,8 +495,9 @@ sound -- readable, editable and small enough to share. More than a
 hundred come with this build, and yours land beside them. A preset
 stores the sound alone; it never carries a table with it.
 
-Loading a preset that names the FM engine works even while FM is
-hidden in config -- picking a preset by name is opting in.
+FM is selectable by default; setting fm to NO on the config screen
+hides it from the engine picker, as a guard rail for the CPU cost.
+Loading an FM preset works either way.
 
 
 13. HARD SYNC AND RING MODULATION

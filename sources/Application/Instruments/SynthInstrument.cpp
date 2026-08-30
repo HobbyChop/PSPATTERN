@@ -3,6 +3,7 @@
 #include "CommandList.h"
 #include "Application/Player/SyncMaster.h"
 #include "Application/Model/Config.h"
+#include "Services/Audio/AudioStats.h"
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -994,7 +995,18 @@ bool SynthInstrument::Render(int channel,fixed *buffer,int size,bool updateTick)
 		case SET_FM:
 			return renderFm(v,buffer,size) ;
 		case SET_VOX:
+#if defined(__PSP__) && defined(PSP_VFPU_VOX)
+		{
+			// timed for the panel's vfpu figure -- the formant bank is
+			// the biggest vector consumer in the whole program
+			unsigned int _t0=AudioStats::Micros() ;
+			bool _r=renderVox(v,buffer,size) ;
+			AudioStats::AddVfpuMicros(AudioStats::Micros()-_t0) ;
+			return _r ;
+		}
+#else
 			return renderVox(v,buffer,size) ;
+#endif
 		case SET_TONE:
 		default:
 			return renderTone(v,buffer,size) ;

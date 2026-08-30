@@ -120,6 +120,14 @@ class View : public Observable {
     // Override in subclasses
 
     virtual void DrawView() = 0;
+    /* Deferred main-thread work that must run OUTSIDE drawMutex_: the
+       render thread acquires sync_ then drawMutex_ every block, so any
+       code that takes the mixer lock while drawMutex_ is held (as the
+       old in-DrawView deferred blocks did) is a lock-order inversion
+       -- a permanent deadlock waiting to be timed. AppWindow calls
+       this immediately BEFORE Redraw takes drawMutex_. The default
+       forwards to an open modal. */
+    virtual void ApplyDeferred();
     virtual void OnPlayerUpdate(PlayerEventType, unsigned int currentTick) = 0;
     virtual void OnFocus() = 0;
     virtual void AnimationUpdate() {}

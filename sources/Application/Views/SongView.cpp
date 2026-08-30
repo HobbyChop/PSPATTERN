@@ -1227,19 +1227,28 @@ void SongView::DrawSidePanel() {
         unsigned int memFree = sys->GetMemoryFree();
         int tenths = (int)((unsigned long long)memFree * 10 / (1024 * 1024));
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 17, "mem", props);
+        DrawString(PANEL_TXT, 18, "mem", props);
         snprintf(vbuf, sizeof(vbuf), "%2d.%dM", tenths / 10, tenths % 10);
         SetColor((tenths < 20) ? CD_MUTE : CD_NORMAL);
-        DrawString(34, 17, vbuf, props);
+        DrawString(34, 18, vbuf, props);
+
+        int vf = running ? AudioStats::GetVfpuPercent() : 0;
+        if (vf < 0) vf = 0;
+        if (vf > 99) vf = 99;
+        SetColor(CD_ROW2);
+        DrawString(PANEL_TXT, 17, "vfpu", props);
+        snprintf(vbuf, sizeof(vbuf), "%3d%%", vf);
+        SetColor(CD_HILITE2);
+        DrawString(35, 17, vbuf, props);
 
         int und = AudioStats::GetUnderruns();
         if (und < 0) und = 0;
         if (und > 9999) und = 9999;
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 18, "und", props);
+        DrawString(PANEL_TXT, 19, "und", props);
         snprintf(vbuf, sizeof(vbuf), "%4d", und);
         SetColor(und ? CD_MUTE : CD_NORMAL);
-        DrawString(35, 18, vbuf, props);
+        DrawString(35, 19, vbuf, props);
     }
 
     DrawPanel(PANEL_X, 21, 12, 2, "live");

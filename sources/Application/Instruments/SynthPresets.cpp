@@ -69,6 +69,37 @@ const char *Name(int i) {
 	return names_[i].c_str() ;
 }
 
+bool ReadPreset(int i, ParamSnapshot &out) {
+	out.clear() ;
+	if (i<0||i>=(int)names_.size()) return false ;
+	Path dir("bin:presets") ;
+	std::string full=dir.GetPath()+"/"+files_[i] ;
+	I_File *f=FileSystem::GetInstance()->Open(full.c_str(),(char *)"r") ;
+	if (!f) return false ;
+	f->Seek(0,SEEK_END) ; long n=f->Tell() ; f->Seek(0,SEEK_SET) ;
+	if (n<=0||n>16384) { f->Close() ; delete f ; return false ; }
+	std::string text ; text.resize((size_t)n) ;
+	int got=f->Read(&text[0],1,(int)n) ;
+	f->Close() ; delete f ;
+	if (got<=0) return false ;
+	text.resize((size_t)got) ;
+	size_t pos=0 ;
+	while (pos<text.size()) {
+		size_t eol=text.find('\n',pos) ;
+		if (eol==std::string::npos) eol=text.size() ;
+		std::string line=text.substr(pos,eol-pos) ;
+		pos=eol+1 ;
+		if (!line.empty()&&line[line.size()-1]=='\r')
+			line.erase(line.size()-1) ;
+		size_t eq=line.find('=') ;
+		if (eq==std::string::npos||eq==0) continue ;
+		std::string key=line.substr(0,eq) ;
+		if (excluded(key.c_str())) continue ;
+		out.push_back(std::make_pair(key,line.substr(eq+1))) ;
+	}
+	return !out.empty() ;
+}
+
 bool Load(int i, I_Instrument *instr) {
 	if (!instr||i<0||i>=(int)names_.size()) return false ;
 	Path dir("bin:presets") ;

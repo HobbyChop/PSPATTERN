@@ -1,3 +1,29 @@
+PSPATTERN 0.21.0a
+
+    The rock-solid release. A thirty-two-agent audit hunted every way
+        playback could drop out, stall or die; seventeen confirmed
+        findings, seventeen fixed. Among them: a tempo nudge that
+        could corrupt memory inside the audio callback below 22 BPM;
+        a lock-ordering flaw that could hang the machine for good if
+        you browsed presets while a song played; the project save
+        starving the audio for up to two seconds; and a sample
+        command that could spin the render thread forever. Saving
+        now asks the transport to stop first. Everything that
+        touches the Memory Stick from the interface -- preset loads
+        and saves, config writes, sample previews, the debug log --
+        now runs where the audio thread never waits on it.
+
+    The send bus grew a real safety margin: its wet ring is four
+        times deeper, rebuilds its own cushion after a late block
+        instead of staying wounded for the rest of the take, and
+        crossing between the two processors (a suspend, a very slow
+        tempo) starts the delay clean instead of replaying ghosts.
+
+    A vfpu row in the info panel: the share of the render spent in
+        vector code, so you can watch the coprocessor earn its keep.
+        And the FM engine is selectable out of the box now -- the
+        dsp figure shows its cost, which beats forbidding it.
+
 PSPATTERN 0.20.0a
 
     The dead knobs live. duck, gate and comp on the FX screen have

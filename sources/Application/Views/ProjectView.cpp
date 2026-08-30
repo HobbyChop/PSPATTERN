@@ -136,6 +136,8 @@ ProjectView::ProjectView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 
     lastClock_ = 0;
     lastTick_ = 0;
+    pendingAction_ = 0;
+    pendingPurgeDisk_ = false;
 
 	project_=data->project_ ;
 
@@ -360,18 +362,16 @@ void ProjectView::Update(Observable &,I_ObservableData *data) {
 #endif
 
     UIField *focus = GetFocus();
-    if (fourcc!= ACTION_TEMPO_CHANGED) {
-		focus->ClearFocus() ;
-		focus->Draw(w_) ;
-		w_.Flush() ;
-		focus->SetFocus() ;
-	} else {
+    // the old unfocus-blink drew AND PRESENTED here -- a vblank wait
+    // (up to ~17ms) under the input path's mixer lock, per press. The
+    // ordinary redraw covers the visual.
+    if (fourcc == ACTION_TEMPO_CHANGED) {
 		focus=tempoField_ ;
 	}
     Player *player = Player::GetInstance();
     switch (fourcc) {
 		case ACTION_PURGE:
-			project_->Purge() ;
+			pendingAction_=ACTION_PURGE ;   // runs in ApplyDeferred
 			break ;
 		case ACTION_PURGE_INSTRUMENT:
 		{
@@ -381,27 +381,22 @@ void ProjectView::Update(Observable &,I_ObservableData *data) {
 			break ;
 		}
         case ACTION_SAVE: {
-            MixerService::GetInstance()->SetRenderMode(0);
-            PersistencyService *service = PersistencyService::GetInstance();
-            // saving used to be completely silent -- a full or removed
-            // Memory Stick looked exactly like success
-            if (service->Save()) {
-                View::SetNotification("song saved");
-                // the recovery file is only interesting while there is
-                // something unsaved to recover
-                ViewEvent ve(VET_PROJECT_SAVED);
-                SetChanged();
-                NotifyObservers(&ve);
-            } else {
-                View::SetNotification("SAVE FAILED - check the memory stick");
+            // a full save is up to seconds of Memory Stick I/O: never
+            // under the mixer lock (this notify runs inside it), and
+            // never while the render is live at all
+            if (player->IsRunning()) {
+                View::SetNotification("stop playback to save");
+                break;
             }
+            pendingAction_=ACTION_SAVE ;
             break;
         }
         case ACTION_SAVE_AS: {
-            PersistencyService *service = PersistencyService::GetInstance();
-            service->Save("project:lgptsav_tmp.dat");
-            NewProjectDialog *mb = new NewProjectDialog(*this, "root:");
-            DoModal(mb, SaveAsProjectCallback);
+            if (player->IsRunning()) {
+                View::SetNotification("stop playback to save");
+                break;
+            }
+            pendingAction_=ACTION_SAVE_AS ;   // tmp save + dialog, deferred
             break;
         }
         case ACTION_LOAD: {
@@ -427,7 +422,50 @@ void ProjectView::Update(Observable &,I_ObservableData *data) {
 } ;
 
 void ProjectView::OnPurgeInstruments(bool removeFromDisk) {
-	project_->PurgeInstruments(removeFromDisk) ;
+	// modal callback: still inside the input path's lock, so the disk
+	// walk waits for ApplyDeferred
+	pendingPurgeDisk_=removeFromDisk ;
+	pendingAction_=ACTION_PURGE_INSTRUMENT ;
+} ;
+
+void ProjectView::ApplyDeferred() {
+	FieldView::ApplyDeferred() ;
+	if (!pendingAction_) return ;
+	int a=pendingAction_ ;
+	pendingAction_=0 ;
+	switch (a) {
+	case ACTION_PURGE:
+		project_->Purge() ;
+		break ;
+	case ACTION_PURGE_INSTRUMENT:
+		project_->PurgeInstruments(pendingPurgeDisk_) ;
+		break ;
+	case ACTION_SAVE: {
+		MixerService::GetInstance()->SetRenderMode(0);
+		PersistencyService *service = PersistencyService::GetInstance();
+		// saving used to be completely silent -- a full or removed
+		// Memory Stick looked exactly like success
+		if (service->Save()) {
+			View::SetNotification("song saved");
+			// the recovery file is only interesting while there is
+			// something unsaved to recover
+			ViewEvent ve(VET_PROJECT_SAVED);
+			SetChanged();
+			NotifyObservers(&ve);
+		} else {
+			View::SetNotification("SAVE FAILED - check the memory stick");
+		}
+		break;
+	}
+	case ACTION_SAVE_AS: {
+		PersistencyService *service = PersistencyService::GetInstance();
+		service->Save("project:lgptsav_tmp.dat");
+		NewProjectDialog *mb = new NewProjectDialog(*this, "root:");
+		DoModal(mb, SaveAsProjectCallback);
+		break;
+	}
+	}
+	isDirty_=true ;
 } ;
 
 void ProjectView::OnLoadProject() {

@@ -50,6 +50,17 @@ namespace AudioStats {
 	   tail. */
 	int QuietMs() ;
 
+	/* "Share of the render spent in vector code": the VFPU has no
+	   utilization counter -- it lives inside the main pipeline -- so
+	   this is the honest substitute: the timed sections that take the
+	   VFPU paths (the VOX formant bank, the master EQ), as a percent
+	   of the same realtime budget dsp uses. A subset of dsp by
+	   construction, shown because watching the coprocessor work is
+	   half the fun of knowing it exists. */
+	unsigned int Micros() ;
+	void AddVfpuMicros(unsigned int us) ;
+	int GetVfpuPercent() ;
+
 	// UI side
 	int GetDspPercent() ;
 

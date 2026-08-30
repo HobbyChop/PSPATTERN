@@ -40,9 +40,16 @@ static unsigned int excluded_=0 ;
 
 void ExcludeMicros(unsigned int us) { excluded_+=us ; }
 
+static unsigned int vfpuUs_=0 ;
+static volatile int vfpuPct_=0 ;
+unsigned int Micros() { return statsMicros() ; }
+void AddVfpuMicros(unsigned int us) { vfpuUs_+=us ; }
+int GetVfpuPercent() { return vfpuPct_ ; }
+
 void BeginBlock() {
 	blockStart_=statsMicros() ;
 	excluded_=0 ;
+	vfpuUs_=0 ;
 }
 
 #if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
@@ -68,6 +75,9 @@ void EndBlock(short *buf,int frames,bool interlaced) {
 		int pct=(int)(spent*100u/budget) ;
 		if (pct>999) pct=999 ;
 		dspPercent_=(dspPercent_*7+pct)>>3 ;
+		int vp=(int)(vfpuUs_*100u/budget) ;
+		if (vp>99) vp=99 ;
+		vfpuPct_=(vfpuPct_*7+vp)>>3 ;
 		// Held, then allowed to fall slowly. Held so a spike can be
 		// read by somebody looking at the screen a moment later;
 		// falling so it does not stay stuck on one bad block from a

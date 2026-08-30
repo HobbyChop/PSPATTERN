@@ -218,8 +218,19 @@ int Project::GetMidiSync() {
 }
 
 void Project::NudgeTempo(int value) {
-	if((GetTempo() + tempoNudge_) > 0)
-		tempoNudge_ += value;
+	/* The old guard double-counted the nudge (GetTempo already includes
+	   it) and only required the result to be positive -- so a held
+	   nudge-down at a slow tempo pushed the EFFECTIVE tempo far below
+	   the 30 floor SetTempo enforces, and below 22 BPM a slice
+	   outgrows the audio driver's buffers. Clamp the effective result
+	   to the same range the tempo field itself allows. */
+	Variable *v=FindVariable(VAR_TEMPO) ;
+	NAssert(v) ;
+	int base=v->GetInt() ;
+	int next=base+tempoNudge_+value ;
+	if (next<30) value=30-base-tempoNudge_ ;
+	if (next>400) value=400-base-tempoNudge_ ;
+	tempoNudge_+=value ;
 } ;
 
 void Project::Trigger() {

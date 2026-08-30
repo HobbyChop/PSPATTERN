@@ -1,4 +1,5 @@
 #include "AudioFileStreamer.h"
+#include "Application/Mixer/MixerService.h"
 #include "Application/Utils/fixed.h"
 #include "System/Console/Trace.h"
 #include "Application/Model/Config.h"
@@ -16,12 +17,27 @@ AudioFileStreamer::~AudioFileStreamer() {
  
 bool AudioFileStreamer::Start(const Path &path) {
   Trace::Debug("Starting to stream %s",path.GetPath().c_str());
-	path_=path ;
 	const char *shift=Config::GetInstance()->GetValue("PRELISTENATTENUATION") ;
 	shift_=(shift)?atoi(shift):1 ;
-  Trace::Debug("Streaming shift is %d",shift_);
-	newPath_=true ;
+	// open HERE, on the caller's thread, not lazily inside the render:
+	// a FAT open is tens of ms and used to be the render thread's
+	// problem, one guaranteed hiccup per file browsed. The caller runs
+	// deferred and unlocked; only the pointer swap takes the mixer
+	// lock the render cares about.
+	WavFile *w=WavFile::Open(path.GetPath().c_str()) ;
+	if (!w) {
+		Trace::Error("Failed to open %s for preview",path.GetPath().c_str()) ;
+		return false ;
+	}
+	MixerService *ms=MixerService::GetInstance() ;
+	ms->Lock() ;
+	SAFE_DELETE(wav_) ;
+	wav_=w ;
+	position_=0 ;
+	path_=path ;
+	newPath_=false ;
 	mode_=AFSM_PLAYING ;
+	ms->Unlock() ;
 	return true ;
 } ;
 

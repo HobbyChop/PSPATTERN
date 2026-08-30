@@ -36,7 +36,10 @@ void SyncMaster::SetTempo(int tempo) {
 }  ;
 
 void SyncMaster::SetTempoFine(float tempo) {
-	if (tempo<1.0f) tempo=1.0f ;
+	// 23 BPM floor: 110250/23 frames is the largest slice the audio
+	// driver's fixed buffers hold. An external MIDI clock crawling
+	// below that must not size a slice past them.
+	if (tempo<23.0f) tempo=23.0f ;
 	fineTempo_=tempo ;
 	// what the screen and everything else reads, still whole
 	tempo_=int(tempo+0.5f) ;

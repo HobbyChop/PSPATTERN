@@ -58,6 +58,8 @@ InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):FieldView(w,data),
 	presetUndoValid_=false ;
 	presetRestorePending_=false ;
 	presetApplying_=false ;
+	presetSavePending_=false ;
+	presetSaveName_[0]=0 ;
 	SynthPresets::Scan() ;
 	typeVar_.AddObserver(*this) ;
 	slotVar_.AddObserver(*this) ;
@@ -387,11 +389,12 @@ void InstrumentView::fillSynthParameters() {
 	// engine pills under the type row
 	GUIPoint pos(6,3) ;
 	Variable *v=instrument->FindVariable(SYP_ENGINE) ;
-	// FM is the CPU-hungriest engine, hidden from the picker unless
-	// config opts in (FM_ENGINE=YES). An instrument already set to FM
-	// still shows it and plays; you just cannot newly select it.
+	// FM is the CPU-hungriest engine; FM_ENGINE=NO hides it from the
+	// picker for anyone who wants the guard rail back. Selectable by
+	// default -- the dsp meter is on every screen now, so the cost is
+	// visible instead of forbidden. Saved FM instruments always play.
 	const char *fmCfg=Config::GetInstance()->GetValue("FM_ENGINE") ;
-	bool fmEnabled=(fmCfg && fmCfg[0]=='Y') ;
+	bool fmEnabled=!(fmCfg && (fmCfg[0]=='N'||fmCfg[0]=='n')) ;
 	UIPillField *pf=new UIPillField(pos,*v,"engine ",SET_LAST,
 	                                fmEnabled?-1:SET_FM) ;
 	T_SimpleList<UIField>::Insert(pf) ;
@@ -813,7 +816,7 @@ void InstrumentView::cycleEngine(int step) {
 	Variable *v=instr->FindVariable(SYP_ENGINE) ;
 	if (!v) return ;
 	const char *fmCfg=Config::GetInstance()->GetValue("FM_ENGINE") ;
-	bool fmEnabled=(fmCfg && fmCfg[0]=='Y') ;
+	bool fmEnabled=!(fmCfg && (fmCfg[0]=='N'||fmCfg[0]=='n')) ;
 	int e=v->GetInt()+step ;
 	if (!fmEnabled && e==SET_FM) e+=step ;   // skip the hidden engine
 	if (e<0||e>=SET_LAST) return ;           // ends stop, no wrap
@@ -850,24 +853,11 @@ void InstrumentView::checkPresetStep() {
 } ;
 
 void InstrumentView::OnSavePreset(const char *name) {
-	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
-	I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
-	if (!instr||instr->GetType()!=IT_SYNTH) return ;
-	if (!SynthPresets::Save(name,instr)) {
-		View::SetNotification("preset save failed") ;
-		return ;
-	}
-	SynthPresets::Scan() ;
-	// land the row on the saved name so the label confirms the save
-	presetShown_=0 ;
-	for (int pi=0;pi<SynthPresets::Count();pi++) {
-		if (!strcmp(SynthPresets::Name(pi),name)) { presetShown_=pi+1 ; break ; }
-	}
-	lastFocusID_=IVP_PRESET ;
-	rebuildPending_=true ;   // modal callback: same deferred discipline
-	char msg[40] ;
-	snprintf(msg,sizeof(msg),"saved preset %s",name) ;
-	View::SetNotification(msg) ;
+	// the modal callback runs inside the input path's mixer lock; the
+	// stick write happens in ApplyDeferred, outside every lock
+	strncpy(presetSaveName_,name,sizeof(presetSaveName_)-1) ;
+	presetSaveName_[sizeof(presetSaveName_)-1]=0 ;
+	presetSavePending_=true ;
 	isDirty_=true ;
 } ;
 
@@ -1204,10 +1194,40 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 
 } ;
 
-void InstrumentView::DrawView() {
+/* The deferred rebuild/type-swap/preset work. Runs on the main thread
+   with no field method on the stack (the original deferral reasons)
+   AND outside drawMutex_ (the deadlock reason it moved out of
+   DrawView: these branches take the mixer lock, and the render thread
+   takes sync_ then drawMutex_ every block). */
+void InstrumentView::ApplyDeferred() {
 
-	// deferred rebuild/type-swap from Update: safe here -- the main
-	// thread, no field method on the stack, no notify walk in flight
+	FieldView::ApplyDeferred() ;
+
+	if (presetSavePending_) {
+		presetSavePending_=false ;
+		InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+		I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
+		if (instr&&instr->GetType()==IT_SYNTH) {
+			if (SynthPresets::Save(presetSaveName_,instr)) {
+				SynthPresets::Scan() ;
+				presetShown_=0 ;
+				for (int pi=0;pi<SynthPresets::Count();pi++) {
+					if (!strcmp(SynthPresets::Name(pi),presetSaveName_)) {
+						presetShown_=pi+1 ; break ;
+					}
+				}
+				lastFocusID_=IVP_PRESET ;
+				rebuildPending_=true ;
+				char msg[40] ;
+				snprintf(msg,sizeof(msg),"saved preset %s",presetSaveName_) ;
+				View::SetNotification(msg) ;
+			} else {
+				View::SetNotification("preset save failed") ;
+			}
+		}
+		isDirty_=true ;
+	}
+
 	if (applyTypePending_) {
 		applyTypePending_=false ;
 		rebuildPending_=false ;
@@ -1220,18 +1240,21 @@ void InstrumentView::DrawView() {
 		InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
 		I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
 		if (instr&&instr->GetType()==IT_SYNTH) {
-			/* Serialize with the audio thread and silence any voice
-			   still rendering this object -- an engine flip under a
-			   sounding voice tears its state (the applyTypeChange
-			   lesson). The audition comes back via the retrigger
-			   below, on the finished sound. */
-			MixerService *ms=MixerService::GetInstance() ;
-			ms->Lock() ;
-			Player::GetInstance()->CutInstrument(instr) ;
-			presetApplying_=true ;
-			SynthPresets::Load(pendingPreset_,instr) ;
-			presetApplying_=false ;
-			ms->Unlock() ;
+			/* The FILE read happens before the lock: a Memory Stick
+			   open is tens of ms, and holding the mixer lock across it
+			   starved the render thread for the whole read. Only the
+			   parameter APPLY needs the lock (and the voice cut -- an
+			   engine flip under a sounding voice tears its state). */
+			SynthPresets::ParamSnapshot snap ;
+			if (SynthPresets::ReadPreset(pendingPreset_,snap)) {
+				MixerService *ms=MixerService::GetInstance() ;
+				ms->Lock() ;
+				Player::GetInstance()->CutInstrument(instr) ;
+				presetApplying_=true ;
+				SynthPresets::Restore(snap,instr) ;
+				presetApplying_=false ;
+				ms->Unlock() ;
+			}
 		}
 		rebuildPending_=false ;
 		lastFocusID_=IVP_PRESET ;
@@ -1265,6 +1288,9 @@ void InstrumentView::DrawView() {
 		rebuildPending_=false ;
 		onInstrumentChange() ;
 	}
+}
+
+void InstrumentView::DrawView() {
 
 	Clear() ;
     View::EnableNotification();

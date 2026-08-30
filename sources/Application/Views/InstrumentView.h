@@ -14,6 +14,7 @@ class SynthInstrument ;
 class InstrumentView: public FieldView, public I_Observer {
 public:
 	void OnSavePreset(const char *name) ;   // modal save-dialog callback
+	virtual void ApplyDeferred() ;
 	InstrumentView(GUIWindow &w,ViewData *data) ;
 	virtual ~InstrumentView() ;
 
@@ -98,5 +99,7 @@ private:
 	   sit out the burst (no per-notify retrigger, no queued rebuild)
 	   because the deferred branch does both, once, afterwards */
 	bool presetApplying_ ;
+	char presetSaveName_[16] ;   // pending save, written outside the locks
+	bool presetSavePending_ ;
 } ;
 #endif

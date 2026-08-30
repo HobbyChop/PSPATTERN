@@ -8,6 +8,14 @@
 
 class ProjectView: public FieldView,public I_Observer {
 public:
+	virtual void ApplyDeferred() ;
+private:
+	// heavy actions (save, purge) queue here from the notify -- which
+	// runs inside the input path's mixer lock -- and execute in
+	// ApplyDeferred, outside every lock the render thread needs
+	int pendingAction_ ;
+	bool pendingPurgeDisk_ ;
+public:
 	ProjectView(GUIWindow &w,ViewData *data) ;
 	virtual ~ProjectView() ;
 

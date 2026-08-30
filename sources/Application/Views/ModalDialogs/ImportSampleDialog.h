@@ -15,6 +15,7 @@ public:
 	virtual void OnPlayerUpdate(PlayerEventType ,unsigned int currentTick) ;
 	virtual void OnFocus() ;
 	virtual void ProcessButtonMask(unsigned short mask,bool pressed) ;
+	virtual void ApplyDeferred() ;
 
 protected:
 	void setCurrentFolder(Path *path) ;
@@ -34,6 +35,10 @@ private:
 	static bool initStatic_ ;
 	static Path sampleLib_ ;
 	static Path currentPath_ ;
+	// preview queued from the press (inside the input lock), started
+	// from ApplyDeferred (outside it)
+	Path pendingPreview_ ;
+	bool previewPending_ ;
 
 } ;
 

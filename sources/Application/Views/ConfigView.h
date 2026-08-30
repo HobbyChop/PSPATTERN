@@ -36,6 +36,14 @@ private:
 	Setting settings_[MAX_SETTINGS] ;
 	int count_ ;
 	bool rebootPending_ ;
+public:
+	/* config.xml is written HERE, from AppWindow's pre-redraw hook,
+	   never inside the input path's mixer lock where commit() runs */
+	static void CommitPendingToDisk() ;
+private:
+	static bool s_diskPending_ ;
+public:
+private:
 	int themeApplied_ ;   // last theme index applied live
 
 	// build one setting row: a CHAR_LIST (enum) or an INT (number)

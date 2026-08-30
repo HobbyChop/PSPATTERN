@@ -17,6 +17,7 @@ static const char *buttonText[3]= {
 } ;
 
 ImportSampleDialog::ImportSampleDialog(View &view):ModalView(view) {
+	previewPending_=false ;
 	if (!initStatic_) {
 		const char *slpath=SamplePool::GetInstance()->GetSampleLib() ;
 		sampleLib_=Path(slpath) ;
@@ -118,7 +119,17 @@ void ImportSampleDialog::OnFocus() {
 } ;
 
 void ImportSampleDialog::preview(Path &element) {
-	Player::GetInstance()->StartStreaming(element) ;
+	// queued: the press arrives inside the input path's mixer lock,
+	// and starting a stream now opens a file -- ApplyDeferred runs it
+	// outside every lock the render needs
+	pendingPreview_=element ;
+	previewPending_=true ;
+}
+
+void ImportSampleDialog::ApplyDeferred() {
+	if (!previewPending_) return ;
+	previewPending_=false ;
+	Player::GetInstance()->StartStreaming(pendingPreview_) ;
 }
 
 void ImportSampleDialog::endPreview() {
