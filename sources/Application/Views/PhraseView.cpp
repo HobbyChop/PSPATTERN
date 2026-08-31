@@ -927,15 +927,8 @@ void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
             // If note or I, we request a new instr
 
             if (col_ < 2) {
-                InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
-                unsigned short next = bank->GetNext();
-                if (next != NO_MORE_INSTRUMENT) {
-                    unsigned char *c = phrase_->instr_ +
-                                       (16 * viewData_->currentPhrase_ + row_);
-                    *c = (unsigned char)next;
-                    lastInstr_ = next;
-                    isDirty_ = true;
-                }
+                // note/instrument columns no longer arm VM_NEW at
+                // all; nothing to do if we somehow arrive here
                 mask &= (0xFFFF - EPBM_A);
             } else {
                 if ((col_ == 4) &&
@@ -1076,7 +1069,9 @@ void PhraseView::processNormalButtonMask(unsigned short mask) {
         // A Modifer
 
         if (mask & EPBM_A) {
-            if ((col_ == 0) || (col_ == 1)) { // Preview when pressing A
+            if (col_ == 0) { // Preview when pressing A: the note column
+                // is the sound; the instrument column is plumbing, and
+                // playing the row on every O there was asked to stop
                 Player *player = Player::GetInstance();
                 if (!player->IsRunning()) {
                     player->OnStartButton(PM_AUDITION, viewData_->songX_, false,
@@ -1105,8 +1100,15 @@ void PhraseView::processNormalButtonMask(unsigned short mask) {
             if (mask & EPBM_L)
                 switchSoloMode();
             if (mask == EPBM_A) {
+                /* O on the instrument column is just SET: empty cell
+                   takes the last instrument, full cell becomes the
+                   last. The second-press new-instrument gesture is
+                   gone from here -- new instruments are made on the
+                   instrument screen. The arming stays only for the
+                   TBL command params, where second-O allocating a
+                   fresh table is still the quickest way to one. */
                 pasteLast();
-                if ((col_ == 1) || (col_ == 4) || (col_ == 6))
+                if ((col_ == 4) || (col_ == 6))
                     viewMode_ = VM_NEW;
             }
 
@@ -1781,10 +1783,15 @@ void PhraseView::OnNavTo(ViewType to) {
         if (c1 == I_CMD_TABL) t = p1 & 0x7F;
         else if (c2 == I_CMD_TABL) t = p2 & 0x7F;
         else {
+            /* same resolution playback uses: the instrument on this
+               row, else the nearest one above -- phrases name the
+               instrument once at the top and leave the column empty
+               below, and rows 1..15 deserve the same landing as row 0 */
             unsigned char *ip = phrase_->instr_ + base;
-            if (*ip != 0xFF) {
+            int which = (*ip != 0xFF) ? *ip : findClosestInstrumentFor(row_);
+            if (which >= 0) {
                 I_Instrument *instr =
-                    viewData_->project_->GetInstrumentBank()->GetInstrument(*ip);
+                    viewData_->project_->GetInstrumentBank()->GetInstrument(which);
                 if (instr) t = instr->GetTable();
             }
         }

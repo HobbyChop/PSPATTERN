@@ -1,3 +1,18 @@
+PSPATTERN 0.25.2a
+
+    O on the instrument column is plain SET. An invisible second-press
+        gesture used to replace an established instrument with a
+        freshly allocated blank one -- the note kept sounding through
+        a different, empty sound, and nothing said why. Empty cell
+        takes the last instrument, full cell becomes the last, and
+        that is all. Pressing O there no longer auditions the row
+        either; preview-on-press belongs to the note column.
+
+    The phrase-to-table jump resolves like playback: a TBL command on
+        the cursor's row wins, else the governing instrument's table
+        -- the instrument on the row or the nearest one above, the
+        same search playback uses -- else the screen stays put.
+
 PSPATTERN 0.25.1a
 
     The table jump follows from both map tiles. The table editor owns
