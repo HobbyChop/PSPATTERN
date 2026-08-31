@@ -1,3 +1,25 @@
+PSPATTERN 0.25.3a
+
+    The dying d-pad is cured. Lose one button-release event -- a
+        momentarily full event queue is enough -- and the program
+        believed that button was held forever: a phantom SELECT sent
+        every arrow into the bookmark branch, a phantom R into the
+        screen map, a phantom O into value edits. Controls dead for
+        seconds while the song played on, on any screen, until the
+        stuck button happened to be pressed again. The held-button
+        state is now checked against the pad itself, one button at a
+        time, and a phantom is dropped after ~190ms of the hardware
+        saying "up" -- no synthetic events, nothing a real chord can
+        trip over. All ten buttons covered.
+
+    Cycling an effect type no longer replays the row; preview-on-
+        press belongs to the note column.
+
+    START works on the FX screen.
+
+    The table screen follows what sent you there, from the instrument
+        screen and the phrase screen alike, on both map tiles.
+
 PSPATTERN 0.25.2a
 
     O on the instrument column is plain SET. An invisible second-press

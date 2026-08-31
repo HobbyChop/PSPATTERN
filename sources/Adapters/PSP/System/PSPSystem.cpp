@@ -171,6 +171,40 @@ void PSPSystem::Boot(int argc,char **argv) {
 
 } ;
 
+/* Which of the UNAMBIGUOUS buttons the pad says are NOT pressed right
+   now: d-pad, shoulders, START, SELECT. The face buttons are left out
+   -- their EPBM mapping depends on the O/X swap setting, and the
+   stuck-mask cure only needs the buttons whose phantoms actually eat
+   input (a stale SELECT sends every arrow into the bookmark branch, a
+   stale R into the nav map). Returns 0 when the pad cannot be read,
+   which callers must treat as "know nothing". */
+unsigned short PSPSystem::GetPadUpBits() {
+	SceCtrlData pad ;
+	if (sceCtrlPeekBufferPositive(&pad,1)<=0) return 0 ;
+	/* literals, not the EPBM enum: that lives in the view layer and
+	   this file must not reach up into it. Values match
+	   GUIEventPadButtonMasks in View.h -- LEFT 1, DOWN 2, RIGHT 4,
+	   UP 8, L 16, R 128, START 256, SELECT 512. */
+	unsigned short up=0 ;
+	if (!(pad.Buttons&PSP_CTRL_LEFT))     up|=1 ;
+	if (!(pad.Buttons&PSP_CTRL_DOWN))     up|=2 ;
+	if (!(pad.Buttons&PSP_CTRL_RIGHT))    up|=4 ;
+	if (!(pad.Buttons&PSP_CTRL_UP))       up|=8 ;
+	if (!(pad.Buttons&PSP_CTRL_LTRIGGER)) up|=16 ;
+	if (!(pad.Buttons&PSP_CTRL_RTRIGGER)) up|=128 ;
+	if (!(pad.Buttons&PSP_CTRL_START))    up|=256 ;
+	if (!(pad.Buttons&PSP_CTRL_SELECT))   up|=512 ;
+	/* the face buttons' EPBM mapping depends on the O/X swap setting,
+	   so no single button can be judged -- but if NONE of the four is
+	   pressed, then A and B are both provably up whatever the mapping
+	   says. A phantom A turns arrows into edits; a phantom B into
+	   page jumps; both are worth curing. */
+	if (!(pad.Buttons&(PSP_CTRL_TRIANGLE|PSP_CTRL_CIRCLE|
+	                   PSP_CTRL_CROSS|PSP_CTRL_SQUARE)))
+		up|=(32|64) ;   // EPBM_B | EPBM_A
+	return up ;
+}
+
 int PSPSystem::GetBatteryLevel() {
 	// polled every UI frame by the song view's side panel; a battery
 	// figure does not move at 60Hz, so answer from a 2s cache and save

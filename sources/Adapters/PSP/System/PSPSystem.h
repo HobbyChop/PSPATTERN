@@ -24,6 +24,7 @@ public: // System implementation
 	virtual void PostQuitMessage() ;
 	virtual unsigned int GetMemoryUsage() ;
 	virtual unsigned int GetMemoryFree() ;
+	virtual unsigned short GetPadUpBits() ;
 	
 	static bool finished_ ;
 private:

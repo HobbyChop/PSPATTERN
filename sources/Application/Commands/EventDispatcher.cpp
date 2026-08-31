@@ -124,6 +124,14 @@ void EventDispatcher::Execute(FourCC id,float value) {
 	} ;
 };
 
+void EventDispatcher::ClearMaskBits(unsigned short mask) {
+	eventMask_&=~mask ;
+	if (repeatArmed_&&!(eventMask_&repeatMask_)) {
+		timer_->Stop() ;
+		repeatArmed_=false ;
+	}
+}
+
 void EventDispatcher::SetWindow(GUIWindow *window) {
 	window_=window ;
 } ;

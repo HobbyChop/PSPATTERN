@@ -280,6 +280,46 @@ int AppWindow::uiFrameMs_ = 16;   // 62.5Hz; the PSP LCD does ~60
    main thread like any keypress. Direct polling rather than SDL axis
    events: the PSP port's delivery of those proved unreliable. */
 void AppWindow::uiTick() {
+
+    /* THE STUCK-MASK CURE, done narrowly this time.
+
+       Every gesture reads _mask, the buttons the EVENT STREAM says
+       are held. Lose one release -- a full SDL queue is enough --
+       and that button is held forever as far as the program knows.
+       A phantom SELECT sends every arrow into the bookmark branch, a
+       phantom R into the nav map: the d-pad goes dead while the
+       screen and the song play on, which is exactly the reported
+       shape. Pressing the stuck button again cures it, which is why
+       it always "came back later".
+
+       The first attempt cleared the whole mask the moment the pad
+       read empty and synthesised a release; the pad reads empty for
+       a moment during ordinary chords, so it broke L and was backed
+       out. This one clears ONE BIT at a time, only for the buttons
+       whose phantoms eat input (d-pad, L, R, START, SELECT), only
+       after the hardware has said "up" for 12 consecutive ticks
+       (~190ms -- longer than any bounce, shorter than a player's
+       patience), and synthesises nothing: the dispatcher's own mask
+       is corrected too, so phantom repeats stop with it. */
+    {
+        static unsigned short upTicks[10];
+        unsigned short hwUp = System::GetInstance()->GetPadUpBits();
+        unsigned short suspect = _mask & hwUp;
+        for (int b = 0; b < 10; b++) {
+            unsigned short bit = (unsigned short)(1 << b);
+            if (suspect & bit) {
+                if (++upTicks[b] >= 12) {
+                    Trace::Log("INPUT", "clearing stuck bit %03x", bit);
+                    _mask &= ~bit;
+                    EventDispatcher::GetInstance()->ClearMaskBits(bit);
+                    upTicks[b] = 0;
+                }
+            } else {
+                upTicks[b] = 0;
+            }
+        }
+    }
+
     int ax, ay;
     if (System::GetInstance()->GetAnalog(ax, ay)) {
         /* Two stick behaviours, picked by whether O is down.

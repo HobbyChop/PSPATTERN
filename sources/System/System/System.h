@@ -26,6 +26,10 @@ public: // Override in implementation
 	   where there is none (desktop) -- the nub is a PSP browse control
 	   (instrument type/engine flicks), polled by the UI ticker. */
 	virtual bool GetAnalog(int &x,int &y) { return false ; }
+	/* which of the d-pad/shoulder/start/select buttons the pad says
+	   are UP right now, in the view layer's mask numbering; 0 = the
+	   platform cannot answer. The stuck-mask cure asks it. */
+	virtual unsigned short GetPadUpBits() { return 0 ; }
 	virtual int GetBatteryLevel()=0 ;
 	virtual void *Malloc(unsigned size)=0 ;
 	virtual void Free(void *)=0 ;
