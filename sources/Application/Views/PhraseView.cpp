@@ -1766,7 +1766,7 @@ void PhraseView::drawTriggerTrail() {
 // nav-menu context prep: entering the instrument screen lands on the
 // instrument under the cursor (or the nearest one), as the old drill did
 void PhraseView::OnNavTo(ViewType to) {
-    if (to == VT_TABLE) {
+    if (to == VT_TABLE || to == VT_TABLE2) {
         /* If the row under the cursor carries a TBL command, jumping
            to the table screen means THAT table. Either command column
            counts; the first one wins. Otherwise the instrument's own

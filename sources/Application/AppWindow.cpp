@@ -2056,11 +2056,14 @@ ViewType AppWindow::currentViewType() {
    names the chain, the chain's row names the phrase. */
 void AppWindow::navPrep(ViewType from, ViewType to) {
     if (from == VT_SONG &&
-        (to == VT_PHRASE || to == VT_INSTRUMENT || to == VT_TABLE)) {
+        (to == VT_PHRASE || to == VT_INSTRUMENT ||
+         to == VT_TABLE || to == VT_TABLE2)) {
         if (_songView)  _songView->OnNavTo(VT_CHAIN);
         if (_chainView) _chainView->OnNavTo(VT_PHRASE);
         if (to == VT_INSTRUMENT && _phraseView)
             _phraseView->OnNavTo(VT_INSTRUMENT);
+        if ((to == VT_TABLE || to == VT_TABLE2) && _phraseView)
+            _phraseView->OnNavTo(to);   // TBL cmd, else instrument's table
         return;
     }
     if (from == VT_CHAIN && to == VT_INSTRUMENT) {

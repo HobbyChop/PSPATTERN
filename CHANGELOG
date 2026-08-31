@@ -1,3 +1,13 @@
+PSPATTERN 0.25.1a
+
+    The table jump follows from both map tiles. The table editor owns
+        two cells of the screen map, and the follow-the-instrument
+        coupling checked only the first -- arrive on the other and
+        the jump showed whatever table was last open. Both couple
+        now, from the instrument screen (its own table row), the
+        phrase screen (the TBL command under the cursor, else the
+        row's instrument), and the deep jump from the song screen.
+
 PSPATTERN 0.25.0a
 
     The stability release. A week of tester sessions traced every

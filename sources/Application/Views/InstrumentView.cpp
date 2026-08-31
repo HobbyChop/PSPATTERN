@@ -920,7 +920,9 @@ void InstrumentView::OnNubFlick(int dir, unsigned short mask) {
 } ;
 
 void InstrumentView::OnNavTo(ViewType to) {
-	if (to==VT_TABLE) {
+	// the table editor owns TWO tiles on the map (VT_TABLE/VT_TABLE2);
+	// arriving on either one means this instrument's table
+	if (to==VT_TABLE||to==VT_TABLE2) {
 		/* Jumping to the table screen from here means THIS
 		   instrument's table -- the one its table row names -- not
 		   whichever table was looked at last. Same coupling the song
