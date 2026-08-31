@@ -537,6 +537,54 @@ bool AppWindow::navMove(int dx, int dy) {
     return false;
 }
 
+bool AppWindow::navReachable(ViewType to) {
+    if (!_viewData) return true;
+    ViewType from = currentViewType();
+    if (to == from) return true;
+
+    // the chain screen's cursor row, of a given chain -- the same
+    // cell every real drill will read
+    Song *song = _viewData->song_;
+
+    if (from == VT_SONG) {
+        if (to == VT_PHRASE || to == VT_INSTRUMENT ||
+            to == VT_TABLE || to == VT_TABLE2) {
+            unsigned char cell = *_viewData->GetCurrentSongPointer();
+            // an empty slot's drill CREATES its chain -- born empty,
+            // so nothing below it is reachable yet
+            if (cell == 0xFF) return false;
+            unsigned char ph =
+                *(song->chain_->data_ + 16 * cell + _viewData->chainRow_);
+            if (ph == 0xFF) return false;
+            if (to == VT_TABLE || to == VT_TABLE2)
+                return _phraseView &&
+                       _phraseView->ResolveNavTable(ph) >= 0;
+        }
+        return true;
+    }
+    if (from == VT_CHAIN) {
+        if (to == VT_PHRASE || to == VT_INSTRUMENT)
+            return *_viewData->GetCurrentChainPointer() != 0xFF;
+        return true;
+    }
+    if (from == VT_PHRASE) {
+        if (to == VT_TABLE || to == VT_TABLE2)
+            return _phraseView &&
+                   _phraseView->ResolveNavTable(_viewData->currentPhrase_) >= 0;
+        return true;
+    }
+    if (from == VT_INSTRUMENT) {
+        if (to == VT_TABLE || to == VT_TABLE2) {
+            I_Instrument *instr =
+                _viewData->project_->GetInstrumentBank()->GetInstrument(
+                    _viewData->currentInstrument_);
+            return instr && instr->GetTable() >= 0;
+        }
+        return true;
+    }
+    return true;
+}
+
 void AppWindow::drawNavMap() {
 
     const MapCell *cells = navCells_;
@@ -582,8 +630,14 @@ void AppWindow::drawNavMap() {
     for (int i = 0; i < cellCount; i++) {
         const MapCell &c = cells[i];
         bool here = (c.type == current);
+        /* a destination the drill would refuse -- an empty chain row,
+           no table to follow -- draws dimmed, so the map says what is
+           reachable before you try. The refusal itself still stands
+           if you commit anyway: the grey is the warning, the refusal
+           is the law. */
+        bool ok = navReachable(c.type);
         props.invert_ = here;
-        SetColor(here ? CD_HILITE1 : CD_ROW2);
+        SetColor(here ? CD_HILITE1 : (ok ? CD_ROW2 : CD_ROW));
         pos._x = CX + c.col * COLW;
         pos._y = PY + 3 + c.row * 2;
         DrawString(c.name, pos, props);

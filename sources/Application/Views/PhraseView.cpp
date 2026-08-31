@@ -1779,42 +1779,38 @@ void PhraseView::drawTriggerTrail() {
 
 // nav-menu context prep: entering the instrument screen lands on the
 // instrument under the cursor (or the nearest one), as the old drill did
+int PhraseView::ResolveNavTable(int phraseNum) {
+    /* TBL command on the cursor's row first (either column), then the
+       governing instrument's table -- the instrument on the row or the
+       nearest one above, the same search playback uses. */
+    int base = 16 * phraseNum + row_;
+    uint c1 = *(phrase_->cmd1_ + base);
+    ushort p1 = *(phrase_->param1_ + base);
+    uint c2 = *(phrase_->cmd2_ + base);
+    ushort p2 = *(phrase_->param2_ + base);
+    int t = -1;
+    if (c1 == I_CMD_TABL) t = p1 & 0x7F;
+    else if (c2 == I_CMD_TABL) t = p2 & 0x7F;
+    else {
+        unsigned char *ip = phrase_->instr_ + base;
+        int which = (*ip != 0xFF) ? *ip : findClosestInstrumentFor(row_);
+        if (which >= 0) {
+            I_Instrument *instr =
+                viewData_->project_->GetInstrumentBank()->GetInstrument(which);
+            if (instr) t = instr->GetTable();
+        }
+    }
+    return (t >= 0 && t < TABLE_COUNT) ? t : -1;
+}
+
 bool PhraseView::OnNavTo(ViewType to) {
     if (to == VT_TABLE || to == VT_TABLE2) {
-        /* If the row under the cursor carries a TBL command, jumping
-           to the table screen means THAT table. Either command column
-           counts; the first one wins. Otherwise the instrument's own
-           table is the next best answer, and unset leaves the screen
-           where it was. */
-        int base = 16 * viewData_->currentPhrase_ + row_;
-        uint c1 = *(phrase_->cmd1_ + base);
-        ushort p1 = *(phrase_->param1_ + base);
-        uint c2 = *(phrase_->cmd2_ + base);
-        ushort p2 = *(phrase_->param2_ + base);
-        int t = -1;
-        if (c1 == I_CMD_TABL) t = p1 & 0x7F;
-        else if (c2 == I_CMD_TABL) t = p2 & 0x7F;
-        else {
-            /* same resolution playback uses: the instrument on this
-               row, else the nearest one above -- phrases name the
-               instrument once at the top and leave the column empty
-               below, and rows 1..15 deserve the same landing as row 0 */
-            unsigned char *ip = phrase_->instr_ + base;
-            int which = (*ip != 0xFF) ? *ip : findClosestInstrumentFor(row_);
-            if (which >= 0) {
-                I_Instrument *instr =
-                    viewData_->project_->GetInstrumentBank()->GetInstrument(which);
-                if (instr) t = instr->GetTable();
-            }
-        }
-        if (t >= 0 && t < TABLE_COUNT) {
-            viewData_->currentTable_ = t;
-        } else {
-            // no TBL on the row, and the governing instrument has no
-            // table either: nothing to follow, jump refused
+        int t = ResolveNavTable(viewData_->currentPhrase_);
+        if (t < 0) {
             View::SetNotification("no table here - add TBL or set one");
             return false;
         }
+        viewData_->currentTable_ = t;
     }
     if (to == VT_INSTRUMENT) {
         unsigned char *c = phrase_->instr_ +

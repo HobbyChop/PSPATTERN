@@ -15,6 +15,11 @@ class PhraseView : public View {
     ~PhraseView();
     virtual void ProcessButtonMask(unsigned short mask, bool pressed);
     virtual bool OnNavTo(ViewType to);
+    /* what a nav jump to the table screen would land on for the given
+       phrase at this view's cursor row: TBL command first, then the
+       governing instrument's table; -1 = nothing to follow. Pure --
+       the nav map asks it to grey unreachable tiles. */
+    int ResolveNavTable(int phraseNum);
 
     /* The fading trail behind the playhead. See the definition. */
     void drawTriggerTrail();

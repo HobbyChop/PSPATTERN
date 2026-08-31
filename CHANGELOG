@@ -1,3 +1,14 @@
+PSPATTERN 0.25.6a
+
+    The screen map greys what you cannot reach yet. A destination the
+        drill would refuse -- an empty chain row below the song
+        cursor, an instrument with no table set, a phrase row with no
+        TBL and no instrument table -- draws dimmed on the R menu, so
+        the map says what is reachable before you try. It follows the
+        cursor live, and the greying can never disagree with the
+        refusals because both ask the same logic. Committing onto a
+        dimmed tile still gets the refusal and its reason.
+
 PSPATTERN 0.25.5a
 
     Navigation tells the truth, the LSDJ way. A jump with nothing to

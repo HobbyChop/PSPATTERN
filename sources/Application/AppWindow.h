@@ -78,6 +78,10 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     // nav-map menu state: where the highlight sits while R is held
     bool navMove(int dx, int dy);
     ViewType navPrep(ViewType from, ViewType to);
+    // read-only twin of the navPrep/OnNavTo refusals: would a jump to
+    // `to` from the CURRENT view be allowed? The map greys what would
+    // refuse. Must mirror the veto logic and must not mutate.
+    bool navReachable(ViewType to);
     ViewType navSel_;
     bool navigating_;
     void CloseProject(bool showPicker = true);
