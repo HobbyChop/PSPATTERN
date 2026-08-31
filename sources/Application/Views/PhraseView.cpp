@@ -907,6 +907,18 @@ void PhraseView::OnFocus() {
 
 void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
+    /* SELECT+START plays the SONG from here -- the LSDJ chord, and
+       the answer to "let me hear this phrase in context without
+       hopping screens". Bare START keeps its local meaning (loop
+       what is being edited); the chord starts or stops full song
+       playback on the current position. */
+    if (pressed && (mask & EPBM_SELECT) && (mask & EPBM_START)) {
+        Player *p = Player::GetInstance();
+        unsigned char ch = viewData_->songX_;
+        p->OnStartButton(PM_SONG, ch, p->IsRunning(), ch);
+        return;
+    }
+
     if (!pressed) {
         if (viewMode_ == VM_MUTEON) {
             if (mask & EPBM_L) {
@@ -1767,7 +1779,7 @@ void PhraseView::drawTriggerTrail() {
 
 // nav-menu context prep: entering the instrument screen lands on the
 // instrument under the cursor (or the nearest one), as the old drill did
-void PhraseView::OnNavTo(ViewType to) {
+bool PhraseView::OnNavTo(ViewType to) {
     if (to == VT_TABLE || to == VT_TABLE2) {
         /* If the row under the cursor carries a TBL command, jumping
            to the table screen means THAT table. Either command column
@@ -1795,7 +1807,14 @@ void PhraseView::OnNavTo(ViewType to) {
                 if (instr) t = instr->GetTable();
             }
         }
-        if (t >= 0 && t < TABLE_COUNT) viewData_->currentTable_ = t;
+        if (t >= 0 && t < TABLE_COUNT) {
+            viewData_->currentTable_ = t;
+        } else {
+            // no TBL on the row, and the governing instrument has no
+            // table either: nothing to follow, jump refused
+            View::SetNotification("no table here - add TBL or set one");
+            return false;
+        }
     }
     if (to == VT_INSTRUMENT) {
         unsigned char *c = phrase_->instr_ +
@@ -1809,4 +1828,5 @@ void PhraseView::OnNavTo(ViewType to) {
             } else viewData_->currentInstrument_ = lastInstr_;
         }
     }
+    return true;
 }

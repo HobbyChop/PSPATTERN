@@ -27,6 +27,16 @@ unsigned short Chain::GetNext(int startAfter) {
 		int i=(startAfter>=0)?((startAfter+1+j)%CHAIN_COUNT):j ;
 		if (!isUsed_[i]) {
 			isUsed_[i]=true ;
+			/* A NEW chain is an EMPTY chain. Allocation only ever
+			   flipped the flag, so a number that had held rows -- a
+			   cut chain, one freed by compacting -- came back with
+			   yesterday's contents, and drilling into a fresh song
+			   slot landed on someone's old phrases. Clones copy over
+			   this immediately, so they lose nothing. */
+			for (int r=0;r<16;r++) {
+				data_[16*i+r]=0xFF ;
+				transpose_[16*i+r]=0 ;
+			}
 			return i ;
 		}
 	}

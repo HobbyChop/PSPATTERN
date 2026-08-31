@@ -77,7 +77,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     ViewType currentViewType();
     // nav-map menu state: where the highlight sits while R is held
     bool navMove(int dx, int dy);
-    void navPrep(ViewType from, ViewType to);
+    ViewType navPrep(ViewType from, ViewType to);
     ViewType navSel_;
     bool navigating_;
     void CloseProject(bool showPicker = true);

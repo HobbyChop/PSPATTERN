@@ -180,11 +180,30 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
 
     case PM_CHAIN:
     case PM_PHRASE: {
+        /* These modes play what the SCREEN shows, not what the song
+           grid happens to reference under the cursor. Resolution used
+           to run song cell -> chain -> row -> phrase, so starting a
+           phrase whose song cell was empty -- reached through the
+           map, or after editing numbers -- resolved to nothing and
+           the button appeared dead. The song position is still laid
+           down for context (so the displays agree about where you
+           are), and then the viewed chain or phrase is seeded on top,
+           explicitly. */
         int currentChannel = viewData_->songX_;
         mixer_->StartChannel(currentChannel);
-        ;
         int currentChainPos = viewData_->chainRow_;
         updateSongPos(playPos, currentChannel, currentChainPos);
+        if (viewData_->playMode_ == PM_CHAIN) {
+            viewData_->currentPlayChain_[currentChannel] =
+                viewData_->currentChain_;
+            mixer_->StartChannel(currentChannel);   // an empty cell above stopped it
+            updateChainPos(currentChainPos, currentChannel, -1);
+        } else {
+            viewData_->currentPlayPhrase_[currentChannel] =
+                viewData_->currentPhrase_;
+            mixer_->StartChannel(currentChannel);
+            updatePhrasePos(0, currentChannel);
+        }
     } break;
     case PM_AUDITION: {
 	    int currentChannel = viewData_->songX_;

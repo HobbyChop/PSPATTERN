@@ -386,6 +386,18 @@ void ChainView::switchSoloMode() {
 
 void ChainView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
+    /* SELECT+START plays the SONG from here -- the LSDJ chord, and
+       the answer to "let me hear this chain in context without
+       hopping screens". Bare START keeps its local meaning (loop
+       what is being edited); the chord starts or stops full song
+       playback on the current position. */
+    if (pressed && (mask & EPBM_SELECT) && (mask & EPBM_START)) {
+        Player *p = Player::GetInstance();
+        unsigned char ch = viewData_->songX_;
+        p->OnStartButton(PM_SONG, ch, p->IsRunning(), ch);
+        return;
+    }
+
     if (!pressed) {
         if (viewMode_ == VM_MUTEON) {
             if (mask & EPBM_L) {
@@ -506,6 +518,9 @@ void ChainView::processNormalButtonMask(unsigned short mask) {
                         viewData_->currentPhrase_ = *data;
                         SetChanged();
                         NotifyObservers(&ve);
+                    } else {
+                        // refused, and it says why (the LSDJ rule)
+                        View::SetNotification("empty row - place a phrase first");
                     }
                 }
 
@@ -609,6 +624,9 @@ void ChainView::processSelectionButtonMask(unsigned short mask) {
                         viewData_->currentPhrase_ = *data;
                         SetChanged();
                         NotifyObservers(&ve);
+                    } else {
+                        // refused, and it says why (the LSDJ rule)
+                        View::SetNotification("empty row - place a phrase first");
                     }
                 }
 
@@ -868,11 +886,19 @@ void ChainView::OnPlayerUpdate(PlayerEventType eventType, unsigned int tick) {
 */} ;
 
 // nav-menu context prep: entering the phrase follows the chain cursor
-void ChainView::OnNavTo(ViewType to) {
+bool ChainView::OnNavTo(ViewType to) {
     if (to == VT_PHRASE) {
         unsigned char *data = viewData_->GetCurrentChainPointer();
-        if (*data != 0xFF) {
-            viewData_->currentPhrase_ = *data;
+        if (*data == 0xFF) {
+            /* The LSDJ route, by request: an empty row does not lead
+               anywhere. Place a phrase (O on the row) and then go.
+               Auto-creating on the way down was tried and read as
+               too eager; a refusal that says why beats a phrase you
+               did not ask for. */
+            View::SetNotification("empty row - place a phrase first");
+            return false;
         }
+        viewData_->currentPhrase_ = *data;
     }
+    return true;
 }

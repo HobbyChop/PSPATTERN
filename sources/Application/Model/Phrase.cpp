@@ -1,4 +1,5 @@
 #include "Phrase.h"
+#include "Application/Instruments/CommandList.h"
 #include "System/System/System.h"
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +47,17 @@ unsigned short Phrase::GetNext(int startAfter) {
 		int i=(startAfter>=0)?((startAfter+1+j)%PHRASE_COUNT):j ;
 		if (!isUsed_[i]) {
 			isUsed_[i]=true ;
+			// a NEW phrase is an EMPTY phrase, same rule as chains:
+			// clones copy over this immediately and lose nothing
+			for (int r=0;r<16;r++) {
+				note_[16*i+r]=0xFF ;
+				instr_[16*i+r]=0xFF ;
+				velocity_[16*i+r]=VELOCITY_EMPTY ;
+				cmd1_[16*i+r]=I_CMD_NONE ;
+				param1_[16*i+r]=0 ;
+				cmd2_[16*i+r]=I_CMD_NONE ;
+				param2_[16*i+r]=0 ;
+			}
 			return i ;
 		}
 	}

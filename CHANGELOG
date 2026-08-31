@@ -1,3 +1,25 @@
+PSPATTERN 0.25.5a
+
+    Navigation tells the truth, the LSDJ way. A jump with nothing to
+        follow is refused where you stand, with a reason: an empty
+        chain row does not lead to the phrase screen ("empty row -
+        place a phrase first"), an instrument with no table does not
+        lead to the table screen, a phrase row with no TBL and no
+        instrument table does not either. Deep jumps stop at the
+        deepest screen that still makes sense. The one kept
+        convenience: an empty song slot still makes its chain on the
+        way in.
+
+    A new chain is born empty, and so is a new phrase. Allocation
+        used to hand back whatever the number held in a previous
+        life, so fresh slots arrived haunted by old parts.
+
+    START on the phrase and chain screens plays what the screen
+        shows -- the viewed phrase, looping, or the viewed chain --
+        instead of resolving through the song grid and coming up
+        silent when the cursor context did not line up. SELECT+START
+        plays the full song from either screen, the LSDJ chord.
+
 PSPATTERN 0.25.4a
 
     The thumbstick is retired. It only ever spoke on the instrument

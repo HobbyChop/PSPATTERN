@@ -1027,7 +1027,7 @@ void MixerView::AnimationUpdate() {
 
 // nav-menu context prep: the mixer hands its column to whatever screen
 // is entered, and seeds chain/phrase for the drill targets
-void MixerView::OnNavTo(ViewType to) {
+bool MixerView::OnNavTo(ViewType to) {
     if (to == VT_CHAIN || to == VT_TABLE || to == VT_PHRASE) {
         viewData_->songX_ = viewData_->mixerCol_ > 7 ? 7 : viewData_->mixerCol_;
         unsigned char *data = viewData_->GetCurrentSongPointer();
@@ -1041,4 +1041,5 @@ void MixerView::OnNavTo(ViewType to) {
             }
         }
     }
+    return true;
 }

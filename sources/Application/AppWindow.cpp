@@ -1874,8 +1874,8 @@ bool AppWindow::onEvent(GUIEvent &event) {
             if (navigating_) {
                 navigating_ = false;
                 if (navSel_ != currentViewType() && _currentView) {
-                    navPrep(currentViewType(), navSel_);
-                    switchToView(navSel_);
+                    ViewType dest = navPrep(currentViewType(), navSel_);
+                    if (dest != currentViewType()) switchToView(dest);
                 }
             }
         }
@@ -2011,29 +2011,35 @@ ViewType AppWindow::currentViewType() {
    on the phrase from the song follows the cursor through the chain
    exactly as two single hops would: the cell under the song cursor
    names the chain, the chain's row names the phrase. */
-void AppWindow::navPrep(ViewType from, ViewType to) {
+/* Returns where the jump actually lands. A prep along the chain may
+   REFUSE (an empty chain row does not lead to a phrase until one is
+   placed -- the LSDJ rule), and then the traveller stops at the
+   blockage instead of arriving past it on stale state. */
+ViewType AppWindow::navPrep(ViewType from, ViewType to) {
     if (from == VT_SONG &&
         (to == VT_PHRASE || to == VT_INSTRUMENT ||
          to == VT_TABLE || to == VT_TABLE2)) {
-        if (_songView)  _songView->OnNavTo(VT_CHAIN);
-        if (_chainView) _chainView->OnNavTo(VT_PHRASE);
+        if (_songView && !_songView->OnNavTo(VT_CHAIN)) return VT_SONG;
+        if (_chainView && !_chainView->OnNavTo(VT_PHRASE)) return VT_CHAIN;
         if (to == VT_INSTRUMENT && _phraseView)
             _phraseView->OnNavTo(VT_INSTRUMENT);
-        if ((to == VT_TABLE || to == VT_TABLE2) && _phraseView)
-            _phraseView->OnNavTo(to);   // TBL cmd, else instrument's table
-        return;
+        if ((to == VT_TABLE || to == VT_TABLE2) && _phraseView &&
+            !_phraseView->OnNavTo(to))
+            return VT_PHRASE;   // no table to follow: stop at the phrase
+        return to;
     }
     if (from == VT_CHAIN && to == VT_INSTRUMENT) {
-        if (_chainView)  _chainView->OnNavTo(VT_PHRASE);
+        if (_chainView && !_chainView->OnNavTo(VT_PHRASE)) return VT_CHAIN;
         if (_phraseView) _phraseView->OnNavTo(VT_INSTRUMENT);
-        return;
+        return to;
     }
     if (from == VT_MIXER && to == VT_INSTRUMENT) {
         if (_mixerView)  _mixerView->OnNavTo(VT_PHRASE);
         if (_phraseView) _phraseView->OnNavTo(VT_INSTRUMENT);
-        return;
+        return to;
     }
-    if (_currentView) _currentView->OnNavTo(to);
+    if (_currentView && !_currentView->OnNavTo(to)) return from;
+    return to;
 }
 
 // The one place a screen switch happens: views fire VET_SWITCH_VIEW at

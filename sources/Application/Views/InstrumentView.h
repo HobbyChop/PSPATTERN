@@ -23,7 +23,7 @@ public:
 	virtual void OnPlayerUpdate(PlayerEventType,unsigned int) {} ;
 	virtual void LooseFocus() ;
 	virtual void OnNubFlick(int dir, unsigned short mask) ;
-	virtual void OnNavTo(ViewType to) ;
+	virtual bool OnNavTo(ViewType to) ;
 	virtual void OnFocus() ;
 
 	// The routing picture under the operator columns. See the

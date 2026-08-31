@@ -9,7 +9,7 @@ class ChainView : public View {
   public:
     ChainView(GUIWindow &w, ViewData *data);
     virtual void ProcessButtonMask(unsigned short mask, bool pressed);
-    virtual void OnNavTo(ViewType to);
+    virtual bool OnNavTo(ViewType to);
     virtual int  UndoSize() ;
     virtual int  UndoContext() ;
     virtual void UndoCapture(unsigned char *dst) ;

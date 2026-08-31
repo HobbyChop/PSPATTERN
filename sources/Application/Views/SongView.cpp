@@ -1639,7 +1639,7 @@ void SongView::nudgeTempo(int direction) {
 
 // nav-menu context prep: entering the chain follows the song cursor,
 // exactly as the old R+RIGHT drill did
-void SongView::OnNavTo(ViewType to) {
+bool SongView::OnNavTo(ViewType to) {
     if (to == VT_CHAIN) {
         unsigned char *data = viewData_->GetCurrentSongPointer();
         if (*data == 0xFF) {
@@ -1651,7 +1651,7 @@ void SongView::OnNavTo(ViewType to) {
             unsigned short next = viewData_->song_->chain_->GetNext();
             if (next == NO_MORE_CHAIN) {
                 View::SetNotification("no free chains left");
-                return;
+                return false;
             }
             *data = (unsigned char)next;
             viewData_->song_->chain_->SetUsed(*data);
@@ -1660,4 +1660,5 @@ void SongView::OnNavTo(ViewType to) {
         }
         viewData_->currentChain_ = *data;
     }
+    return true;
 }

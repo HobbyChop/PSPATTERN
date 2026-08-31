@@ -136,7 +136,9 @@ class View : public Observable {
        this call so a drill keeps its context prep -- song entering
        chain still follows the cursor, the mixer still hands its
        column over -- without the map layer knowing any of it. */
-    virtual void OnNavTo(ViewType to) {}
+    /* prepare for a nav jump toward `to`; return false to REFUSE it
+       (the traveller stays where the refusal happened, LSDJ-style) */
+    virtual bool OnNavTo(ViewType to) { return true ; }
     // The analog nub, delivered as single steps (0=left 1=right 2=up
     // 3=down). The instrument screen uses it as the chord-free browse
     // control for engine (left/right) and type (up/down).

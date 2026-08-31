@@ -919,7 +919,7 @@ void InstrumentView::OnNubFlick(int dir, unsigned short mask) {
 	isDirty_=true ;
 } ;
 
-void InstrumentView::OnNavTo(ViewType to) {
+bool InstrumentView::OnNavTo(ViewType to) {
 	// the table editor owns TWO tiles on the map (VT_TABLE/VT_TABLE2);
 	// arriving on either one means this instrument's table
 	if (to==VT_TABLE||to==VT_TABLE2) {
@@ -930,11 +930,16 @@ void InstrumentView::OnNavTo(ViewType to) {
 		   nothing to follow. */
 		I_Instrument *instr=viewData_->project_->GetInstrumentBank()
 		    ->GetInstrument(viewData_->currentInstrument_) ;
-		if (instr) {
-			int t=instr->GetTable() ;
-			if (t>=0) viewData_->currentTable_=t ;
+		int t=instr?instr->GetTable():-1 ;
+		if (t<0) {
+			// nothing to follow, so the jump is refused and says
+			// why -- the same rule as the empty chain row
+			View::SetNotification("no table set - set one first") ;
+			return false ;
 		}
+		viewData_->currentTable_=t ;
 	}
+	return true ;
 }
 
 void InstrumentView::LooseFocus() {
@@ -1262,12 +1267,14 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
                         viewData_->project_->GetInstrumentBank();
                     I_Instrument *instr = bank->GetInstrument(i);
                     int table = instr->GetTable();
-                    if (table != VAR_OFF) {
+                    if (table == VAR_OFF) {
+                        View::SetNotification("no table set - set one first");
+                    } else {
                         viewData_->currentTable_ = table;
+                        ViewEvent ve(VET_SWITCH_VIEW, &vt);
+                        SetChanged();
+                        NotifyObservers(&ve);
                     }
-                    ViewEvent ve(VET_SWITCH_VIEW, &vt);
-                    SetChanged();
-                    NotifyObservers(&ve);
                 }
 
                 // if (mask&EPBM_RIGHT) {
