@@ -41,4 +41,11 @@ void FileLogger::AddLine(const char *line)
 {
 	if (!file_) return ;
 	fprintf(file_,"%s\n",line) ;
+	/* Every line lands NOW. Buffered, the log reached the card in 4KB
+	   clumps or at a clean fclose -- and this program ends by HOME or
+	   by the very crash being investigated, so LOG=YES kept producing
+	   an empty or absent file: the diagnostic evaporated with the
+	   evidence. The stick-wear concern is real, which is why LOG
+	   still defaults to NO. */
+	fflush(file_) ;
 }

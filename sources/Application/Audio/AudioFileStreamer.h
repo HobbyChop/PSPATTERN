@@ -24,6 +24,13 @@ protected:
 	WavFile *wav_ ;
 	int position_ ;
 	int shift_ ;
+	/* A stream that begins at full level steps the converter from
+	   silence to wherever the waveform starts -- the tick before every
+	   preview. A few hundred samples of ramp at each end costs
+	   nothing and is inaudible as a fade. */
+	int fadeIn_ ;
+	int fadeOut_ ;
+	volatile bool stopping_ ;
 } ;
 
 #endif 

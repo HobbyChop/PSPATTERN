@@ -436,7 +436,7 @@ SynthInstrument::SynthInstrument() {
 	v=new Variable("table automation",SYP_TABLEAUTO,false) ;
 	Insert(v) ;
 
-	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) {
 		voice_[i].active_=false ;
 	}
 
@@ -541,7 +541,7 @@ bool SynthInstrument::Init() {
 
 void SynthInstrument::OnStart() {
 	tableState_.Reset() ;
-	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) {
 		voice_[i].active_=false ;
 	}
 } ;

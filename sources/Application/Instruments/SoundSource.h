@@ -13,6 +13,9 @@ public:
 	virtual void *GetSampleBuffer(int note)=0 ;
 	virtual bool IsMulti()=0 ;
 	virtual int GetRootNote(int note)=0 ;
+	// true for the generated drum kit; the KIT/WAV split asks the
+	// sounds themselves instead of trusting position arithmetic
+	virtual bool IsBaked() { return false ; }
 } ;
 
 #endif

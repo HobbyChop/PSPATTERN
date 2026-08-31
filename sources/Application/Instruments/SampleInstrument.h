@@ -109,14 +109,14 @@ protected:
 
 private:
        SoundSource *source_ ;
-       struct renderParams renderParams_[SONG_CHANNEL_COUNT] ;
+       struct renderParams renderParams_[PLAYER_CHANNEL_COUNT] ;
        bool running_ ;
        bool dirty_ ;
 	   TableSaveState tableState_ ;
 	   
-	   static int lastMidiNote_[SONG_CHANNEL_COUNT] ;
-	   static fixed lastSample_[SONG_CHANNEL_COUNT][2] ;
-	   static fixed feedback_[SONG_CHANNEL_COUNT][FB_BUFFER_LENGTH*2] ;
+	   static int lastMidiNote_[PLAYER_CHANNEL_COUNT] ;
+	   static fixed lastSample_[PLAYER_CHANNEL_COUNT][2] ;
+	   static fixed feedback_[PLAYER_CHANNEL_COUNT][FB_BUFFER_LENGTH*2] ;
 
 	   Variable *volume_ ;
 	   Variable *attack_ ;

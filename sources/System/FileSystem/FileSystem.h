@@ -102,6 +102,12 @@ public:
 	virtual I_File *Open(const char *path,char *mode)=0 ;
 	virtual I_Dir *Open(const char *path)=0 ;
 	virtual Result MakeDir(const char *path)=0 ;
+	/* Flush the medium's pending writes. A batch of deletes queues
+	   FAT metadata in the driver, and on this hardware a read that
+	   follows too closely can wedge against it -- the compact-then-
+	   reload freeze that only a reboot cleared. A no-op where the
+	   medium has nothing to flush. */
+	virtual void Sync() {}
 	virtual void Delete(const char *)=0 ;
 	// Replace one file with another. Not pure so adapters we do not build
 	// keep compiling -- the default says "unsupported" and callers fall

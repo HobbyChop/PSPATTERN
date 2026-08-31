@@ -32,6 +32,11 @@
 #define DRUMKIT_RATE 44100
 
 class BakedSource : public SoundSource {
+public:
+	virtual bool IsBaked() { return true ; }
+private:
+	friend class BakedSourceInit_ ;
+public:
   public:
 	BakedSource(short *buf,int frames) : buf_(buf),frames_(frames) {} ;
 	virtual ~BakedSource() ;

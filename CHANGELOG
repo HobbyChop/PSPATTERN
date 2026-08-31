@@ -1,3 +1,192 @@
+PSPATTERN 0.25.0a
+
+    The stability release. A week of tester sessions traced every
+        freeze to its mechanism, and each one is closed:
+
+    Editing no longer stalls. The autosave backstop fired mid-
+        keypress after two minutes of steady work -- the freeze, and
+        the dead direction afterwards, as the button release was
+        swallowed. It waits for a half-second gap now.
+
+    Compacting a project is safe. The purge walked through the
+        generated kit's slots and the next reload freed shifted
+        memory twice: heap corruption, a load frozen on its first
+        file, cured only by reboot. The purge starts above the kit.
+
+    Sample audition works, and its stray write is gone: the filter
+        bank was sized for eight channels while the preview plays on
+        a ninth.
+
+    A wav header can no longer size the heap, a truncated file can no
+        longer hang the loader, and a failed sample fails alone
+        instead of taking the machine with it.
+
+    Cut clears and paste overwrites on every screen, LSDJ-style. The
+        song grid no longer splices rows. O on an empty song slot
+        makes a NEW chain, and drilling into an empty slot creates
+        that slot's chain instead of showing a stale one.
+
+    The table screen follows what sent you: the instrument's own
+        table from the instrument screen, the TBL command under the
+        cursor from the phrase screen.
+
+    Importing is a menu item -- "import sample >" under the type row,
+        one press, samplelib created if missing. Previews play the
+        file you asked for, when you asked, without the click, and
+        stop when you let go. One sample list: kit first, imports
+        after.
+
+    START works on the FX screen. Cycling an effect type no longer
+        replays the row. The info panel shows memory USED -- the one
+        figure this machine can report honestly -- and LOG=YES writes
+        a log that survives the session.
+
+PSPATTERN 0.24.7a (tester build)
+
+    Compacting a project no longer corrupts the session. The purge
+        walked through the generated drum kit's slots, deleting pool
+        entries that were never on the card and shifting everything
+        under the pool's feet -- the next reload freed the same
+        memory twice, and the load after that froze on the first
+        file it touched. Only a reboot cleared it. The purge starts
+        above the kit now, and a truncated file or a soured
+        directory read can no longer hang the loader either.
+
+    One sample list. The KIT/WAV engine split is withdrawn: the
+        generated kit sits at the top of the list, imports follow.
+        "import sample >" keeps its row under the type row; the file
+        row steps through sounds and never opens the browser.
+
+    START works on the FX screen -- the place you stand while A/B-ing
+        an effect against the playing song.
+
+    Cycling an effect type in the phrase screen no longer replays the
+        row on every step. Auto-preview belongs to note, instrument
+        and velocity only.
+
+    The log, when LOG=YES, actually survives: every line lands on the
+        card as written instead of evaporating with the session.
+
+PSPATTERN 0.24.6a (tester build)
+
+    The stall while editing is gone. Every guard holding the autosave
+        off ended with "unless we have been dirty for two minutes",
+        and editing steadily for two minutes is what working on a
+        song is -- so the write landed in the middle of a keypress:
+        the machine stopped for a second or more, and the button
+        release that arrived during the stall was lost, leaving that
+        direction dead until it was pressed again. The backstop now
+        waits for half a second with no button pressed.
+
+    One press, one chain. O on an empty song slot makes a new chain,
+        and pressing it again no longer hands you a different one and
+        abandons the first.
+
+    Going into an empty song slot makes that slot's chain instead of
+        showing whichever chain was last looked at.
+
+    After importing a sample the cursor lands on the file row.
+
+PSPATTERN 0.24.5a (tester build)
+
+    A new song slot gets a chain of its own. O on an empty slot used
+        to put back the last chain you touched, so two song positions
+        could hold the same chain without saying so -- and a phrase
+        written at one quietly rewrote the other. It makes a new
+        chain now. Going into an empty slot makes one too, instead of
+        showing whatever chain was last looked at.
+
+    The info panel says "used", not "mem". Free memory cannot be had
+        on this machine: every way of asking returns a number that
+        never moves, each wrong in its own direction. What the
+        allocator has handed out is exact and moves with every sample
+        loaded, so that is what the panel shows.
+
+    The sample memory work of the last builds is withdrawn. On-demand
+        loading and its memory gate refused samples in songs that fit
+        with room to spare, because the figure they trusted was a
+        constant. Songs load as they did before.
+
+PSPATTERN 0.24.4a (tester build)
+
+    Sample audition works again, and a stray write is gone with it.
+        The sampler's filter bank was sized for eight channels while
+        the preview plays on a ninth, so auditioning a sample wrote
+        its filter state past the end of that array: silence from the
+        preview, and a stray write into whatever followed.
+
+    A missed button release no longer blinds the navigation. The
+        screen map opens only when nothing else is held, so one lost
+        release meant it stopped appearing at all and every gesture
+        read as a chord. The held-button set is now checked against
+        the hardware and heals itself within a frame.
+
+    KIT and WAV are two engines. A sample instrument picks its engine
+        under the type row exactly like a synth does: KIT plays the
+        generated drum kit, WAV plays what you imported. Importing
+        belongs to WAV, and an empty WAV engine is a place you can
+        stand -- that is where the import row lives.
+
+    Cut clears, paste overwrites, on every screen. The song grid used
+        to splice: cut pulled the whole song up, paste pushed it
+        down. The chain, phrase and table screens never did that, and
+        neither does LSDJ or M8. Now nothing moves but what is under
+        the cursor.
+
+    The mem figure moves when memory does. It was probing for the
+        largest allocatable block, which on this machine parks at its
+        own ceiling; it asks the allocator now.
+
+    Instrument screen: X+up/down crosses between the selector rows
+        and the parameters, and the d-pad walks whichever it is in.
+
+PSPATTERN 0.24.3a (tester build)
+
+    A wav header can no longer size the heap. The data chunk states
+        its own length, and that number decided both the allocation
+        and how much got written into it -- with nothing checking it
+        against the file. A big or corrupt claim wrapped the maths
+        and wrote past the buffer: heap corruption, which is what
+        freezes with no pattern and a machine too sick to draw the
+        XMB actually look like. The claim is clamped to the file now,
+        the maths is 64-bit, and short reads report failure instead
+        of turning stale memory into audio.
+
+    A sample reporting no frames can no longer wedge the machine. Its
+        loop end came out at -1 and the render walked it forever, on
+        the audio thread.
+
+    Importing is a menu item. "import sample >" sits under the type
+        row; the browser opens on one press, and samplelib is created
+        if it is missing.
+
+    The sample list has two banks. KIT is the generated drum kit, WAV
+        is what you imported -- the file row walks one half, not
+        eighty entries.
+
+    Previews behave. SELECT plays the file under the cursor and stops
+        when you move or release; it no longer plays everything you
+        browse past, no longer starts one press late, and no longer
+        clicks at each end.
+
+    Instrument screen navigation: X+up/down crosses between the
+        selector rows and the parameters, and the d-pad walks
+        whichever it is in.
+
+PSPATTERN 0.24.2a (tester build)
+
+    The runaway d-pad is fixed. A drifting analog stick could flood
+        the input queue until real button releases were dropped: the
+        cursor slid hard one way and pinned, input froze, and the
+        screen sometimes jumped to the mixer on its own. Drift now
+        fires at most once and stays quiet, and the stick only speaks
+        at all on the instrument screen, the one place that listens.
+
+    Audition has a channel of its own. The preview no longer borrows
+        the song cursor's column, so no mute, fader, filter or send
+        can silence or colour it -- SELECT always plays the
+        instrument raw, at full volume.
+
 PSPATTERN 0.24.1a
 
     Save-as saves. It never actually worked on the PSP: the flow

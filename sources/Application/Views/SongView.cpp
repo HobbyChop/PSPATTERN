@@ -148,13 +148,30 @@ void SongView::cutPosition() {
 
 void SongView::pasteLast() {
 
-    // If we're on an empty spot, we past the last chain
-    // otherwise we take the current chain as last
+    /* O on an empty song slot makes a NEW chain.
+
+       It used to put back the last chain number you had touched, and
+       a fresh one arrived only if you pressed O a second time. The
+       trouble with reuse is that it is invisible: two song positions
+       end up holding the same chain, so writing a phrase at the new
+       position quietly rewrites the old one. The song then reads as
+       though its parts were not connected to anything, when in truth
+       they were connected to each other.
+
+       O on a slot that already holds a chain still remembers it, so
+       clone and paste keep working from it, and typing a number by
+       hand is still how you deliberately repeat a chain. */
 
     unsigned char *c = viewData_->GetCurrentSongPointer();
     if (*c == 0xFF) {
-        *c = lastChain_;
+        unsigned short next = viewData_->song_->chain_->GetNext();
+        if (next == NO_MORE_CHAIN) {
+            View::SetNotification("no free chains left");
+            return;
+        }
+        *c = (unsigned char)next;
         viewData_->song_->chain_->SetUsed(*c);
+        lastChain_ = *c;
         isDirty_ = true;
     } else {
         lastChain_ = *c;
@@ -377,24 +394,24 @@ void SongView::cutSelection() {
     fillClipboardData();
     GUIRect selRect = getSelectionRect();
 
-    // now move all rows up for cut
+    /* CLEAR IN PLACE, and nothing moves.
+
+       Cut used to delete the row and pull the whole song up under it.
+       That is a list edit, and the song screen is not a list: it is a
+       grid you arrange, and every tracker its players come from --
+       LSDJ, M8 -- clears the cell and leaves the rest where it was.
+       Pulling everything up rearranges parts of the song nowhere near
+       the cursor, which is a hard edit to undo in your head.
+
+       (The old code also had a dead loop -- 'for (j=0; j > height; j++)'
+       from zero, which never runs -- so the rows freed at the bottom
+       by the shift were never blanked and kept a stale duplicate of
+       what had been there. Both go together.) */
 
     unsigned char *dst = viewData_->song_->data_ + selRect.Left() +
                          SONG_CHANNEL_COUNT * (selRect.Top());
-    unsigned char *src = dst + SONG_CHANNEL_COUNT * clipboard_.height_;
 
-    int rowCount = SONG_ROW_COUNT - selRect.Bottom() - 1;
-
-    for (int j = 0; j < rowCount; j++) {
-
-        for (int i = 0; i < clipboard_.width_; i++) {
-            *dst++ = *src++;
-        }
-        src += (SONG_CHANNEL_COUNT - clipboard_.width_);
-        dst += (SONG_CHANNEL_COUNT - clipboard_.width_);
-    }
-
-    for (int j = 0; j > clipboard_.height_; j++) {
+    for (int j = 0; j < clipboard_.height_; j++) {
         for (int i = 0; i < clipboard_.width_; i++) {
             *dst++ = 0xFF;
         }
@@ -428,26 +445,14 @@ void SongView::pasteClipboard() {
     if (viewData_->songX_ + width > SONG_CHANNEL_COUNT) {
         width = SONG_CHANNEL_COUNT - viewData_->songX_;
     }
+    /* Paste OVERWRITES, the mirror of cut clearing in place. It used
+       to push everything below the cursor down to make room, so a
+       paste rearranged the song far from where you were working --
+       the same list-splice model the cut had, and the same surprise.
+       The chain, phrase and table screens have always overwritten;
+       this was the odd one out. */
     if (viewData_->songY_ + viewData_->songOffset_ + height > SONG_ROW_COUNT) {
         height = SONG_ROW_COUNT - viewData_->songY_ - viewData_->songOffset_;
-    } else {
-
-        // Move down from insert point
-
-        unsigned char *dst = viewData_->song_->data_ + viewData_->songX_ +
-                             (SONG_ROW_COUNT - 1) * SONG_CHANNEL_COUNT;
-        unsigned char *src = dst - height * SONG_CHANNEL_COUNT;
-
-        int rowCount =
-            SONG_ROW_COUNT - (viewData_->songY_ + viewData_->songOffset_);
-
-        for (int j = 0; j < rowCount; j++) {
-            for (int i = 0; i < width; i++) {
-                *dst++ = *src++;
-            }
-            dst -= (SONG_CHANNEL_COUNT + width);
-            src -= (SONG_CHANNEL_COUNT + width);
-        }
     }
 
     // Prepare copy pointer
@@ -672,17 +677,6 @@ void SongView::ProcessButtonMask(unsigned short mask, bool pressed) {
         return;
     };
 
-    if (viewMode_ == VM_NEW) {
-        if (mask == EPBM_A) {
-            unsigned short next = viewData_->song_->chain_->GetNext();
-            if (next != NO_MORE_CHAIN) {
-                setChain((unsigned char)next);
-                isDirty_ = true;
-            }
-            mask &= (0xFFFF - EPBM_A);
-        }
-    }
-
     if (viewMode_ == VM_CLONE) {
         if ((mask & EPBM_A) && (mask & EPBM_R)) {
             clonePosition();
@@ -800,9 +794,13 @@ void SongView::processNormalButtonMask(unsigned int mask) {
                 pasteClipboard();
             }
             if (mask == EPBM_A) {
-
+                /* One press, one chain. This used to arm a mode where
+                   the NEXT press allocated another one -- which, now
+                   that the first press allocates, meant every press
+                   handed you a different number and abandoned the one
+                   before it. That is what looked like random values
+                   appearing in the cell. */
                 pasteLast();
-                viewMode_ = VM_NEW;
             }
             if (mask & EPBM_L) {
                 switchSoloMode();
@@ -818,6 +816,9 @@ void SongView::processNormalButtonMask(unsigned int mask) {
                 }
 
                 if (mask & EPBM_RIGHT) {
+                    // an empty slot gets its chain made here too, so
+                    // this stops being a press that does nothing
+                    OnNavTo(VT_CHAIN);
                     unsigned char *data = viewData_->GetCurrentSongPointer();
                     if (*data != 0xFF) {
                         ViewType vt = VT_CHAIN;
@@ -933,6 +934,9 @@ void SongView::processSelectionButtonMask(unsigned int mask) {
                 }
 
                 if (mask & EPBM_RIGHT) {
+                    // an empty slot gets its chain made here too, so
+                    // this stops being a press that does nothing
+                    OnNavTo(VT_CHAIN);
                     unsigned char *data = viewData_->GetCurrentSongPointer();
                     if (*data != 0xFF) {
                         ViewType vt = VT_CHAIN;
@@ -1224,12 +1228,26 @@ void SongView::DrawSidePanel() {
         }
         DrawString(35, 16, vbuf, props);
 
-        unsigned int memFree = sys->GetMemoryFree();
-        int tenths = (int)((unsigned long long)memFree * 10 / (1024 * 1024));
+        /* USED, not free.
+
+           Free memory cannot be had on this machine. The probe that
+           asks malloc for ever bigger blocks is answered yes past the
+           size of the console, so it reports its own ceiling; the
+           allocator's free-space field reads zero and its arena field
+           reports only what it has handed out, so subtraction gives
+           nothing. All three routes were tried and all three lied,
+           each in its own direction.
+
+           What the allocator does know is how much it has handed out,
+           and that number is exact and moves with every sample. It
+           answers the question that matters anyway -- what this song
+           costs, and how that compares with the one that misbehaves. */
+        unsigned int memUsed = sys->GetMemoryUsage();
+        int tenths = (int)((unsigned long long)memUsed * 10 / (1024 * 1024));
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 18, "mem", props);
+        DrawString(PANEL_TXT, 18, "used", props);
         snprintf(vbuf, sizeof(vbuf), "%2d.%dM", tenths / 10, tenths % 10);
-        SetColor((tenths < 20) ? CD_MUTE : CD_NORMAL);
+        SetColor(CD_NORMAL);
         DrawString(34, 18, vbuf, props);
 
         int vf = running ? AudioStats::GetVfpuPercent() : 0;
@@ -1624,8 +1642,22 @@ void SongView::nudgeTempo(int direction) {
 void SongView::OnNavTo(ViewType to) {
     if (to == VT_CHAIN) {
         unsigned char *data = viewData_->GetCurrentSongPointer();
-        if (*data != 0xFF) {
-            viewData_->currentChain_ = *data;
+        if (*data == 0xFF) {
+            /* Going into an empty slot used to leave the chain screen
+               showing whatever chain was last looked at: you moved the
+               cursor somewhere new, went in, and edited something
+               else. Make the chain the slot is asking for -- going in
+               IS the request. */
+            unsigned short next = viewData_->song_->chain_->GetNext();
+            if (next == NO_MORE_CHAIN) {
+                View::SetNotification("no free chains left");
+                return;
+            }
+            *data = (unsigned char)next;
+            viewData_->song_->chain_->SetUsed(*data);
+            lastChain_ = *data;
+            isDirty_ = true;
         }
+        viewData_->currentChain_ = *data;
     }
 }

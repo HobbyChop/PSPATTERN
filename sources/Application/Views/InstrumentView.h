@@ -23,11 +23,14 @@ public:
 	virtual void OnPlayerUpdate(PlayerEventType,unsigned int) {} ;
 	virtual void LooseFocus() ;
 	virtual void OnNubFlick(int dir, unsigned short mask) ;
+	virtual void OnNavTo(ViewType to) ;
 	virtual void OnFocus() ;
 
 	// The routing picture under the operator columns. See the
 	// definition for why it is drawn the way it is.
 	void drawFmAlgo(SynthInstrument *instrument) ;
+	// the import callback puts the cursor back on the file row
+	void FocusSampleRow() ;
 
 	// answer to the "replace instrument?" prompt
 
@@ -35,6 +38,9 @@ protected:
 	void warpToNext(int offset) ;
 	// SELECT latch: the preview note; every slot/type/engine step
 	// retriggers it while latched, so browsing is hearing
+	void openImportBrowser() ;
+	FourCC lastLadderID_ ;   // the ladder row to come back to
+	bool importPending_ ;
 	void auditionStart() ;
 	void auditionStop() ;
 	void auditionRetrigger() ;

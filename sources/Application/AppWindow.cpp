@@ -83,6 +83,10 @@ int AppWindow::charHeight_ = 8;
    eventually, so a frozen tail cannot hold the recovery file hostage
    forever. */
 #define AUTOSAVE_TAIL_MS 3000
+/* The gap the forced write waits for, and the point at which it stops
+   waiting for anything. */
+#define AUTOSAVE_GAP_MS  500
+#define AUTOSAVE_HARD_MS 300000
 
 static void RecoverCallback(View &v, ModalView &dialog) {
     instance->RecoverAutosave(dialog.GetReturnCode() == MBL_YES);
@@ -329,21 +333,40 @@ void AppWindow::uiTick() {
                             if (interval < 45) interval = 45;
                         }
                         nextFire[axis] = now + (unsigned long)interval;
-                        GUIEvent *e = new GUIEvent((long)dir,
-                                                   ET_PADANALOGFLICK, 0, 0, 0, 0);
-                        PushEvent(*e);
+                        if (_currentView == _instrumentView) {
+                            GUIEvent *e = new GUIEvent((long)dir,
+                                                       ET_PADANALOGFLICK, 0, 0, 0, 0);
+                            PushEvent(*e);
+                        }
                     }
                 } else {
                     nextFire[axis] = 0;   // released: next push is instant
                 }
             } else {
                 nextFire[axis] = 0;
+                /* Re-arm on the RAW reading, never the clamped one.
+                   The clamp zeroes the non-dominant axis, and re-arming
+                   off that zero meant a DRIFTING stick whose dominant
+                   axis jittered re-armed and re-fired every tick -- a
+                   flick storm that flooded the queue, forced a redraw
+                   per event, and made the real d-pad lag into "moving
+                   on its own, then freezing" (the tester's two-PSP
+                   report). An axis now re-arms only when the stick has
+                   physically come back near centre, so drift fires at
+                   most once and then stays quiet. */
+                int rawMag = (vals[axis] < 0) ? -vals[axis] : vals[axis];
                 if (armed[axis] && mag > 60) {
                     armed[axis] = false;
-                    GUIEvent *e = new GUIEvent((long)dir,
-                                               ET_PADANALOGFLICK, 0, 0, 0, 0);
-                    PushEvent(*e);
-                } else if (!armed[axis] && mag < 25) {
+                    /* only the instrument screen listens to the stick;
+                       everywhere else a pushed flick is a no-op that
+                       still costs a queue slot and a redraw -- exactly
+                       the flood that dropped real button-ups */
+                    if (_currentView == _instrumentView) {
+                        GUIEvent *e = new GUIEvent((long)dir,
+                                                   ET_PADANALOGFLICK, 0, 0, 0, 0);
+                        PushEvent(*e);
+                    }
+                } else if (!armed[axis] && rawMag < 25) {
                     armed[axis] = true;
                 }
             }
@@ -2409,6 +2432,28 @@ void AppWindow::autoSaveTick() {
     // to press the next button.
     if (_lastInputAt && (now - _lastInputAt) < AUTOSAVE_IDLE_MS &&
         (now - _dirtySince) < AUTOSAVE_FORCE_MS) {
+        return;
+    }
+
+    /* THE BACKSTOP MUST STILL LAND IN A GAP.
+
+       Every guard above ends with "unless we have been dirty for two
+       minutes", and the write takes a second or more of the main
+       thread. So somebody editing steadily for two minutes -- which
+       is what working on a song IS -- got the write dropped into the
+       middle of a keypress: the machine stops, and the button release
+       that arrives during the stall is lost, so that direction stays
+       held and does nothing until it is pressed again. That is the
+       freeze-then-one-dead-direction the editing sessions run into.
+
+       A backstop is allowed to interrupt the work, but not the
+       gesture. Half a second without a button is a gap that occurs
+       constantly while editing and never delays the write for long.
+       AUTOSAVE_HARD_MS is the end of the argument: past that it
+       writes whatever anyone is doing, because a recovery file that
+       is never written is not a recovery file. */
+    if ((now - _lastInputAt) < AUTOSAVE_GAP_MS &&
+        (now - _dirtySince) < AUTOSAVE_HARD_MS) {
         return;
     }
 

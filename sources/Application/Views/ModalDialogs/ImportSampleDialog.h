@@ -26,12 +26,17 @@ protected:
 private:
 	Path *getImportElement();
 	bool isSampleLibRoot();
-	void setCurrent(Path *element, unsigned short mask);
 	T_SimpleList<Path> sampleList_ ;
 	int currentSample_ ;
 	int topIndex_ ;
 	int toInstr_ ;
-	int selected_ ;
+	// preview lives while SELECT is held, like audition everywhere else
+	bool previewHeld_ ;
+	// bare-B release backs out one folder (closes at the root); a B
+	// chord (page jump) must not
+	bool bHeld_ ;
+	bool bChorded_ ;
+	std::string status_ ;   // one transient line: imported X, can't play Y
 	static bool initStatic_ ;
 	static Path sampleLib_ ;
 	static Path currentPath_ ;

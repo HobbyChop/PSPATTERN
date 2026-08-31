@@ -83,6 +83,22 @@ WavFile *WavFile::Open(const char *path) {
 
 	long position=0 ;
 
+	/* How long the file actually is. The chunk walks below follow
+	   sizes read OUT of the file, and a truncated one -- a copy that
+	   ran out of card, a delete that half happened -- gives back a
+	   size of zero for a chunk that is never 'data'. The walk then
+	   advances by nothing and reads the same four bytes forever: the
+	   machine stops during "loading samples" with no crash to show
+	   for it. Nothing may be read past here. */
+	file->Seek(0,SEEK_END) ;
+	long fileEnd=file->Tell() ;
+	file->Seek(0,SEEK_SET) ;
+	if (fileEnd<12) {
+		Trace::Error("wav is %ld bytes: not a wav",fileEnd) ;
+		delete wav ;
+		return 0 ;
+	}
+
 	// Read 'RIFF'
 
 	unsigned int chunk ;
@@ -246,6 +262,11 @@ WavFile *WavFile::Open(const char *path) {
 		// RIFF pads odd chunks to even; a 7-byte LIST without the
 		// pad desynced the walk one byte and 'data' was never found
 		position+=size+(size&1) ;
+		if (position+8>fileEnd) {
+			Trace::Error("no data chunk before the end of the file") ;
+			delete wav ;
+			return 0 ;
+		}
 		position+=wav->readBlock(position,4) ;
 		memcpy(&chunk,wav->readBuffer_,4) ;
 		chunk = Swap32(chunk);
@@ -260,7 +281,29 @@ WavFile *WavFile::Open(const char *path) {
 	memcpy(&size,wav->readBuffer_,4) ;
 	size = Swap32(size);
 
+	/* The data chunk's size is a number in the file, and until now it
+	   was believed without question. It decides how much memory gets
+	   allocated and how many samples the converter writes into it, so
+	   a wrong one is not a wrong length -- it is a heap overflow.
+	   Two ways it goes wrong in the wild: a truncated export (the
+	   claim outlives the bytes) and a corrupt or hostile header (a
+	   claim near 2^32, where 2*channels*frames wraps to a SMALL
+	   allocation that the write loop then runs straight off the end of).
+	   Clamp to what the file actually holds. */
+	{
+		long dataStart=position ;
+		file->Seek(0,SEEK_END) ;
+		long fileEnd=file->Tell() ;
+		long avail=fileEnd-dataStart ;
+		if (avail<0) avail=0 ;
+		if ((long long)size>(long long)avail) {
+			Trace::Log("WAV","data claims %u bytes, file holds %ld",size,avail) ;
+			size=(unsigned int)avail ;
+		}
+	}
+
 	wav->size_=size/nChannels/bitPerSample ; // Size in samples (stereo/16bits)
+	if (wav->size_<0) wav->size_=0 ;
 
 	wav->dataPosition_=position ;
 
@@ -289,15 +332,24 @@ long WavFile::readBlock(long start,long size) {
 		readBuffer_=SYS_MALLOC(size) ;
 		readBufferSize_=size ;
 	}
-  if (!readBuffer_)
-  {
-    Trace::Error("Failed to allocate read buffer of size %d",size);
-  } 
-  else 
-  {
-  	file_->Seek(start,SEEK_SET) ;
-    file_->Read(readBuffer_,size,1) ;
-  }
+	if (!readBuffer_) {
+		/* out of memory -- a full sample pool does this. Returning the
+		   requested size anyway sent the CONVERTER through the null
+		   buffer: a crash on the thread that happened to be loading,
+		   the render thread included (the sample-preview freeze). */
+		Trace::Error("Failed to allocate read buffer of size %d",size);
+		readBufferSize_=0 ;
+		return 0 ;
+	}
+	file_->Seek(start,SEEK_SET) ;
+	if (file_->Read(readBuffer_,1,(int)size)!=(int)size) {
+		/* short read: the bytes are not there. Reporting success left
+		   the converter reading whatever the buffer held from last
+		   time -- garbage audio at best, and it hid truncated files
+		   from every caller. */
+		Trace::Error("short read of %d bytes at %ld",(int)size,start) ;
+		return 0 ;
+	}
 	return size ;
 } ;
 
@@ -352,7 +404,15 @@ bool WavFile::GetBuffer(long start,long size) {
 	   source wider than 16 bits cannot be read into the destination
 	   and converted in place, it would not fit. */
 
-	int sampleBufferSize=2*channelCount_*size ;
+	/* 64-bit maths for a 32-bit allocation: 2*channels*frames wrapped
+	   negative or small on a big (or bogus) claim, and the write loop
+	   below does not know that. */
+	long long wanted=2LL*(long long)channelCount_*(long long)size ;
+	if (start<0||size<0||wanted<=0||wanted>(long long)0x7FFFFFF) {
+		Trace::Error("refusing sample buffer of %lld bytes",wanted) ;
+		return false ;
+	}
+	int sampleBufferSize=(int)wanted ;
 	if (sampleBufferSize>sampleBufferSize_) {
 		SAFE_FREE(samples_) ;
 		samples_=(short *)SYS_MALLOC(sampleBufferSize) ;
@@ -378,7 +438,7 @@ bool WavFile::GetBuffer(long start,long size) {
 		int samplesThis=rawChunk/bytePerSample_ ;
 		if (samplesThis>left) samplesThis=(int)left ;
 		int rawThis=samplesThis*bytePerSample_ ;
-		readBlock(bufferStart,rawThis) ;
+		if (readBlock(bufferStart,rawThis)<=0) return false ;
 		wavConvert((unsigned char *)readBuffer_,out,samplesThis,
 		           bytePerSample_,isFloat_) ;
 		bufferStart+=rawThis ;

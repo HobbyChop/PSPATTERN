@@ -18,14 +18,14 @@
 #include "SampleInstrumentDatas.h"
 #include "Application/Player/SyncMaster.h"
 
-fixed SampleInstrument::feedback_[SONG_CHANNEL_COUNT][FB_BUFFER_LENGTH*2] ;
+fixed SampleInstrument::feedback_[PLAYER_CHANNEL_COUNT][FB_BUFFER_LENGTH*2] ;
 
 bool SampleInstrument::useDirtyDownsampling_ = false;
 
 #define SHOULD_KILL_CLICKS false
 
-int SampleInstrument::lastMidiNote_[SONG_CHANNEL_COUNT]= {
-	-1,-1,-1,-1,-1,-1,-1,-1
+int SampleInstrument::lastMidiNote_[PLAYER_CHANNEL_COUNT]= {
+	-1,-1,-1,-1,-1,-1,-1,-1,-1
 } ;
 
 #define KRATE_SAMPLE_COUNT 100
@@ -141,7 +141,7 @@ SampleInstrument::SampleInstrument() {
 
      // Initalize instrument's voices update list
 
-     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
+     for (int i = 0; i < PLAYER_CHANNEL_COUNT; i++) {
          renderParams *rp = renderParams_ + i;
          rp->updaters_.push_back(&rp->volumeRamp_);
          rp->updaters_.push_back(&rp->panner_);
@@ -223,6 +223,13 @@ bool SampleInstrument::Start(int channel,unsigned char midinote,bool cleanstart)
 
 	 rp->sampleBuffer_=source_->GetSampleBuffer(rp->midiNote_) ;
 	 if (rp->sampleBuffer_==0) {
+		 return false ;
+	 } ;
+	 /* A sample that reports no frames (a file that failed part way,
+	    a header that lied) walked the render loop with an end index of
+	    -1 -- a spin on the AUDIO thread, which is a frozen machine and
+	    not a silent note. */
+	 if (source_->GetSize(rp->midiNote_)<=0) {
 		 return false ;
 	 } ;
 	 rp->channelCount_=source_->GetChannelCount(rp->midiNote_) ;

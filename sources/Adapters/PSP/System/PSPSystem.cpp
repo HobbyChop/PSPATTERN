@@ -18,6 +18,7 @@
 #include <psppower.h>
 #include <sys/time.h>
 #include <malloc.h>
+#include <pspsysmem.h>
 #include <stdlib.h>
 
 EventManager *PSPSystem::eventManager_ = NULL ;
@@ -263,6 +264,55 @@ void PSPSystem::AddUserLog(const char *msg) {
 void PSPSystem::PostQuitMessage() {
 	SDLEventManager::GetInstance()->PostQuitMessage() ;
 } ; 
+
+/* What is actually free.
+
+   Two earlier answers were both wrong, in opposite directions, and it
+   is worth writing down why so nobody tries them again.
+
+   PROBING -- asking malloc for ever larger blocks and reporting the
+   biggest one it hands over -- assumes malloc says no when it must.
+   Here it does not: it accepted sixty-three megabytes on a machine
+   with thirty-two, so the search always climbed to its own ceiling
+   and reported the same impossible number forever.
+
+   ADDING UP THE ALLOCATOR'S FREE LISTS -- fordblks plus what the
+   kernel holds outside the heap -- assumes fordblks is filled in.
+   This allocator leaves it at zero, so the sum was only ever the
+   half megabyte the kernel keeps outside, on every project, loaded
+   or empty.
+
+   What is left is subtraction, and it needs no field to be generous:
+   the allocator says how much it has claimed from the system (arena)
+   and how much of that it has handed out (uordblks). The difference
+   is free inside the heap; the kernel says what is still unclaimed
+   outside it. Both of those move the moment a sample is loaded. */
+unsigned int PSPSystem::GetMemoryFree() {
+
+	static unsigned long at=0 ; static unsigned int cached=0 ;
+	static bool logged=false ;
+	unsigned long now=GetClock() ;
+	if (at&&((now-at)<1000)) return cached ;
+	at=now?now:1 ;
+
+	struct mallinfo m=mallinfo() ;
+	unsigned int outside=(unsigned int)sceKernelMaxFreeMemSize() ;
+
+	long heapTotal=(long)m.arena ;
+	long handedOut=(long)m.uordblks ;
+	long insideHeap=(heapTotal>handedOut)?(heapTotal-handedOut):0 ;
+
+	if (!logged) {
+		// once per run: if this figure is ever wrong again, these are
+		// the numbers that say which part lied
+		logged=true ;
+		Trace::Log("MEM","arena=%d uordblks=%d fordblks=%d kernel=%u",
+		           m.arena,m.uordblks,m.fordblks,outside) ;
+	}
+
+	cached=(unsigned int)insideHeap+outside ;
+	return cached ;
+}
 
 unsigned int PSPSystem::GetMemoryUsage() {
 	// mallinfo walks the free list under the malloc lock -- O(fragments)

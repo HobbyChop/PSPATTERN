@@ -12,6 +12,8 @@ public:
 	virtual void Draw(GUIWindow &w,int offset=0) ;
 	virtual void ProcessArrow(unsigned short mask) {} ;
 	virtual void OnClick() ;
+	// the ladder walk identifies rows by id; ours is its action code
+	virtual FourCC GetVariableID() { return fourcc_ ; }
 	const char *GetString() ;
 
 protected:

@@ -356,8 +356,8 @@ private:
 	void retrigger(SynthVoice &v) ;
 	void setVoicePitch(SynthVoice &v,int note) ;
 
-	SynthVoice voice_[SONG_CHANNEL_COUNT] ;
-	unsigned char lastNote_[SONG_CHANNEL_COUNT] ;
+	SynthVoice voice_[PLAYER_CHANNEL_COUNT] ;
+	unsigned char lastNote_[PLAYER_CHANNEL_COUNT] ;
 	TableSaveState tableState_ ;
 	char name_[16] ;
 

@@ -121,7 +121,7 @@ public:
 	  void sendPatchControllers() ;
 
 	  char name_[20] ;  // Instrument name
-	  MidiVoice voice_[SONG_CHANNEL_COUNT] ;
+	  MidiVoice voice_[PLAYER_CHANNEL_COUNT] ;
 	  TableSaveState tableState_ ;
 
 	  static MidiService* svc_ ;

@@ -44,6 +44,7 @@ public:
 	virtual I_Dir *Open(const char *path) ;
 	virtual FileType GetFileType(const char *path) ;
 	virtual Result MakeDir(const char *path) ;
+	virtual void Sync() ;
 	virtual void Delete(const char *path) ;
 	virtual bool Rename(const char *from,const char *to) ;
 } ;

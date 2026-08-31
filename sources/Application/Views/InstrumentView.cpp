@@ -16,11 +16,19 @@
 #include "Foundation/Variables/Variable.h"
 #include "Application/Instruments/SynthPresets.h"
 #include "ModalDialogs/ImportSampleDialog.h"
+#include "BaseClasses/UIActionField.h"
+#include "Application/Instruments/DrumKit.h"
 #include "ModalDialogs/NewProjectDialog.h"
 #include "ModalDialogs/MessageBox.h"
 #include "System/System/System.h"
 
 void ImportSampleDialogCallback(View &v, ModalView &dialog) {
+    /* Coming back from the browser, the cursor belongs on the file
+       row: the sample just imported is what it names, and stepping to
+       a neighbour or auditioning it is the next thing anybody does.
+       OnFocus rebuilds the fields and restores focus by id, so naming
+       the id first is all it takes. */
+    ((InstrumentView &)v).FocusSampleRow();
     ((InstrumentView &)v).OnFocus();
 }
 
@@ -36,6 +44,7 @@ extern char *InstrumentTypeData[] ;
 #define IVP_TYPE MAKE_FOURCC('T','Y','P','E')
 #define IVP_SLOT MAKE_FOURCC('S','L','O','T')
 #define IVP_PRESET MAKE_FOURCC('P','R','S','T')
+#define IVP_IMPORT MAKE_FOURCC('I','M','P','T')
 
 InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):FieldView(w,data),
 	typeVar_("type",IVP_TYPE,(char**)InstrumentTypeData,IT_LAST,0),
@@ -59,6 +68,8 @@ InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):FieldView(w,data),
 	presetRestorePending_=false ;
 	presetApplying_=false ;
 	presetSavePending_=false ;
+	importPending_=false ;
+	lastLadderID_=IVP_TYPE ;
 	presetSaveName_[0]=0 ;
 	SynthPresets::Scan() ;
 	typeVar_.AddObserver(*this) ;
@@ -159,11 +170,23 @@ void InstrumentView::fillSampleParameters() {
 	I_Instrument *instr=bank->GetInstrument(i) ;
 	SampleInstrument *instrument=(SampleInstrument *)instr  ;
 
+	SamplePool *sp=SamplePool::GetInstance() ;
+	Variable *v=instrument->FindVariable(SIP_SAMPLE) ;
+	int listEnd=sp->GetNameListSize() ;
+
+	/* One list. It held a KIT/WAV split for a day and the split fought
+	   the pool, the rebuilds and the player of the machine; the kit
+	   simply lives at the top of the list and the imports after it,
+	   which is what the sorting already does. Import stays in plain
+	   sight below the type row. */
+	GUIPoint apos(2,3) ;
+	UIActionField *af=new UIActionField("import sample >",IVP_IMPORT,apos) ;
+	T_SimpleList<UIField>::Insert(af) ;
+
 	// ---- left column: SAMPLE (content rows 6-11) ----
 	GUIPoint pos(2,6) ;
-	Variable *v=instrument->FindVariable(SIP_SAMPLE) ;
-	SamplePool *sp=SamplePool::GetInstance() ;
-	UIIntVarField *f1=new UIIntVarField(pos,*v,"file  %s",0,sp->GetNameListSize()-1,1,0x10,0,17) ;
+	UIIntVarField *f1=new UIIntVarField(pos,*v,"file  %s",0,
+	                    (listEnd>0)?listEnd-1:0,1,0x10,0,17) ;
 	T_SimpleList<UIField>::Insert(f1) ;
 
 	pos=GUIPoint(2,7) ;
@@ -768,7 +791,7 @@ void InstrumentView::applyTypeChange() {
 // TYPE and ENGINE only -- the wave row sits among the parameters and
 // belongs to the stick like any other variable.
 static bool ivIsSelectorId(FourCC id) {
-	return id==IVP_TYPE||id==SYP_ENGINE||id==IVP_PRESET ;
+	return id==IVP_TYPE||id==SYP_ENGINE||id==IVP_PRESET||id==IVP_IMPORT ;
 }
 
 void InstrumentView::auditionStart() {
@@ -896,6 +919,22 @@ void InstrumentView::OnNubFlick(int dir, unsigned short mask) {
 	isDirty_=true ;
 } ;
 
+void InstrumentView::OnNavTo(ViewType to) {
+	if (to==VT_TABLE) {
+		/* Jumping to the table screen from here means THIS
+		   instrument's table -- the one its table row names -- not
+		   whichever table was looked at last. Same coupling the song
+		   screen got for its chains. Unset stays put: there is
+		   nothing to follow. */
+		I_Instrument *instr=viewData_->project_->GetInstrumentBank()
+		    ->GetInstrument(viewData_->currentInstrument_) ;
+		if (instr) {
+			int t=instr->GetTable() ;
+			if (t>=0) viewData_->currentTable_=t ;
+		}
+	}
+}
+
 void InstrumentView::LooseFocus() {
 	if (auditionLatch_) auditionStop() ;
 	View::LooseFocus() ;
@@ -913,6 +952,27 @@ void InstrumentView::warpToNext(int offset) {
 	onInstrumentChange() ;
 	if (auditionLatch_) auditionRetrigger() ;
 	isDirty_=true ;
+} ;
+
+void InstrumentView::FocusSampleRow() {
+	lastFocusID_=SIP_SAMPLE ;
+} ;
+
+void InstrumentView::openImportBrowser() {
+	/* the samplelib not existing used to be an error message and a
+	   dead end; it is a folder, so make it */
+	Path sampleLib(SamplePool::GetInstance()->GetSampleLib()) ;
+	FileSystem *fs=FileSystem::GetInstance() ;
+	if (fs->GetFileType(sampleLib.GetPath().c_str())!=FT_DIR) {
+		fs->MakeDir(sampleLib.GetPath().c_str()) ;
+	}
+	if (fs->GetFileType(sampleLib.GetPath().c_str())!=FT_DIR) {
+		MessageBox *mb=new MessageBox(*this,"Can't access the samplelib",MBBF_OK) ;
+		DoModal(mb) ;
+		return ;
+	}
+	ImportSampleDialog *isd=new ImportSampleDialog(*this) ;
+	DoModal(isd, ImportSampleDialogCallback);
 } ;
 
 void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
@@ -934,22 +994,6 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 			UIIntVarField *field=(UIIntVarField *)GetFocus() ;
 			Variable &v=field->GetVariable() ;
 			switch(v.GetID()) {
-				case SIP_SAMPLE:
-				 {
-                    // First check if the samplelib exists
-
-					 Path sampleLib(SamplePool::GetInstance()->GetSampleLib()) ;
-					 if (FileSystem::GetInstance()->GetFileType(sampleLib.GetPath().c_str())!=FT_DIR) {
-						 MessageBox *mb=new MessageBox(*this,"Can't access the samplelib",MBBF_OK) ;
-						 DoModal(mb) ;
-					 } else { ;
-						// Go to import sample
-
-						 ImportSampleDialog *isd=new ImportSampleDialog(*this) ;
-                         DoModal(isd, ImportSampleDialogCallback);
-                     }
-                    break ;
-				 }
 				case SIP_TABLE:
 				 {
 					int next=TableHolder::GetInstance()->GetNext() ;
@@ -1003,6 +1047,14 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 	// SELECT previews the instrument for as long as it is held: press
 	// = note on, release = note off (handled above the !pressed
 	// early-return). No latch, no timing.
+	if (mask==EPBM_A) {
+		UIField *fa=GetFocus() ;
+		if (fa&&fa->GetVariableID()==IVP_IMPORT) {
+			importPending_=true ;   // opened from ApplyDeferred
+			isDirty_=true ;
+			return ;
+		}
+	}
 	if (mask==EPBM_SELECT) {
 		if (!auditionLatch_) auditionStart() ;
 		isDirty_=true ;
@@ -1019,20 +1071,57 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		if (mask&EPBM_DOWN)  { warpToNext(-16) ; return ; }
 		if (mask&EPBM_UP)    { warpToNext(+16) ; return ; }
 	}
-	/* The d-pad is LOCKED to the ladder -- the selector rows (type,
-	   engine, wave). Up/down move between those rows only, left/right
-	   step the focused row's value, and the d-pad can never wander
-	   into the parameter grid: that is the nub's territory (walk with
-	   the stick, turn with O+stick). If the nub left the focus down in
-	   the parameters, the first d-pad press pulls it back up. */
+	/* Two zones, and X+up/down crosses between them: the SELECTOR
+	   LADDER (type, bank, engine, preset, import) and the PARAMETER
+	   grid. Inside a zone the plain d-pad walks -- the ladder used to
+	   own the d-pad outright, so reaching a parameter without the nub
+	   was impossible. */
+	if ((mask&EPBM_B)&&!(mask&(EPBM_A|EPBM_L|EPBM_R|EPBM_SELECT|EPBM_START))&&
+	    (mask&(EPBM_UP|EPBM_DOWN))) {
+		UIField *f=GetFocus() ;
+		bool onLadder=f&&ivIsSelectorId(f->GetVariableID()) ;
+		UIField *target=0 ;
+		IteratorPtr<UIField> itz(T_SimpleList<UIField>::GetIterator()) ;
+		if ((mask&EPBM_DOWN)&&onLadder) {
+			// down into the parameters: the first row that is not a
+			// selector, in list order (the screen's own reading order)
+			for (itz->Begin();!itz->IsDone();itz->Next()) {
+				UIField &fld=itz->CurrentItem() ;
+				if (fld.IsStatic()) continue ;
+				if (!ivIsSelectorId(fld.GetVariableID())) { target=&fld ; break ; }
+			}
+		} else if ((mask&EPBM_UP)&&!onLadder) {
+			// back up to the ladder row we came from
+			UIField *firstSel=0 ;
+			for (itz->Begin();!itz->IsDone();itz->Next()) {
+				UIField &fld=itz->CurrentItem() ;
+				FourCC id=fld.GetVariableID() ;
+				if (!ivIsSelectorId(id)) continue ;
+				if (!firstSel) firstSel=&fld ;
+				if (id==lastLadderID_) { target=&fld ; break ; }
+			}
+			if (!target) target=firstSel ;
+		}
+		if (target) {
+			SetFocus(target) ;
+			lastFocusID_=target->GetVariableID() ;
+			isDirty_=true ;
+		}
+		return ;
+	}
+
+	/* Plain d-pad: walks whichever zone the focus is in. On the ladder
+	   up/down change row and left/right step the value; in the
+	   parameters it is ordinary field navigation (O+arrows edits). */
 	if (!(mask&(EPBM_A|EPBM_B|EPBM_L|EPBM_R|EPBM_SELECT|EPBM_START)) &&
-	    (mask&(EPBM_LEFT|EPBM_RIGHT|EPBM_UP|EPBM_DOWN))) {
-		UIField *sel[4] ; int nSel=0, cur=-1 ;
+	    (mask&(EPBM_LEFT|EPBM_RIGHT|EPBM_UP|EPBM_DOWN)) &&
+	    GetFocus()&&ivIsSelectorId(GetFocus()->GetVariableID())) {
+		UIField *sel[6] ; int nSel=0, cur=-1 ;
 		UIField *f=GetFocus() ;
 		IteratorPtr<UIField> it(T_SimpleList<UIField>::GetIterator()) ;
-		for (it->Begin();!it->IsDone()&&nSel<4;it->Next()) {
+		for (it->Begin();!it->IsDone()&&nSel<6;it->Next()) {
 			UIField &fld=it->CurrentItem() ;
-			FourCC id=((UIIntVarField &)fld).GetVariableID() ;
+			FourCC id=fld.GetVariableID() ;   // virtual: safe for action rows
 			if (ivIsSelectorId(id)) {
 				if (&fld==f) cur=nSel ;
 				sel[nSel++]=&fld ;
@@ -1046,17 +1135,17 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 			   changed the type instead of the engine. */
 			if (cur<0) {
 				SetFocus(sel[0]) ;             // back up to the ladder
-				lastFocusID_=((UIIntVarField *)sel[0])->GetVariableID() ;
+				lastFocusID_=lastLadderID_=sel[0]->GetVariableID() ;
 			} else if (mask&(EPBM_LEFT|EPBM_RIGHT)) {
-				lastFocusID_=((UIIntVarField *)sel[cur])->GetVariableID() ;
+				lastFocusID_=lastLadderID_=sel[cur]->GetVariableID() ;
 				sel[cur]->ProcessArrow(mask&(EPBM_LEFT|EPBM_RIGHT)) ;
 				checkPresetStep() ;
 			} else if ((mask&EPBM_UP)&&cur>0) {
 				SetFocus(sel[cur-1]) ;
-				lastFocusID_=((UIIntVarField *)sel[cur-1])->GetVariableID() ;
+				lastFocusID_=lastLadderID_=sel[cur-1]->GetVariableID() ;
 			} else if ((mask&EPBM_DOWN)&&cur<nSel-1) {
 				SetFocus(sel[cur+1]) ;
-				lastFocusID_=((UIIntVarField *)sel[cur+1])->GetVariableID() ;
+				lastFocusID_=lastLadderID_=sel[cur+1]->GetVariableID() ;
 			}
 			isDirty_=true ;
 		}
@@ -1082,7 +1171,17 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		}
 	}
 
+	/* Plain arrows stay in the parameter zone: the selector rows sit
+	   in the same field list and the same column, so ordinary
+	   navigation (and its wrap) walked straight back onto the ladder.
+	   X+up is the only way back. */
+	UIField *beforeNav=GetFocus() ;
+	bool wasParam=beforeNav&&!ivIsSelectorId(beforeNav->GetVariableID()) ;
 	FieldView::ProcessButtonMask(mask) ;
+	if (wasParam&&!(mask&(EPBM_A|EPBM_B))) {
+		UIField *nowF=GetFocus() ;
+		if (nowF&&ivIsSelectorId(nowF->GetVariableID())) SetFocus(beforeNav) ;
+	}
 	checkPresetStep() ;
 
     Player *player=Player::GetInstance() ;
@@ -1128,8 +1227,14 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 
         if (mask == EPBM_A) {
             FourCC varID = ((UIIntVarField *)GetFocus())->GetVariableID();
+            /* The file row no longer opens the browser. O there is
+               half of O+arrows -- the gesture that steps a value on
+               every screen -- and opening a file browser the instant
+               the O landed made choosing a sample already in the
+               project impossible. Import has its own row now, in
+               plain sight, which is where that job belongs. */
             if ((varID == SIP_TABLE) || (varID == MIP_TABLE) ||
-                (varID == SIP_SAMPLE) || (varID == SIP_PRINTFX)) {
+                (varID == SIP_PRINTFX)) {
                 viewMode_ = VM_NEW;
 			}
         } else {
@@ -1202,6 +1307,11 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 void InstrumentView::ApplyDeferred() {
 
 	FieldView::ApplyDeferred() ;
+
+	if (importPending_) {
+		importPending_=false ;
+		openImportBrowser() ;
+	}
 
 	if (presetSavePending_) {
 		presetSavePending_=false ;
@@ -1318,7 +1428,7 @@ void InstrumentView::DrawView() {
     // Draw fields
 
     FieldView::Redraw();
-    DrawHintBar("</> pick  O+nub edit  L inst  SEL audit");
+    DrawHintBar("X+u/d zone  O+arw edit  L inst  SEL hear");
 } ;
 
 void InstrumentView::drawSampleChrome() {
@@ -1491,6 +1601,13 @@ void InstrumentView::Update(Observable &o,I_ObservableData *d) {
 		// ProcessArrow; applying now would delete that field under its
 		// executing method (see the flags in the header)
 		applyTypePending_=true ;
+		isDirty_=true ;
+		return ;
+	}
+
+	// the visible import row: its press arrives here as its fourcc
+	if (((unsigned int)(uintptr_t)d)==IVP_IMPORT) {
+		importPending_=true ;   // ApplyDeferred opens it outside the locks
 		isDirty_=true ;
 		return ;
 	}

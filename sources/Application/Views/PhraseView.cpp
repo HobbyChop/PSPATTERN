@@ -336,8 +336,13 @@ void PhraseView::updateCursorValue(ViewUpdateDirection direction, int xOffset,
         }
     }
     Player *player = Player::GetInstance();
-    // Phrase FX params are currently not applied to preview
-    if (col_ >= 0 && col_ <= 6) {
+    /* Auto-preview belongs to the columns that ARE the sound: note,
+       instrument, velocity. Cycling an effect TYPE retriggered the
+       row on every step -- six notes to browse six commands, none of
+       them even carrying the effect being chosen, since FX are not
+       applied to the preview. Tester call, and the right one. */
+    int editedCol = col_ + xOffset;
+    if (editedCol >= 0 && editedCol <= 2) {
         if (player->IsRunning()) {
             if ((viewData_->playMode_ == PM_AUDITION)) {
                 player->Stop();
@@ -1761,6 +1766,30 @@ void PhraseView::drawTriggerTrail() {
 // nav-menu context prep: entering the instrument screen lands on the
 // instrument under the cursor (or the nearest one), as the old drill did
 void PhraseView::OnNavTo(ViewType to) {
+    if (to == VT_TABLE) {
+        /* If the row under the cursor carries a TBL command, jumping
+           to the table screen means THAT table. Either command column
+           counts; the first one wins. Otherwise the instrument's own
+           table is the next best answer, and unset leaves the screen
+           where it was. */
+        int base = 16 * viewData_->currentPhrase_ + row_;
+        uint c1 = *(phrase_->cmd1_ + base);
+        ushort p1 = *(phrase_->param1_ + base);
+        uint c2 = *(phrase_->cmd2_ + base);
+        ushort p2 = *(phrase_->param2_ + base);
+        int t = -1;
+        if (c1 == I_CMD_TABL) t = p1 & 0x7F;
+        else if (c2 == I_CMD_TABL) t = p2 & 0x7F;
+        else {
+            unsigned char *ip = phrase_->instr_ + base;
+            if (*ip != 0xFF) {
+                I_Instrument *instr =
+                    viewData_->project_->GetInstrumentBank()->GetInstrument(*ip);
+                if (instr) t = instr->GetTable();
+            }
+        }
+        if (t >= 0 && t < TABLE_COUNT) viewData_->currentTable_ = t;
+    }
     if (to == VT_INSTRUMENT) {
         unsigned char *c = phrase_->instr_ +
                            (16 * viewData_->currentPhrase_ + row_);

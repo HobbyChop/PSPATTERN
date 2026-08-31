@@ -130,6 +130,7 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
     // the transport owns the channels now: forget any held keyboard/
     // audition notes, or their release would cut a song note later
     for (int i = 0; i < 128; i++) midiHeld_[i] = 0;
+    mixer_->StopChannel(AUDITION_CHANNEL);   // transport takes over: end any preview
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         mixer_->StopChannel(i);
         timeToLive_[i] = 0;
@@ -372,8 +373,12 @@ void Player::MidiNoteOn(unsigned char note,unsigned char velocity) {
 	I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
 	if (!instr) return ;
 
-	int channel=viewData_->songX_ ;
-	if ((channel<0)||(channel>=SONG_CHANNEL_COUNT)) return ;
+	/* The preview has a lane of its own past the song's eight, wired
+	   straight to the master sum -- no strip fader, mute, filter or
+	   send can silence or colour it. It used to borrow the cursor's
+	   song channel, and "audition is silently broken" turned out to
+	   be the cursor parked on a faded column. */
+	int channel=AUDITION_CHANNEL ;
 
 	if (!mixer_->IsChannelPlaying(channel)) {
 		mixer_->StartChannel(channel) ;
@@ -1514,7 +1519,7 @@ PlayerEventType PlayerEvent::GetType() { return type_; }
 
 unsigned int PlayerEvent::GetTickCount() { return tickCount_; }
 
-void Player::StartStreaming(const Path &path) { mixer_->StartStreaming(path); }
+bool Player::StartStreaming(const Path &path) { return mixer_->StartStreaming(path); }
 void Player::StopStreaming() { mixer_->StopStreaming(); }
 
 std::string Player::GetAudioAPI() {

@@ -51,7 +51,7 @@ MidiInstrument::MidiInstrument() {
 	Insert(v) ;
 
 	memset(voice_,0,sizeof(voice_)) ;
-	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) {
 		voice_[i].velocity_=127 ;
 		voice_[i].remainingTicks_=-1 ;
 		voice_[i].bentSent_=-1 ;

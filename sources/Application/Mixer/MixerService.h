@@ -20,6 +20,9 @@ enum MixerServiceRenderMode {
 };
 
 #define MAX_BUS_COUNT 10
+// the audition lane renders into the top spare bus, past the eight
+// the song channels default to
+#define AUDITION_BUS (MAX_BUS_COUNT-1)
 
 class MixerService: 
       public T_Singleton<MixerService>,

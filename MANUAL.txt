@@ -563,9 +563,31 @@ library. Creating an empty folder with that name is the fix.
 
 IMPORTING
 
-On the instrument screen set the type to SAMPLE, move to the file field
-and press O. The browser opens in samplelib. Choosing a file copies it
-into the current project samples folder and loads it straight away.
+On the instrument screen set the type to SAMPLE and press O on the
+"import sample >" row under it. The browser opens in samplelib,
+created for you if it does not exist yet.
+
+The file row is for choosing among the sounds already loaded: O and
+left/right step through them, like every other value on this screen.
+The file row does not open the browser.
+
+The sample list holds the generated drum kit first -- the same on
+every machine -- and everything imported into this project after it.
+
+The d-pad walks type, bank, import and the file row; O on "import
+sample >" opens the browser.
+
+In the browser:
+
+  up/down       walk the list (X+up/down jumps a page)
+  hold SELECT   hear the file under the cursor; keep holding and walk
+                the list to hear one file after another
+  O             take: enter a folder, or import the file
+  X             step out of the folder; at the library root, close
+
+Importing copies the file into the current project samples folder and
+loads it straight away. The status line above the key help says what
+happened -- imported, or why a file could not be played.
 
 It is a copy. The original stays in samplelib and the project gets its
 own version. That is what makes a project folder complete on its own:

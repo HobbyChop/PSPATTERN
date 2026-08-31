@@ -14,7 +14,7 @@
 
 PlayerMixer::PlayerMixer() {
 
-    for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
+    for (int i = 0; i < PLAYER_CHANNEL_COUNT; i++) {
         lastInstrument_[i] = 0;
 		channel_[i] = new PlayerChannel(i);
 		isChannelPlaying_[i] = false;
@@ -35,7 +35,7 @@ bool PlayerMixer::Init(Project *project) {
 
 	// Init states
 
-	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) {
         lastInstrument_[i]=0 ;
 	} ;
 
@@ -45,7 +45,7 @@ bool PlayerMixer::Init(Project *project) {
 
 void PlayerMixer::Close()  {
 
-	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) {
 		channel_[i]->Reset() ;
 	}
 
@@ -59,7 +59,7 @@ bool PlayerMixer::Start() {
 	MixerService *ms=MixerService::GetInstance() ;
 	ms->AddObserver(*this) ;
 
-	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) {
         notes_[i]=0xFF ;
     } ;
 
@@ -77,7 +77,7 @@ void PlayerMixer::StartChannel(int channel) {
 } ;
 
 void PlayerMixer::CutInstrument(I_Instrument *instr) {
-	for (int i=0;i<SONG_CHANNEL_COUNT;i++) channel_[i]->CutIfPlaying(instr) ;
+	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) channel_[i]->CutIfPlaying(instr) ;
 }
 
 void PlayerMixer::StopChannel(int channel) {
@@ -136,6 +136,20 @@ void PlayerMixer::Update(Observable &o,I_ObservableData *d) {
                               mixer->GetChannelChorusRate(i),
                               mixer->GetChannelChorusDepth(i));
   }
+
+  /* The audition lane. A preview asked for by name must be heard as
+     the instrument actually sounds, so its wiring is fixed and lives
+     outside the project mixer: full volume, filters off, dry, no
+     inserts, its own spare bus into the master sum. Every setter
+     early-returns once the value holds, so this costs nothing per
+     block. */
+  PlayerChannel *audition=channel_[AUDITION_CHANNEL];
+  audition->SetMixBus(AUDITION_BUS);
+  audition->SetVolume(fl2fp(1.0f));
+  audition->SetHPFMode(0);
+  audition->SetLPFFreq(0);
+  audition->SetSends(0,0);
+  audition->SetInserts(0,0,0,0);
   MixerService *ms=MixerService::GetInstance();
   // the two effects themselves, and the tempo the delay locks to
   ms->SetSendFxParams(mixer->GetDelayDivision(),mixer->GetDelayFeedback(),
@@ -159,7 +173,7 @@ void PlayerMixer::Update(Observable &o,I_ObservableData *d) {
 
 
 void PlayerMixer::SetVelocity(int channel,fixed v) {
-	if ((channel<0)||(channel>=SONG_CHANNEL_COUNT)) return ;
+	if ((channel<0)||(channel>=PLAYER_CHANNEL_COUNT)) return ;
 	channel_[channel]->SetVelocity(v) ;
 }
 
@@ -192,8 +206,8 @@ bool PlayerMixer::IsChannelMuted(int channel) {
      return channel_[channel]->IsMuted() ;
 }
 
-void PlayerMixer::StartStreaming(const Path &path) {
-	fileStreamer_.Start(path) ;
+bool PlayerMixer::StartStreaming(const Path &path) {
+	return fileStreamer_.Start(path) ;
 } ;
 
 void PlayerMixer::StopStreaming() {

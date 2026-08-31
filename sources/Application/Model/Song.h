@@ -6,6 +6,13 @@
 #include "Application/Persistency/Persistent.h"
 
 #define SONG_CHANNEL_COUNT 8
+/* One extra voice lane beyond the song's eight: the audition preview
+   plays there, wired straight to the master sum -- so no song strip's
+   mute, fader, filter or sends can silence or colour it. Everything
+   holding per-voice state sizes with PLAYER_CHANNEL_COUNT; the song,
+   the project mixer and the views stay eight wide. */
+#define PLAYER_CHANNEL_COUNT (SONG_CHANNEL_COUNT+1)
+#define AUDITION_CHANNEL SONG_CHANNEL_COUNT
 #define SONG_ROW_COUNT 256
 
 #define MAX_SAMPLEINSTRUMENT_COUNT 0x80

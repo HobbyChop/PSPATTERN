@@ -23,6 +23,7 @@ public: // System implementation
 	virtual int GetBatteryLevel() ;
 	virtual void PostQuitMessage() ;
 	virtual unsigned int GetMemoryUsage() ;
+	virtual unsigned int GetMemoryFree() ;
 	
 	static bool finished_ ;
 private:

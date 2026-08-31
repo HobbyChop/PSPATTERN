@@ -7,8 +7,14 @@ hope it will work :D
 #include "Filters.h"
 #include <math.h>
 #include "System/Console/Trace.h"
+#include "Application/Model/Song.h"
 
-static filter_t filter[8];
+/* One per player channel -- and the audition lane is a channel. This
+   was a bare 8 while the sampler indexed it with whatever channel it
+   was rendering, so previewing a sample on the ninth lane wrote its
+   filter state past the end of this array: no sound from the preview,
+   and a stray write into whatever static followed it. */
+static filter_t filter[PLAYER_CHANNEL_COUNT];
 
 bool filters_inited=false;
 
@@ -76,6 +82,7 @@ void set_filter(int channel, filterType_t type, fixed param1,fixed param2,int mi
 
 
 filter_t *get_filter(int channel) {
+	if ((channel<0)||(channel>=PLAYER_CHANNEL_COUNT)) channel=0 ;
 	return &filter[channel];
 } ;
 /*

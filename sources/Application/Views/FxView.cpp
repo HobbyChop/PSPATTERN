@@ -142,6 +142,17 @@ void FxView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		if (mask&EPBM_RIGHT) switchTo(VT_MIXER) ;
 		if (mask&EPBM_UP)    switchTo(VT_SONG) ;
 	}
+	/* The transport works here like everywhere else. It did not, and
+	   the FX screen is precisely where you stand while A/B-ing what
+	   an effect does to the playing song -- the one screen a tester
+	   called out for ignoring START. (The config screen stays without
+	   it on purpose: reboot-flagged settings and a running song make
+	   poor company.) */
+	if (mask == EPBM_START) {
+		Player *player=Player::GetInstance() ;
+		unsigned char ch=viewData_->songX_ ;
+		player->OnStartButton(PM_SONG,ch,player->IsRunning(),ch) ;
+	}
 }
 
 void FxView::DrawView() {

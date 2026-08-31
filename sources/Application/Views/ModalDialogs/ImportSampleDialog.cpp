@@ -10,21 +10,17 @@ bool ImportSampleDialog::initStatic_=false ;
 Path ImportSampleDialog::sampleLib_("") ;
 Path ImportSampleDialog::currentPath_("") ;
 
-static const char *buttonText[3]= {
-	"Listen",
-	"Import",
-	"Exit"	
-} ;
-
 ImportSampleDialog::ImportSampleDialog(View &view):ModalView(view) {
 	previewPending_=false ;
+	previewHeld_=false ;
+	bHeld_=false ;
+	bChorded_=false ;
 	if (!initStatic_) {
 		const char *slpath=SamplePool::GetInstance()->GetSampleLib() ;
 		sampleLib_=Path(slpath) ;
 		currentPath_=Path(slpath) ;
 		initStatic_=true ;
 	}
-	selected_=0 ;
 } ;
 
 ImportSampleDialog::~ImportSampleDialog() {
@@ -36,14 +32,14 @@ void ImportSampleDialog::DrawView() {
 
     GUITextProperties props;
 
-    // Draw title
-
-    //	char title[40] ;
-
+    // Where we are: the folder, on the top rule
     SetColor(CD_NORMAL);
-
-    //	sprintf(title,"Sample Import from %s",currentPath_.GetName()) ;
-    //	w_.DrawString(title,pos,props) ;
+    {
+        char title[LIST_WIDTH] ;
+        std::string folder=currentPath_.GetName() ;
+        snprintf(title,sizeof(title),"[%s]",folder.c_str()) ;
+        DrawString(1,0,title,props) ;
+    }
 
     // Draw samples
 
@@ -86,17 +82,17 @@ void ImportSampleDialog::DrawView() {
 		count++ ;
 	} ;
 
-	y=LIST_SIZE+2 ;
-	int offset=LIST_WIDTH/4 ;
-
+	/* one transient status line (imported X / can't play Y), and the
+	   keys, always visible -- the old three-button row needed its own
+	   cursor and was most of why importing felt like a puzzle */
 	SetColor(CD_NORMAL) ;
-
-	for (int i=0;i<3;i++) {
-		const char *text=buttonText[i] ;
-		x=offset*(i+1)-strlen(text)/2 ;
-		props.invert_=(i==selected_)?true:false ;
-		DrawString(x,y,text,props) ;
-	}	
+	props.invert_=false ;
+	if (!status_.empty()) {
+		char line[LIST_WIDTH] ;
+		snprintf(line,sizeof(line),"%s",status_.c_str()) ;
+		DrawString(1,LIST_SIZE+1,line,props) ;
+	}
+	DrawString(1,LIST_SIZE+2,"O take  X back  SEL hear",props) ;
 } ;
 
 void ImportSampleDialog::warpToNextSample(int direction) {
@@ -105,7 +101,13 @@ void ImportSampleDialog::warpToNextSample(int direction) {
 	int size=sampleList_.Size() ;
 	if (currentSample_ < 0) currentSample_ = 0;
 	if (currentSample_ >= size) currentSample_ = size - 1;
-	endPreview();
+	/* moving the cursor always STOPS the preview and never starts one.
+	   Following the cursor while SELECT was held meant one press
+	   played everything you browsed past -- you press to hear a file,
+	   not to arm a mode. */
+	previewHeld_=false ;
+	previewPending_=false ;   // and drop anything queued but not yet started
+	endPreview() ;
 	isDirty_=true ;
 }
 
@@ -129,7 +131,10 @@ void ImportSampleDialog::preview(Path &element) {
 void ImportSampleDialog::ApplyDeferred() {
 	if (!previewPending_) return ;
 	previewPending_=false ;
-	Player::GetInstance()->StartStreaming(pendingPreview_) ;
+	if (!Player::GetInstance()->StartStreaming(pendingPreview_)) {
+		status_="can't play that file" ;
+		isDirty_=true ;
+	}
 }
 
 void ImportSampleDialog::endPreview() {
@@ -147,6 +152,7 @@ void ImportSampleDialog::import(Path &element) {
 			sinstr->AssignSample(sampleID) ;
 			toInstr_=viewData_->project_->GetInstrumentBank()->GetNext() ;
 		};
+		status_="imported "+element.GetName() ;
 	} else {
         const char *err_str = (sampleID == -SLOAD_ERR_MAX_SAMPLES)
                                   ? "Maximum number of samples exceeded"
@@ -164,72 +170,88 @@ void ImportSampleDialog::import(Path &element) {
 
 void ImportSampleDialog::ProcessButtonMask(unsigned short mask,bool pressed) {
 
-	if (!pressed) return ;
+	/* The grammar every other screen already taught:
+	     up/down walk, B+up/down page
+	     SELECT held = hear the file (walk while holding to hear each)
+	     A = take what is under the cursor: enter a folder, import a file
+	     B = step out of the folder; at the library root, close
+	   The old three-button row with its own left/right cursor is gone --
+	   pressing A meant listen OR import OR exit depending on invisible
+	   state, which is exactly why previews felt hit and miss. */
 
-	if (mask&EPBM_B) {  
+	if (!pressed) {
+		if (previewHeld_&&!(mask&EPBM_SELECT)) {
+			previewHeld_=false ;
+			endPreview() ;
+		}
+		if (bHeld_&&!(mask&EPBM_B)) {
+			bHeld_=false ;
+			if (!bChorded_) {
+				if (isSampleLibRoot()) {
+					endPreview() ;
+					EndModal(0) ;
+				} else {
+					Path parent=currentPath_.GetParent() ;
+					setCurrentFolder(&parent) ;
+					status_="" ;
+					isDirty_=true ;
+				}
+			}
+		}
+		return ;
+	}
+
+	if (mask&EPBM_SELECT) {
+		Path *element=getImportElement() ;
+		if (element&&!element->IsDirectory()&&!element->Matches("*.sf2")) {
+			previewHeld_=true ;
+			preview(*element) ;
+			/* WITHOUT THIS the press queued a preview and nothing
+			   redrew, so ApplyDeferred never ran -- and the NEXT
+			   d-pad press, which does redraw, started the file the
+			   select had asked for. Press did nothing, moving played
+			   the one before: the funk the tester described. */
+			isDirty_=true ;
+		}
+		return ;
+	}
+
+	/* any press that is not SELECT ends a preview: releases can be
+	   missed (a full event queue once did exactly that), and a preview
+	   that outlives the button is the complaint we are fixing */
+	if (previewHeld_) { previewHeld_=false ; endPreview() ; }
+
+	if (mask&EPBM_B) {
+		if (mask==EPBM_B) { bHeld_=true ; bChorded_=false ; }
+		else bChorded_=true ;
 		if (mask&EPBM_UP) warpToNextSample(-LIST_SIZE) ;
 		if (mask&EPBM_DOWN) warpToNextSample(LIST_SIZE) ;
-	} else if (mask&EPBM_A) {
-		// Allow browse preview
-		if (mask&EPBM_UP) warpToNextSample(-1) ;
-		if (mask&EPBM_DOWN) warpToNextSample(1) ;
-
-		Path *element = getImportElement();
-		setCurrent(element, mask);
-
-		switch(selected_) {
-			case 0: // preview
-                if (!(element->IsDirectory() ||
-                      element->Matches(
-                          "*.sf2"))) { // Don't preview folders or SoundFonts
-                    preview(*element);
-                }
-                break;
-            case 1: // import
-				if(!element->IsDirectory()) { // Don't import folders
-					import(*element);
-				}
-				break ;
-			case 2: // Exit ;
-				endPreview(); // Stop playback when exiting
-				EndModal(0) ;
-				break ;
-		}
-	} else if (mask&EPBM_START) { // START Modifier
-		if (mask&EPBM_UP) warpToNextSample(-1);
-		if (mask&EPBM_DOWN) warpToNextSample(1);
-		Path *element = getImportElement();
-		setCurrent(element, mask);
-		if(!element->IsDirectory()) {
-			preview(*element);
-		}
-		if (mask&EPBM_RIGHT) { // Load sample
-			if (!element->IsDirectory()) {
-				endPreview();
-				import(*element);
-			}
-		}
-		if (mask&EPBM_LEFT) { // Navigate up
-			if (isSampleLibRoot()) {
-			} else {
-				Path parent = element->GetParent().GetParent();
-				setCurrentFolder(&parent);
-				isDirty_=true;
-			}
-		}
-	} else { // No modifier
-		if (mask==EPBM_UP) warpToNextSample(-1);
-		if (mask==EPBM_DOWN) warpToNextSample(1);
-		if (mask==EPBM_LEFT) {
-			selected_-=1;
-			if (selected_<0) selected_+=3;
-			isDirty_=true;
-		}
-		if (mask==EPBM_RIGHT) {
-			selected_=(selected_+1)%3;
-			isDirty_=true;
-		}
+		return ;
 	}
+
+	if (mask&EPBM_A) {
+		Path *element=getImportElement() ;
+		if (!element) return ;
+		if (element->IsDirectory()) {
+			if (element->GetName()=="..") {
+				if (!isSampleLibRoot()) {
+					Path parent=element->GetParent().GetParent() ;
+					setCurrentFolder(&parent) ;
+				}
+			} else {
+				setCurrentFolder(element) ;
+			}
+			status_="" ;
+			isDirty_=true ;
+		} else {
+			endPreview() ;
+			import(*element) ;
+		}
+		return ;
+	}
+
+	if (mask==EPBM_UP) warpToNextSample(-1) ;
+	if (mask==EPBM_DOWN) warpToNextSample(1) ;
 } ;
 
 bool ImportSampleDialog::isSampleLibRoot()
@@ -246,23 +268,6 @@ Path* ImportSampleDialog::getImportElement() {
 		if (count++ == currentSample_) {
 			return &it->CurrentItem();
 		}
-	}
-}
-
-void ImportSampleDialog::setCurrent(Path *element, unsigned short mask) {
-	if (selected_ != 2 && element->IsDirectory() && // Folders
-		!(mask&EPBM_UP||mask&EPBM_DOWN)) { // Don't browse preview folders
-			if (element->GetName()=="..") {
-				if (isSampleLibRoot()) {
-				} else {
-					Path parent = element->GetParent().GetParent();
-					setCurrentFolder(&parent);
-				}
-		} else {
-			setCurrentFolder(element);
-		}
-		isDirty_ = true;
-		return;
 	}
 }
 

@@ -40,6 +40,9 @@ public:
   void Reset();
   ~SamplePool();
   SoundSource *GetSource(int i);
+  // where the leading run of baked sounds ends: the KIT/WAV boundary
+  // measured from what the pool actually holds
+  int GetBakedEnd();
   char **GetNameList();
   int GetNameListSize();
   int ImportSample(Path &path);

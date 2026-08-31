@@ -42,7 +42,7 @@ public:
 
 	bool IsChannelPlaying(int channel) ;
 	
-	void StartStreaming(const Path &) ;
+	bool StartStreaming(const Path &) ;
 	void StopStreaming()  ;
 
 	bool Clipped() ;
@@ -66,15 +66,15 @@ private:
 	Project *project_ ;
 	bool clipped_ ;
 	
-    I_Instrument *lastInstrument_[SONG_CHANNEL_COUNT] ;
-	bool isChannelPlaying_[SONG_CHANNEL_COUNT] ;
+    I_Instrument *lastInstrument_[PLAYER_CHANNEL_COUNT] ;
+	bool isChannelPlaying_[PLAYER_CHANNEL_COUNT] ;
 
 	AudioFileStreamer fileStreamer_ ;
-	PlayerChannel *channel_[SONG_CHANNEL_COUNT] ;
+	PlayerChannel *channel_[PLAYER_CHANNEL_COUNT] ;
 
 	// store trigger notes, 0xFF = none
 	
-    unsigned char notes_[SONG_CHANNEL_COUNT] ;
+    unsigned char notes_[PLAYER_CHANNEL_COUNT] ;
 } ;
 
 #endif

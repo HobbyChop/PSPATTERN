@@ -75,6 +75,7 @@ void SamplePool::Reset() {
 	   Only entries at or above DRUMKIT_TOTAL came from this project's
 	   samples folder, because bakeDrums always fills from zero. */
 	int keep=drumsBaked_?DRUMKIT_TOTAL:0 ;
+	if (keep>count_) keep=count_ ;   // never trust kit accounting blindly
 	for (int i=keep;i<MAX_PIG_SAMPLES;i++) {
 		SAFE_DELETE(wav_[i]) ;
 		SAFE_FREE(names_[i]) ;
@@ -110,6 +111,16 @@ unsigned int SamplePool::Load() {
         bakeDrums();
         drumsBaked_=(count_>=DRUMKIT_TOTAL) ;
         report("drum kit",DRUMKIT_TOTAL,DRUMKIT_TOTAL);
+    }
+
+    /* the pool says what it holds, once, where a log can catch it --
+       the KIT/WAV split depends on this order and guessing at it from
+       symptoms has cost days */
+    Trace::Log("POOL","baked end at %d of %d",GetBakedEnd(),count_) ;
+    for (int di=0;di<count_&&di<32;di++) {
+        Trace::Log("POOL","%02d %s baked=%d",di,
+                   names_[di]?names_[di]:"(null)",
+                   wav_[di]?(int)wav_[di]->IsBaked():-1) ;
     }
 
     Path sampleDir("samples:");
@@ -205,6 +216,12 @@ int SamplePool::getIndexOf(const char *name) {
 	return -1;
 }
 
+int SamplePool::GetBakedEnd() {
+	int i=0 ;
+	while (i<count_&&wav_[i]&&wav_[i]->IsBaked()) i++ ;
+	return i ;
+}
+
 SoundSource *SamplePool::GetSource(int i) {
 	// indices come from instrument parameters, which come from the file
 	if ((i<0)||(i>=MAX_PIG_SAMPLES)) return 0 ;
@@ -239,7 +256,19 @@ if (wave) {
     names_[count_] = (char *)SYS_MALLOC(name.length() + 1);
     strcpy(names_[count_], name.c_str());
     count_++;
-    wave->GetBuffer(0, wave->GetSize(-1));
+    if (!wave->GetBuffer(0, wave->GetSize(-1))) {
+        /* opened fine, would not fit or would not read: a half-loaded
+           sample left registered here was a null buffer handed to the
+           sampler mid-song later. Back it out completely. */
+        Trace::Error("Failed to buffer %s", wavPath.GetName().c_str());
+        count_--;
+        SYS_FREE(names_[count_]);
+        names_[count_]=0;
+        wav_[count_]=0;
+        wave->Close();
+        delete wave;
+        return SLOAD_ERR_INPUT_FILE;
+    }
     wave->Close();
     return SLOAD_OK;
 } else {
@@ -362,6 +391,15 @@ int SamplePool::Reassign(std::string name, bool imported) {
 }
 
 void SamplePool::PurgeSample(int i) {
+
+	/* The caller walks pool positions while this function shifts them
+	   under it, so a stale index reaching here is a file deleted by
+	   the wrong name, or a null read as a string. Neither is worth
+	   risking to save a comparison. */
+	if ((i<0)||(i>=count_)||(!names_[i])) {
+		Trace::Error("purge asked for slot %d of %d",i,count_) ;
+		return ;
+	}
 
 	// construct the path of the sample to delete
 

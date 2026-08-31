@@ -3,6 +3,7 @@
 
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
+#include "Application/Instruments/DrumKit.h"
 #include "Application/Persistency/PersistencyService.h"
 #include "Application/Player/SyncMaster.h"
 #include "Foundation/Variables/WatchedVariable.h"
@@ -405,15 +406,28 @@ void Project::PurgeInstruments(bool removeFromDisk) {
 
         // Now effectively purge all unused sample from disk
 
+        /* NEVER the baked kit. Slots below DRUMKIT_TOTAL are the
+           generated drums: no file on the card, and the pool's whole
+           accounting assumes they stay put. Purging from zero deleted
+           kit entries and shifted everything down while the pool went
+           on believing twenty-four kit slots existed -- so the next
+           project reload freed the same shifted pointers twice. A
+           double-free is heap corruption, and the load right after it
+           wedged on the first file it touched, unfreezable short of a
+           reboot. This is that compact-then-reload crash. */
         int purged = 0;
         SamplePool *sp = SamplePool::GetInstance();
-        for (int i = 0; i < MAX_PIG_SAMPLES; i++) {
+        for (int i = DRUMKIT_TOTAL; i < MAX_PIG_SAMPLES; i++) {
             if ((!used[i])&&(sp->GetSource(i-purged))) {
                 sp->PurgeSample(i - purged);
                 Trace::Debug("Purged sample [%d]", i - purged);
         		purged++;
 				}
         }
+        Trace::Log("PURGE","%d unused samples removed",purged) ;
+        /* the deletes above are queued in the card driver; make them
+           land before the reload that usually follows starts reading */
+        FileSystem::GetInstance()->Sync() ;
     }
 }
 

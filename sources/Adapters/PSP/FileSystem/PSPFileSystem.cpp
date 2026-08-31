@@ -98,10 +98,19 @@ void PSPDir::GetContent(char *mask) {
     SceUID v=sceIoDread(fd,&de);
 	char nameBuffer[256] ;
 	
-    while(v!=0) {
+    /* sceIoDread returns 0 at the end of the directory and NEGATIVE on
+       error, and this loop only ever stopped on the zero. A handle
+       that goes bad part way -- which is what deleting a pile of files
+       out of a directory can do to the read that follows -- then
+       returns its error code forever and the loop never ends: the
+       machine stops during "loading samples", with the last name it
+       managed to read still on screen. Anything but a positive count
+       is the end of the walk. */
+    while(v>0) {
 	
 		// See if matches current mask
 		int len=strlen(de.d_name) ;
+		if (len>(int)sizeof(nameBuffer)-1) len=sizeof(nameBuffer)-1 ;
 		for (int i=0;i<len;i++) {
 			nameBuffer[i]=tolower(de.d_name[i]) ;
 		}
@@ -187,6 +196,11 @@ bool PSPFileSystem::Rename(const char *from,const char *to) {
 
 void PSPFileSystem::Delete(const char *path) {
 	sceIoRemove(path);
+}
+
+void PSPFileSystem::Sync() {
+	// wait for the memory stick's queued writes to actually land
+	sceIoSync("ms0:", 0);
 }
 
 Result PSPFileSystem::MakeDir(const char *path) {
