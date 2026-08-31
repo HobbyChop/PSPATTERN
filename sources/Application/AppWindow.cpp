@@ -1756,7 +1756,7 @@ void AppWindow::LoadProject(const Path &p) {
     Redraw();
 }
 
-void AppWindow::CloseProject() {
+void AppWindow::CloseProject(bool showPicker) {
 
     _closeProject = false;
     Player *player = Player::GetInstance();
@@ -1794,8 +1794,16 @@ void AppWindow::CloseProject() {
     _currentView = _nullView;
     _nullView->SetDirty(true);
 
-    SelectProjectDialog *spd = new SelectProjectDialog(*_currentView);
-    _currentView->DoModal(spd, ProjectSelectCallback);
+    /* The picker ONLY when nothing is about to load. The save-as flow
+       runs CloseProject immediately followed by LoadProject -- and the
+       unconditional picker here opened a dialog that the load then
+       built a whole new set of views underneath. The orphaned modal
+       haunted the session: phantom picker, saves that seemed to land
+       only when it was dismissed, crashes on its dead references. */
+    if (showPicker) {
+        SelectProjectDialog *spd = new SelectProjectDialog(*_currentView);
+        _currentView->DoModal(spd, ProjectSelectCallback);
+    }
 };
 
 AppWindow *AppWindow::Create(GUICreateWindowParams &params) {
@@ -1933,7 +1941,8 @@ bool AppWindow::onEvent(GUIEvent &event) {
         _isDirty = true;
     }
     if (_loadAfterSaveAsProject) {
-        CloseProject();
+        _loadAfterSaveAsProject = false;
+        CloseProject(false);   // no picker: the load below is the point
         _isDirty = true;
         LoadProject(_newProjectToLoad.c_str());
     }

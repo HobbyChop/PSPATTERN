@@ -1,3 +1,27 @@
+PSPATTERN 0.24.1a
+
+    Save-as saves. It never actually worked on the PSP: the flow
+        glued its destination path together by hand, the alias
+        resolver added a slash of its own, and the memory stick
+        driver refused the double-slashed result -- so pressing OK
+        did nothing at all. Paths are now built the same way the
+        boot-time new-project flow always built them. Save-as writes
+        the project and its samples, then drops you straight into
+        the new copy.
+
+    The project screen stops haunting. Save-as used to open the
+        project picker underneath the copy it was about to load,
+        leaving an orphaned dialog with stale wiring -- phantom
+        screens, saves that seemed to land only on the way out,
+        freezes and crashes around the picker. Closed properly now.
+
+    Exiting from the picker no longer crashes. Backing out of the
+        project picker quits the app, and quitting never stopped the
+        MIDI threads: the usb pump kept polling a driver that was
+        being torn down underneath it. Shutdown now asks every MIDI
+        thread out before the usb teardown -- this also makes the
+        HOME exit clean with the adapter attached.
+
 PSPATTERN 0.24.0a
 
     The thumbstick moves where you aim. The two stick axes used to

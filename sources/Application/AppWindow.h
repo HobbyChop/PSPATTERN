@@ -80,7 +80,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     void navPrep(ViewType from, ViewType to);
     ViewType navSel_;
     bool navigating_;
-    void CloseProject();
+    void CloseProject(bool showPicker = true);
 
     virtual void Clear(bool all = false);
     // throw away the diff cache so the next Flush repaints every cell

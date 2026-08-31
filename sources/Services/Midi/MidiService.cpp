@@ -47,7 +47,19 @@ bool MidiService::Init() {
     return true;
 };
 
-void MidiService::Close() { Stop(); };
+void MidiService::Close() {
+    Stop();
+    /* the IN pumps are threads polling the usb driver; at shutdown the
+       driver is about to be stopped underneath them, and a poll into a
+       stopped driver is the exit crash. Ask every pump out here -- the
+       caller gives them a grace delay before the teardown proper. */
+    IteratorPtr<MidiInDevice> it(inList_.GetIterator());
+    for (it->Begin(); !it->IsDone(); it->Next()) {
+        MidiInDevice &current = it->CurrentItem();
+        current.Stop();
+        current.Close();
+    }
+};
 
 I_Iterator<MidiInDevice> *MidiService::GetInIterator() {
     return inList_.GetIterator();
@@ -278,6 +290,16 @@ void MidiService::stopDevice() {
             rtThread_->RequestTermination();
             rtThread_ = 0;
         }
+        {
+            /* the sender's last step may already be past the terminate
+               check: it touches device_ only under this mutex, so close
+               and null inside it and that step sees a dead device
+               instead of a dying one */
+            SysMutexLocker locker(queueMutex_);
+            device_->Close();
+            device_ = 0;
+        }
+        return;
 #endif
         device_->Close();
     }

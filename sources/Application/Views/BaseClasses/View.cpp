@@ -112,6 +112,10 @@ void View::drawNotes(int x0) {
 }
 
 void View::DoModal(ModalView *view,ModalViewCallback cb) {
+	/* a modal left behind by an interrupted flow must not leak -- and
+	   worse than the leak, its stale callback fired on whatever view
+	   ended up here. Replace means replace. */
+	if (modalView_) { SAFE_DELETE(modalView_) ; }
 	modalView_=view ;
 	modalView_->OnFocus() ;
 	modalViewCallback_=cb ;

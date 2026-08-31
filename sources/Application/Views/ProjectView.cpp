@@ -34,20 +34,25 @@ static void SaveAsProjectCallback(View &v,ModalView &dialog) {
     NewProjectDialog &npd=(NewProjectDialog &)dialog;
 
     if (dialog.GetReturnCode()>0) {
-		std::string str_dstprjdir;
-		std::string str_dstsmpdir;
-
+		/* Build every destination with Descend, exactly like the
+		   boot-time new-project flow that is known to work on the
+		   device. The old construction glued "root:" + "/" + name,
+		   and alias resolution adds a slash of its own -- yielding
+		   "ms0:/..//lgpt_NAME". The PSP io driver gets that string
+		   raw (sceIoMkdir, sceIoOpen), and everything downstream
+		   inherited it: the project alias, the samples copy, even
+		   the remembered last-project. */
 		Path root("root:");
-		str_dstprjdir = root.GetName() + "/" + npd.GetName();
-		str_dstsmpdir = str_dstprjdir + "/samples/";
+		Path path_dstprjdir = root.Descend(npd.GetName());
+		Path path_dstsmpdir = path_dstprjdir.Descend("samples");
+		std::string str_dstprjdir = path_dstprjdir.GetPath();
+		std::string str_dstsmpdir = path_dstsmpdir.GetPath() + "/";
 
 		Path path_srcprjdir("project:");
 		Path path_srcsmpdir("project:samples");
-		Path path_dstprjdir = Path(str_dstprjdir);
-		Path path_dstsmpdir = Path(str_dstsmpdir);
 
-        Path path_srclgptdatsav = path_srcprjdir.GetPath() + "lgptsav_tmp.dat";
-        Path path_dstlgptdatsav = path_dstprjdir.GetPath() + "/lgptsav.dat";
+		Path path_srclgptdatsav = path_srcprjdir.GetPath() + "lgptsav_tmp.dat";
+		Path path_dstlgptdatsav = path_dstprjdir.Descend("lgptsav.dat");
 
 		// Every failure below used to be a Trace line and a silent
 		// return: you pressed save-as, nothing visible happened, and

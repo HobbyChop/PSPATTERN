@@ -190,6 +190,13 @@ void PSPSystem::Shutdown() {
 	// are about to be torn down. One paused callback plus a grace
 	// delay and the machine is quiet before anything is freed.
 	SDL_PauseAudio(1) ;
+	/* And the MIDI threads: the in pump polls the prx and the clock
+	   sender writes to it, and sceUsbStop below tears that driver down
+	   underneath any thread still inside it. Exiting from the project
+	   picker crashed exactly here -- the pump's next poll landed in a
+	   stopped driver. Request them out, then the grace delay covers
+	   their last waits (pump: one 20ms poll; sender: sub-ms). */
+	MidiService::GetInstance()->Close() ;
 	sceKernelDelayThread(80 * 1000) ;
 	PSPUsbMidiLink::Unload() ;
 } ;
