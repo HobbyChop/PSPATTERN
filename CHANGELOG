@@ -1,3 +1,14 @@
+PSPATTERN 0.25.4a
+
+    The thumbstick is retired. It only ever spoke on the instrument
+        screen, and stick drift -- near universal on aging PSPs --
+        made that screen a lottery for affected units: focus walking
+        and values editing themselves. No clamp truly tames a pad
+        drifting past its thresholds, so nothing listens to the
+        stick any more. The d-pad does everything it did: two zones,
+        X+up/down between them, up/down and left/right within the
+        selector rows, O with a direction to edit a parameter.
+
 PSPATTERN 0.25.3a
 
     The dying d-pad is cured. Lose one button-release event -- a

@@ -49,8 +49,8 @@ The manual refers to the PSP buttons by the names printed on them.
   START      Start and stop playback.
   SELECT     Marking on the grids, audition on the instrument screen.
   D-pad      Move the cursor.
-  Nub        The analog stick. Browses and edits on the instrument
-             screen.
+  Nub        Unused. Stick drift on aging units made anything mapped
+             to it a lottery, so nothing listens to it.
 
 Most editing is a modifier held with a direction. Holding O and pressing
 left or right changes a value by one. Holding O and pressing up or down
@@ -433,14 +433,14 @@ second row.
 
 THE INSTRUMENT DECK
 
-The screen splits the controls by job. The d-pad owns identity: left
-and right step the type, the engine, or the preset, and up and down
-move between those three rows. It never wanders into the parameters.
-The analog nub owns the parameters: alone it walks between them, and
-with O held it turns the focused value -- slowly near the centre for
-precision, faster as you push. The d-pad with O held edits too, one
-step at a time, and if your nub is worn out, X with a direction does
-what the nub does.
+The screen has two zones and the d-pad works both. The selector rows
+at the top -- type, engine or preset, import -- are one zone: up and
+down move between the rows, left and right step the focused row's
+value. The parameters are the other: the d-pad walks between them,
+and O with a direction edits the focused value one step at a time.
+X with up or down crosses between the zones. The analog stick does
+nothing here: stick drift on aging units made it a liability, and
+everything it did, the d-pad does.
 
 L with a direction is the only control that changes which instrument
 slot you are editing.

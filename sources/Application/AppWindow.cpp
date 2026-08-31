@@ -320,98 +320,15 @@ void AppWindow::uiTick() {
         }
     }
 
-    int ax, ay;
-    if (System::GetInstance()->GetAnalog(ax, ay)) {
-        /* Two stick behaviours, picked by whether O is down.
+    /* The thumbstick no longer moves anything. It only ever spoke on
+       the instrument screen, and stick drift -- near-universal on
+       aging PSPs -- made that screen a lottery for affected units:
+       values edited and focus walked by a stick nobody touched. The
+       d-pad grammar covers everything the nub did (zones, ladder,
+       O+arrows editing), so the analog is simply not read any more.
+       GetAnalog stays in the system layer for anything that ever
+       wants an explicitly-calibrated use. */
 
-           NAVIGATION (stick alone) keeps flick semantics: one step per
-           push past 60/128, re-armed near centre -- deliberate moves,
-           no drift.
-
-           EDITING (O held) is a held-deflection repeater: past 45/128
-           it fires immediately -- whatever order stick and O were
-           pressed in -- and repeats while held, faster the harder the
-           push (200ms easing to 30ms at full tilt). That is what makes
-           value changes feel like turning a knob instead of flicking
-           a switch. */
-        bool edit = (_mask & EPBM_A) != 0;
-        unsigned long now = System::GetInstance()->GetClock();
-        static bool armed[2] = {true, true};
-        static unsigned long nextFire[2] = {0, 0};
-        int vals[2] = {ax, ay};
-        /* CARDINAL CLAMP. The axes used to fire independently, so a
-           push at forty degrees fired horizontal AND vertical -- the
-           "it went somewhere I did not aim" complaint. One tick, one
-           axis: the clearly dominant one fires, the other is treated
-           as centred. A push too close to a true diagonal (margin
-           under 16 of 128) fires NOTHING -- a deliberate dead wedge,
-           so an ambiguous thumb angle waits for a clear one instead
-           of guessing. Rolling off the diagonal onto a cardinal fires
-           immediately, because the suppressed axis re-arms while it
-           is being ignored. */
-        int axAbs = (ax < 0) ? -ax : ax;
-        int ayAbs = (ay < 0) ? -ay : ay;
-        int domAxis = (axAbs >= ayAbs) ? 0 : 1;
-        int domMargin = (axAbs >= ayAbs) ? (axAbs - ayAbs) : (ayAbs - axAbs);
-        bool diagonal = (domMargin < 16) && (axAbs > 25 || ayAbs > 25);
-        for (int axis = 0; axis < 2; axis++) {
-            int v = vals[axis];
-            if (axis != domAxis || diagonal) v = 0;
-            int mag = (v < 0) ? -v : v;
-            int dir = (axis == 0) ? ((v < 0) ? 0 : 1) : ((v < 0) ? 2 : 3);
-            if (edit) {
-                armed[axis] = true;
-                if (mag > 50) {
-                    if (now >= nextFire[axis]) {
-                        /* two-zone feel: a gentle hold sits in a slow
-                           precision band so exact values are easy to
-                           land; real speed asks for real deflection */
-                        int interval;
-                        if (mag < 85) interval = 330;
-                        else {
-                            interval = 250 - ((mag - 85) * 205) / 42;
-                            if (interval < 45) interval = 45;
-                        }
-                        nextFire[axis] = now + (unsigned long)interval;
-                        if (_currentView == _instrumentView) {
-                            GUIEvent *e = new GUIEvent((long)dir,
-                                                       ET_PADANALOGFLICK, 0, 0, 0, 0);
-                            PushEvent(*e);
-                        }
-                    }
-                } else {
-                    nextFire[axis] = 0;   // released: next push is instant
-                }
-            } else {
-                nextFire[axis] = 0;
-                /* Re-arm on the RAW reading, never the clamped one.
-                   The clamp zeroes the non-dominant axis, and re-arming
-                   off that zero meant a DRIFTING stick whose dominant
-                   axis jittered re-armed and re-fired every tick -- a
-                   flick storm that flooded the queue, forced a redraw
-                   per event, and made the real d-pad lag into "moving
-                   on its own, then freezing" (the tester's two-PSP
-                   report). An axis now re-arms only when the stick has
-                   physically come back near centre, so drift fires at
-                   most once and then stays quiet. */
-                int rawMag = (vals[axis] < 0) ? -vals[axis] : vals[axis];
-                if (armed[axis] && mag > 60) {
-                    armed[axis] = false;
-                    /* only the instrument screen listens to the stick;
-                       everywhere else a pushed flick is a no-op that
-                       still costs a queue slot and a redraw -- exactly
-                       the flood that dropped real button-ups */
-                    if (_currentView == _instrumentView) {
-                        GUIEvent *e = new GUIEvent((long)dir,
-                                                   ET_PADANALOGFLICK, 0, 0, 0, 0);
-                        PushEvent(*e);
-                    }
-                } else if (!armed[axis] && rawMag < 25) {
-                    armed[axis] = true;
-                }
-            }
-        }
-    }
     Invalidate();
 }
 
