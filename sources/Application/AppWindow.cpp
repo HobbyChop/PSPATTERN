@@ -563,8 +563,13 @@ bool AppWindow::navReachable(ViewType to) {
         return true;
     }
     if (from == VT_CHAIN) {
-        if (to == VT_PHRASE || to == VT_INSTRUMENT)
-            return *_viewData->GetCurrentChainPointer() != 0xFF;
+        if (to == VT_PHRASE || to == VT_INSTRUMENT ||
+            to == VT_TABLE || to == VT_TABLE2) {
+            unsigned char ph = *_viewData->GetCurrentChainPointer();
+            if (ph == 0xFF) return false;
+            if (to == VT_TABLE || to == VT_TABLE2)
+                return _phraseView && _phraseView->ResolveNavTable(ph) >= 0;
+        }
         return true;
     }
     if (from == VT_PHRASE) {
@@ -580,6 +585,25 @@ bool AppWindow::navReachable(ViewType to) {
                     _viewData->currentInstrument_);
             return instr && instr->GetTable() >= 0;
         }
+        return true;
+    }
+
+    /* every other screen: the same song-cursor gate the jump itself
+       uses, computed without touching anything */
+    if (to == VT_CHAIN || to == VT_PHRASE || to == VT_INSTRUMENT ||
+        to == VT_TABLE || to == VT_TABLE2) {
+        int sx = _viewData->songX_;
+        if (from == VT_MIXER)
+            sx = _viewData->mixerCol_ > 7 ? 7 : _viewData->mixerCol_;
+        unsigned char cell =
+            *(song->data_ + sx + 8 * (_viewData->songY_ + _viewData->songOffset_));
+        if (cell == 0xFF) return false;
+        if (to == VT_CHAIN) return true;
+        unsigned char ph =
+            *(song->chain_->data_ + 16 * cell + _viewData->chainRow_);
+        if (ph == 0xFF) return false;
+        if (to == VT_TABLE || to == VT_TABLE2)
+            return _phraseView && _phraseView->ResolveNavTable(ph) >= 0;
         return true;
     }
     return true;
@@ -2082,14 +2106,48 @@ ViewType AppWindow::navPrep(ViewType from, ViewType to) {
             return VT_PHRASE;   // no table to follow: stop at the phrase
         return to;
     }
-    if (from == VT_CHAIN && to == VT_INSTRUMENT) {
+    if (from == VT_CHAIN &&
+        (to == VT_INSTRUMENT || to == VT_TABLE || to == VT_TABLE2)) {
         if (_chainView && !_chainView->OnNavTo(VT_PHRASE)) return VT_CHAIN;
-        if (_phraseView) _phraseView->OnNavTo(VT_INSTRUMENT);
+        if (to == VT_INSTRUMENT) {
+            if (_phraseView) _phraseView->OnNavTo(VT_INSTRUMENT);
+            return to;
+        }
+        if (_phraseView && !_phraseView->OnNavTo(to)) return VT_PHRASE;
         return to;
     }
-    if (from == VT_MIXER && to == VT_INSTRUMENT) {
-        if (_mixerView)  _mixerView->OnNavTo(VT_PHRASE);
-        if (_phraseView) _phraseView->OnNavTo(VT_INSTRUMENT);
+    if (from == VT_PHRASE || from == VT_INSTRUMENT) {
+        if (_currentView && !_currentView->OnNavTo(to)) return from;
+        return to;
+    }
+
+    /* EVERY OTHER SCREEN -- mixer, config, FX, groove, project, the
+       tables -- jumps into the song hierarchy through the same gate:
+       the song cursor's context, with the same refusals. These
+       screens used to slide through on whatever chain/phrase/table
+       was last open, which made the strict rules look optional. */
+    if (to == VT_CHAIN || to == VT_PHRASE || to == VT_INSTRUMENT ||
+        to == VT_TABLE || to == VT_TABLE2) {
+        if (from == VT_MIXER && _viewData) {
+            // the mixer's column IS its song cursor
+            _viewData->songX_ =
+                _viewData->mixerCol_ > 7 ? 7 : _viewData->mixerCol_;
+        }
+        unsigned char cell = *_viewData->GetCurrentSongPointer();
+        if (cell == 0xFF) {
+            if (_currentView)
+                _currentView->SetNotification("empty slot - place a chain first");
+            return from;
+        }
+        _viewData->currentChain_ = cell;
+        if (to == VT_CHAIN) return to;
+        if (_chainView && !_chainView->OnNavTo(VT_PHRASE)) return VT_CHAIN;
+        if (to == VT_PHRASE) return to;
+        if (to == VT_INSTRUMENT) {
+            if (_phraseView) _phraseView->OnNavTo(VT_INSTRUMENT);
+            return to;
+        }
+        if (_phraseView && !_phraseView->OnNavTo(to)) return VT_PHRASE;
         return to;
     }
     if (_currentView && !_currentView->OnNavTo(to)) return from;

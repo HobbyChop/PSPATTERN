@@ -8,7 +8,7 @@
  * project screen used to carry its own hardcoded string, so a release
  * could ship announcing a version nobody had built. */
 
-#define PSPATTERN_VERSION_STRING "v0.25.6a"
+#define PSPATTERN_VERSION_STRING "v0.25.7a"
 
 /* The product name is still provisional, so it lives here rather than
  * being typed into each screen. Renaming the app should be this line

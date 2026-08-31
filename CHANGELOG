@@ -1,3 +1,16 @@
+PSPATTERN 0.25.7a
+
+    Every screen jumps through the same gate. The navigation rules
+        covered the screens with their own drill logic and let the
+        rest slide through: from the mixer, config, FX, groove or the
+        tables, a jump landed on whatever was last open whether or
+        not anything was placed, and from the chain screen the table
+        tiles neither refused nor greyed. One generic gate now: the
+        song cursor's context (the mixer's column standing in for its
+        cursor), the same refusals and notifications at every level,
+        stopping at the deepest screen that still makes sense -- and
+        the map greys by the same rule, so they cannot disagree.
+
 PSPATTERN 0.25.6a
 
     The screen map greys what you cannot reach yet. A destination the
