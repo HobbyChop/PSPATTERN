@@ -1,3 +1,53 @@
+PSPATTERN 0.26.2a
+
+    The freeze after standby is fixed, and it was the second core.
+        Waking pulsed the ME's reset so it rebooted from its resident
+        image: the image survives a sleep in main RAM, but the core's
+        STACK lives in eDRAM, which standby wipes. A processor
+        restarted onto a wiped stack runs unknown code with write
+        access to everything, and its damage surfaced wherever the
+        program next happened to touch -- the project teardown one
+        run, leaving the picker the next, never twice the same. That
+        wandering is what finally named it: deadlocks do not move,
+        corruption does.
+
+        The core is now held in reset from the wake onwards and
+        nothing revives it. Every render takes the scalar fallback,
+        which is bit-identical: after a standby the dsp figure runs
+        higher, the me meter reads 0 and the spectrum stops until the
+        program is next started. A slower machine beats an
+        unpredictable one. Reviving it properly -- re-uploading the
+        image at wake instead of trusting residency -- is the follow
+        up, and worth doing with a dependable baseline underneath.
+
+    The audio device is opened once and kept for the run. Every
+        project load used to close and reopen it, and SDL's close
+        waits for its own audio thread to come out of a driver that a
+        standby had taken the channel from. Nothing needed the churn:
+        buffer size and prebuffer are reboot settings already.
+
+    The render thread is waited for rather than hoped about: stopping
+        it posted a request, slept ten milliseconds and deleted the
+        thread object, which a single render block can outlive.
+
+PSPATTERN 0.26.1a (tester build)
+
+    The memory stick is woken with everything else. Resume restored
+        the second core, the controller, the screen, the audio and
+        the USB link, and assumed the card would come back by itself.
+        It does not, reliably -- and the first thing anyone does on
+        waking is load a project, which is nothing but card reads.
+        That is the rare freeze after a standby, and after the
+        battery cut the power. Resume now waits for the card to
+        answer before the program touches it, up to two seconds, then
+        carries on either way.
+
+    A damaged recovery file says so. The autosave is written by a
+        machine that may lose power mid-write, which is what it is
+        for, so a truncated one is expected: it was refused safely
+        but silently, leaving a half-restored project and no
+        explanation. It now says "recovery file damaged".
+
 PSPATTERN 0.26.0a
 
     No groove index can walk off the array. The groove table is 32

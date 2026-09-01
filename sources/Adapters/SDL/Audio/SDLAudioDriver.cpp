@@ -34,11 +34,15 @@ bool SDLAudioDriverThread::Execute() {
 #endif
     while (!shouldTerminate()) {
         semaphore_->Wait();
+        if (shouldTerminate()) break;   // woken to leave, not to render
         driver_->OnNewBufferNeeded();
     };
-    SysSemaphore *semaphore = semaphore_;
-    semaphore_ = 0;
-    delete semaphore;
+    /* The semaphore is NOT deleted here. It used to be, and the object
+       that owns it was deleted by the stopping thread a few
+       milliseconds later regardless of whether this one had got here
+       -- two threads racing to free the same things. The destructor
+       owns it now, and the destructor runs only after the stop has
+       waited for this function to return. */
     return true;
 };
 
@@ -51,9 +55,32 @@ void SDLAudioDriverThread::Notify() {
 void SDLAudioDriverThread::RequestTermination() {
     SysThread::RequestTermination();
     // post to be sure we're not locked
-    semaphore_->Post();
-    // Wait for thread to finish
-    SDL_Delay(10);
+    if (semaphore_) semaphore_->Post();
+
+    /* AND ACTUALLY WAIT.
+
+       This slept ten milliseconds and called it done. A render block
+       can take longer than that on its own, and after a resume the
+       thread is slower still to be scheduled -- so the caller deleted
+       this object while the thread was inside Execute(), still
+       touching the semaphore and the driver. That is the freeze when
+       loading a project after standby: a use-after-free of a live
+       thread, on a path every project load takes.
+
+       Wait for the thread to say it has finished, up to two seconds.
+       Bounded, because refusing to come back is not better than the
+       bug -- but two seconds is thousands of times the honest worst
+       case, so it will not be reached. */
+    for (int i = 0; i < 200 && !IsFinished(); i++) {
+        SDL_Delay(10);
+    }
+}
+
+SDLAudioDriverThread::~SDLAudioDriverThread() {
+    // whatever the wait concluded, only this thread's owner frees it
+    SysSemaphore *s = semaphore_;
+    semaphore_ = 0;
+    if (s) delete s;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -71,7 +98,47 @@ int SDLAudioDriver::actualSampleRate_ = 0;
 struct SDL_AudioSpec input;
 struct SDL_AudioSpec returned;
 
+/* THE DEVICE IS OPENED ONCE AND KEPT.
+
+   Every project load used to close the audio device and open a new
+   one: SDL_CloseAudio waits for SDL's own audio thread to come out of
+   the driver, and on this machine after a standby that thread is
+   inside a blocking output call against a channel the sleep took
+   away. It never comes out, so the close never returns -- the freeze
+   on answering YES to "lose changes", before the picker even draws,
+   reliably after a resume and rarely otherwise.
+
+   Nothing needs the churn: the only settings that shape the device
+   are the buffer size and prebuffer count, and both are marked on the
+   config screen as taking effect after a reboot. So the device opens
+   with the first project and stays open for the run; project loads
+   stop and start the render thread around it, which is all they ever
+   wanted to do. */
+static bool sdlAudioDeviceOpen_ = false;
+
 bool SDLAudioDriver::InitDriver() {
+
+    if (sdlAudioDeviceOpen_) {
+        /* The DEVICE is ours already -- but the buffers are not. Every
+           close frees them, so they have to be built again here or the
+           render thread starts against a null mix buffer and the load
+           stops dead on "starting up", which is what a second project
+           did. fragSize_ is still the size this device was opened
+           with; the driver object lives for the whole run. */
+        unalignedMain_ = (char *)SYS_MALLOC(fragSize_ + SOUND_BUFFER_MAX);
+#ifdef _64BIT
+        mainBuffer_ = (char *)unalignedMain_;
+#else
+        mainBuffer_ = (char *)((((int)unalignedMain_) + 1) & (0xFFFFFFFC));
+#endif
+        miniBlank_ = (char *)malloc(fragSize_);
+        if (!unalignedMain_ || !miniBlank_) {
+            Trace::Error("audio buffers could not be reallocated");
+            return false;
+        }
+        SYS_MEMSET(miniBlank_, 0, fragSize_);
+        return true;
+    }
 
     // set sound
     input.freq = 44100;
@@ -88,6 +155,7 @@ bool SDLAudioDriver::InitDriver() {
     char bufferName[256];
     SDL_AudioDriverName(bufferName, 256);
 
+    sdlAudioDeviceOpen_ = true;
     fragSize_ = returned.size;
     // the device does not have to honour our request: everything
     // downstream (tempo, envelope times, LFO rates) is computed from
@@ -124,7 +192,11 @@ void SDLAudioDriver::CloseDriver() {
         SYS_FREE(unalignedMain_);
         unalignedMain_ = 0;
     };
-    SDL_CloseAudio();
+    /* SDL_CloseAudio() is NOT called here -- see InitDriver. The
+       device belongs to the run, not to the project. It is paused by
+       the stop above, which is enough: a paused device asks for
+       nothing, and the callback that would have raced this teardown
+       cannot fire. */
 };
 
 bool SDLAudioDriver::StartDriver() {
@@ -152,13 +224,17 @@ bool SDLAudioDriver::StartDriver() {
 };
 
 void SDLAudioDriver::StopDriver() {
+    Trace::Log("AUDIO", "stop: begin");
     if (thread_) {
         thread_->RequestTermination();
         SysThread *thread = thread_;
         thread_ = 0;
+        Trace::Log("AUDIO", "stop: render thread joined");
         SDL_PauseAudio(1);
+        Trace::Log("AUDIO", "stop: device paused");
         delete thread;
     };
+    Trace::Log("AUDIO", "stop: done");
 };
 
 double SDLAudioDriver::GetStreamTime() {

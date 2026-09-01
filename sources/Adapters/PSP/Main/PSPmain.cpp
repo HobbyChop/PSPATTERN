@@ -2,6 +2,7 @@
 //
 
 #include "Application/Application.h"
+#include "System/Console/Trace.h"
 #include "Application/AppWindow.h"
 #include "Application/Model/Config.h"
 #include "Adapters/PSP/System/PSPSystem.h"
@@ -78,6 +79,7 @@ int powerCallback(int unknown, int pwrflags, void *common) {
 void PSPHandleResume() {
 	if (!g_resumePending) return;
 	g_resumePending = 0;
+	Trace::Log("RESUME", "begin");
 
 #ifdef PSP_ME_OFFLOAD
 	// reconcile the ME handshake before audio starts posting jobs; the
@@ -91,8 +93,35 @@ void PSPHandleResume() {
 	// the GE state did not survive; re-init on the next draw
 	SDLGUI_MarkGuLost();
 
+	/* AND THE MEMORY STICK.
+
+	   Everything above restores a piece of the machine; the card was
+	   assumed to come back by itself. It does not, reliably: after a
+	   standby the driver can need a moment before it will answer, and
+	   the first thing a player does on waking is often to load a
+	   project -- which is nothing BUT card reads. That is the rare
+	   freeze after a resume, and the same shape after the battery cut
+	   the power.
+
+	   So: wait for the card to answer a plain question before letting
+	   the program touch it, up to two seconds, then carry on either
+	   way -- a bounded wait cannot become the hang it is preventing.
+	   Sync afterwards so nothing queued from before the sleep is
+	   still in flight. */
+	{
+		FileSystem *fs = FileSystem::GetInstance();
+		for (int i = 0; i < 40; i++) {
+			Path probe("bin:");
+			if (fs->GetFileType(probe.GetPath().c_str()) == FT_DIR) break;
+			sceKernelDelayThread(50 * 1000);
+		}
+		fs->Sync();
+	}
+
 	SDL_PauseAudio(0);
+	Trace::Log("RESUME", "audio unpaused");
 	PSPUsbMidiLink::OnResume();
+	Trace::Log("RESUME", "done");
 
 	GUIWindow *w = Application::GetInstance()->GetWindow();
 	if (w) {

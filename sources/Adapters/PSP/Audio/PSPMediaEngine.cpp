@@ -721,11 +721,33 @@ void meLibOnSleep(void) {
 	meLibSync();
 }
 
+/* THE CORE STAYS DOWN AFTER A WAKE.
+
+   This used to pulse the reset so the ME rebooted from its resident
+   image. The image is in main RAM and survives -- but the core's
+   STACK is in eDRAM, which standby wipes, and a core rebooted onto a
+   wiped stack is a second processor running unknown code with write
+   access to everything. That is not a hang with a place to look: it
+   is corruption that surfaces somewhere else entirely, a different
+   somewhere each run, which is exactly how the freeze after a standby
+   behaved -- once in the project teardown, once on leaving the
+   picker, never the same twice.
+
+   So the wake holds the core in reset instead of starting it. Every
+   render takes the scalar path from then on, which the whole design
+   already provides for and which is bit-identical; the cost is a
+   higher dsp figure and no spectrum until the program is next
+   started. A slower machine beats an unpredictable one.
+
+   Reviving it properly means re-uploading the image at wake rather
+   than trusting residency. That is worth doing, and it is not worth
+   doing blind: this makes the machine dependable first. */
 extern "C" __attribute__((noinline, aligned(4)))
 void meLibOnWake(void) {
 	meWakeCount_++;
-	HW_SYS_RESET_ENABLE = SC_HW_RESET;
-	HW_SYS_RESET_ENABLE = 0;   // reboot from the resident image
+	ME_READY = 0;
+	ME_BUSY = 0;
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;   // held, not pulsed
 	meLibSync();
 }
 
@@ -733,7 +755,13 @@ void meLibOnWake(void) {
    the job handshake. A job frozen mid-flight at suspend would leave
    the collect side reading "busy" forever. */
 extern "C" void PSPME_OnResume(void) {
+	/* Nothing is revived here: the core was left in reset by the wake
+	   handler and stays there for the rest of the run. meAlive_ down
+	   as well, so no post can be attempted and the meter reads what is
+	   true -- the second core is not working any more this session. */
 	ME_BUSY = 0;
+	ME_READY = 0;
+	meAlive_ = 0;
 	mePrevN_ = 0;
 	meLibSync();
 }

@@ -10,7 +10,7 @@ class SDLAudioDriver ;
 class SDLAudioDriverThread: public SysThread {
 public:
 	SDLAudioDriverThread(SDLAudioDriver *driver) ;
-	virtual ~SDLAudioDriverThread() {} ;
+	virtual ~SDLAudioDriverThread() ;
 	virtual bool Execute() ;
 	virtual void RequestTermination() ;
 	void Notify() ;

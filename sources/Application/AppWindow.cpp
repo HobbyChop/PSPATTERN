@@ -1827,6 +1827,10 @@ void AppWindow::LoadProject(const Path &p) {
 
 void AppWindow::CloseProject(bool showPicker) {
 
+    /* STAGE MARKERS. A freeze here leaves no crash and no screen to
+       read, so the log carries the answer: whichever line is last in
+       lgpt.log is the step that did not come back. Cheap, and only
+       written when LOG=YES. */
     _closeProject = false;
     Player *player = Player::GetInstance();
     player->Stop();
@@ -1841,6 +1845,7 @@ void AppWindow::CloseProject(bool showPicker) {
     TablePlayback::Reset();
 
     ApplicationCommandDispatcher::GetInstance()->Close();
+
 
     SAFE_DELETE(_songView);
     SAFE_DELETE(_chainView);
@@ -2613,11 +2618,21 @@ void AppWindow::RecoverAutosave(bool yes) {
     Player::GetInstance()->Stop();
 
     WatchedVariable::Disable();
+    /* This file is written by a machine that may lose power mid-write
+       -- that is what it is FOR -- so a truncated one is the expected
+       case, not the exotic one. Load reports it, and the project in
+       memory is whatever the partial restore left: usable, but not
+       what the file promised. Say so rather than pretending. */
     bool ok = persist->Load(AUTOSAVE_PATH);
     if (ok && _viewData && _viewData->project_) {
         _viewData->project_->GetInstrumentBank()->Init();
     }
     WatchedVariable::Enable();
+    if (!ok) {
+        Trace::Error("autosave could not be read");
+        if (_currentView)
+            _currentView->SetNotification("recovery file damaged");
+    }
 
     if (ok) {
         // The recovered project is deliberately NOT marked as being in
