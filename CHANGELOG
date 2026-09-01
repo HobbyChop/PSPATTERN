@@ -1,3 +1,62 @@
+PSPATTERN 0.26.0a
+
+    No groove index can walk off the array. The groove table is 32
+        rows of 16 bytes and every read indexed it raw -- including
+        with 255, which the code uses as a legal sentinel for the
+        table's default groove and which lands four kilobytes past
+        the array. The screen edits through the same unchecked
+        pointer, so an out of range cursor wrote there as well: the
+        profile of a machine that powers itself off while you are
+        looking at a screen. Every access is bounds checked now.
+
+    A new project starts with a clean mixer. The mixer and the groove
+        table are singletons that outlive a project, and restore only
+        overwrites what a file actually contains -- so every setting
+        a project did not mention arrived inherited from the song
+        before it. Both are cleared before the restore now. (Songs
+        saved on earlier builds may have written a few inherited
+        values as their own; worth a glance at the mixer on older
+        projects.)
+
+    O on the phrase screen's note column auditions on every press
+        again, and the note is remembered as last touched again, so
+        the click-a-note-then-click-an-empty-cell habit works.
+
+PSPATTERN 0.25.9a (tester build)
+
+    No groove index can walk off the array. The groove table is 32
+        rows of 16 bytes and every read indexed it raw -- including
+        with 255, which the code uses as a legal sentinel for the
+        table's default groove and which lands four kilobytes past
+        the array. The screen edits through the same unchecked
+        pointer, so an out of range cursor wrote there too: the
+        profile of a machine that powers itself off. Every access is
+        bounds checked now, the setters clamp both ends, and the
+        mixer column that stands in for the song cursor is clamped
+        low as well as high.
+
+PSPATTERN 0.25.8a (tester build)
+
+    A new project starts with a clean mixer. The mixer and the groove
+        table are singletons that outlive a project: they cleared once
+        at boot and then carried whatever the last song put in them,
+        and restore only overwrites what a file actually contains --
+        so every setting a project did not mention arrived inherited
+        from the song before it. Both are cleared before the restore
+        now. (Songs saved on earlier builds may have written a few
+        inherited values as their own; worth a glance at the mixer on
+        older projects.)
+
+    O on the note column auditions every press again. Audition mode
+        keeps running silently after its note ends, and the preview
+        only fired when the player was not running -- so the first
+        press played the row and every one after did nothing.
+
+    The last-touched note is remembered again. The second-press
+        gesture, armed by O on a TBL parameter, survived a cursor
+        move and swallowed the next O on the note column -- taking
+        the audition and the copy/paste habit with it.
+
 PSPATTERN 0.25.7a
 
     Every screen jumps through the same gate. The navigation rules

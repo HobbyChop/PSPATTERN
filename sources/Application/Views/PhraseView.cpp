@@ -53,6 +53,13 @@ PhraseView::~PhraseView() { delete cmdEditField_; };
 
 void PhraseView::updateCursor(int dx, int dy) {
 
+    /* The second-press gesture belongs to the cell it was armed on.
+       It used to survive a move: arm it on a TBL parameter, walk to
+       the note column, and the next O was swallowed by the branch
+       below -- no audition, and no last-touched note remembered,
+       which is the copy/paste habit gone. */
+    if ((dx || dy) && viewMode_ == VM_NEW) viewMode_ = VM_NORMAL;
+
     col_ += dx;
     row_ += dy;
     if (col_ > 6)
@@ -939,9 +946,11 @@ void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
             // If note or I, we request a new instr
 
             if (col_ < 2) {
-                // note/instrument columns no longer arm VM_NEW at
-                // all; nothing to do if we somehow arrive here
-                mask &= (0xFFFF - EPBM_A);
+                /* not this column's gesture. Disarm and let the press
+                   fall through to its ordinary meaning -- audition
+                   the note, remember it as last touched -- rather
+                   than being eaten here. */
+                viewMode_ = VM_NORMAL;
             } else {
                 if ((col_ == 4) &&
                     (*(phrase_->cmd1_ + (16 * viewData_->currentPhrase_ +
@@ -1086,6 +1095,16 @@ void PhraseView::processNormalButtonMask(unsigned short mask) {
                 // playing the row on every O there was asked to stop
                 Player *player = Player::GetInstance();
                 if (!player->IsRunning()) {
+                    player->OnStartButton(PM_AUDITION, viewData_->songX_, false,
+                                          viewData_->chainRow_);
+                } else if (viewData_->playMode_ == PM_AUDITION) {
+                    /* audition keeps running silently after the note
+                       ends, so a second press hit the IsRunning guard
+                       and did nothing -- you could hear a note once
+                       and never again. Restart, exactly as the
+                       O+arrows edit path always has: every press
+                       plays the row. */
+                    player->Stop();
                     player->OnStartButton(PM_AUDITION, viewData_->songX_, false,
                                           viewData_->chainRow_);
                 }

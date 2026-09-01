@@ -31,6 +31,9 @@ void GrooveView::updateCursorValue(int val,bool sync) {
 
 void GrooveView::warpGroove(int dir) {
 	int current=viewData_->currentGroove_ ;
+	// a cursor arriving out of range (restored state, a stale jump)
+	// would wrap to somewhere still out of range
+	if ((current<0)||(current>=MAX_GROOVES)) current=0 ;
 	current+=dir ;
 	if (current>=MAX_GROOVES) {
 		current-=MAX_GROOVES ;

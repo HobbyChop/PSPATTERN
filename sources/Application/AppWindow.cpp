@@ -1673,6 +1673,17 @@ void AppWindow::LoadProject(const Path &p) {
     Groove::GetInstance();
     TableHolder::GetInstance();
 
+    /* And START THEM EMPTY. These are singletons that outlive a
+       project: they clear once, in their constructors, and then carry
+       whatever the last song put in them. Restore only overwrites
+       what the file actually contains, so anything a new or older
+       project does not mention -- a send, a filter, a bus routing, a
+       groove -- arrived inherited from the song before it. The mixer
+       is where it shows: you open a fresh project and it is already
+       set up like the last one. */
+    Mixer::GetInstance()->Clear();
+    Groove::GetInstance()->Clear();
+
     TablePlayback::Reset();
 
     Path::SetAlias("project", _root.GetPath().c_str());
@@ -2130,8 +2141,10 @@ ViewType AppWindow::navPrep(ViewType from, ViewType to) {
         to == VT_TABLE || to == VT_TABLE2) {
         if (from == VT_MIXER && _viewData) {
             // the mixer's column IS its song cursor
-            _viewData->songX_ =
-                _viewData->mixerCol_ > 7 ? 7 : _viewData->mixerCol_;
+            int mc = _viewData->mixerCol_;
+            if (mc < 0) mc = 0;      // clamped BOTH ends: a negative
+            if (mc > 7) mc = 7;      // one indexes channel arrays badly
+            _viewData->songX_ = mc;
         }
         unsigned char cell = *_viewData->GetCurrentSongPointer();
         if (cell == 0xFF) {

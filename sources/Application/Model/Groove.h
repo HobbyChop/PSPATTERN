@@ -36,6 +36,12 @@ public:
 private:
 	ChannelGroove channelGroove_[SONG_CHANNEL_COUNT] ; 
 	static unsigned char data_[MAX_GROOVES][16] ;
+	/* Every read of a groove's row goes through this. The index can be
+	   the 255 table sentinel, a GROV parameter past the end, or a
+	   number restored from a damaged file, and data_ is 512 bytes:
+	   data_[255] is four kilobytes past it. */
+	static unsigned char *dataFor(int groove) ;
+	static unsigned char defaultGroove_[16] ;
 } ;
 #endif
 

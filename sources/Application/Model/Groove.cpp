@@ -5,6 +5,17 @@
 
 unsigned char Groove::data_[MAX_GROOVES][16] ;
 
+/* what an out-of-range groove plays: the plain six-tick step every
+   groove starts as, so a bad index is a normal beat and not a crash */
+unsigned char Groove::defaultGroove_[16] = {
+	6,6,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF } ;
+
+unsigned char *Groove::dataFor(int groove) {
+	if ((groove<0)||(groove>=MAX_GROOVES)) return defaultGroove_ ;
+	return data_[groove] ;
+}
+
 Groove::Groove():Persistent("GROOVES") {
 	Clear() ;
 } ;
@@ -42,6 +53,9 @@ void Groove::Reset() {
 } ;
 
 void Groove::GetChannelData(int channel,int *groove,int *position) {
+		if ((channel<0)||(channel>=SONG_CHANNEL_COUNT)) {
+			*groove=0 ; *position=0 ; return ;
+		}
 		ChannelGroove &c=channelGroove_[channel] ;
 		*groove=c.groove_ ;
 		*position=c.position_ ;
@@ -81,9 +95,10 @@ bool Groove::UpdateGroove(ChannelGroove &c,bool reverse) {
 				c.ticks_=0 ;
 			}
 		} else {
-			if (c.ticks_==data_[c.groove_][c.position_]) {
+			unsigned char *g=dataFor(c.groove_) ;
+			if (c.ticks_==g[c.position_]) {
 				c.position_=(c.position_+1)%16 ;
-				if (data_[c.groove_][c.position_]==0xFF) {
+				if (g[c.position_]==0xFF) {
 					c.position_=0 ;
 				} ;
 				c.ticks_=0 ;
@@ -92,11 +107,12 @@ bool Groove::UpdateGroove(ChannelGroove &c,bool reverse) {
 		}
 	} else {  // Note
 		if (c.ticks_==0) {
+			unsigned char *g=dataFor(c.groove_) ;
 			c.position_=(c.position_+1)%16 ;
-			if (data_[c.groove_][c.position_]==0xFF) {
+			if (g[c.position_]==0xFF) {
 				c.position_=0 ;
 			} ;
-			c.ticks_=data_[c.groove_][c.position_] ;
+			c.ticks_=g[c.position_] ;
 			stepped=true ;
 		} ;
 		c.ticks_-- ;
@@ -105,10 +121,11 @@ bool Groove::UpdateGroove(ChannelGroove &c,bool reverse) {
 }
 
 void Groove::SetGroove(int channel,int groove) {
-		if (groove>=MAX_GROOVES) return ;
+		if ((groove<0)||(groove>=MAX_GROOVES)) return ;
+		if ((channel<0)||(channel>=SONG_CHANNEL_COUNT)) return ;
 		channelGroove_[channel].groove_=groove ;
 		channelGroove_[channel].position_=0 ;
-		channelGroove_[channel].ticks_=data_[channelGroove_[channel].groove_][channelGroove_[channel].position_] ;
+		channelGroove_[channel].ticks_=dataFor(groove)[0] ;
 } ;
 
 // Returns true if, according to current groove setting it is time to go
@@ -118,11 +135,13 @@ bool Groove::TriggerChannel(int i) {
 	ChannelGroove &c=channelGroove_[i] ;
 	// the editor clamps user input to 1..0xF, so a zero here can only come
 	// from corrupt data -- but dividing by it traps the CPU, so refuse
-	int div=data_[c.groove_][c.position_] ;
+	int div=dataFor(c.groove_)[c.position_] ;
 	if (div<1) div=1 ;
 	return ((c.ticks_)%div==0) ;
 } ;
 
 unsigned char *Groove::GetGrooveData(int groove) {
-	return data_[groove] ;
+	// the groove screen edits through this pointer, so an out of range
+	// cursor wrote past the array as well as reading past it
+	return dataFor(groove) ;
 } ;
