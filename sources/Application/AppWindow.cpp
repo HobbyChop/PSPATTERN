@@ -1,4 +1,15 @@
 #include "AppWindow.h"
+#ifdef PLATFORM_PSP
+extern "C" void pspDiag(const char *fmt, ...);
+#endif
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+extern "C" void PSPME_Relaunch(void);
+extern "C" void PSPME_ParkForClose(void);
+extern "C" void PSPME_TickRevive(void);
+extern "C" unsigned int PSPME_WakeCount(void);
+extern "C" unsigned int PSPME_Ready(void);
+extern "C" unsigned int PSPME_Busy(void);
+#endif
 
 #if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
 extern "C" int PSPME_ReadSpectrum(int *bars32);
@@ -280,6 +291,7 @@ int AppWindow::uiFrameMs_ = 16;   // 62.5Hz; the PSP LCD does ~60
    main thread like any keypress. Direct polling rather than SDL axis
    events: the PSP port's delivery of those proved unreliable. */
 void AppWindow::uiTick() {
+
 
     /* THE STUCK-MASK CURE, done narrowly this time.
 
@@ -1605,6 +1617,83 @@ void AppWindow::DrawWordmark(int x0, int y0) {
     SetColor(CD_NORMAL);
 }
 
+/* The quasi-standby screen: drawn once when entering low-power rest.
+   It is deliberately blunt about what this is -- a rest, not a true
+   standby -- so nobody expects a week of battery from it. Uses the
+   app's own font via DrawString. estMinutes is a rough guess from
+   the battery percent; label it as such. */
+void AppWindow::DrawQuasiMessage(int battPct, int estMinutes, int secsLeft) {
+    navMapVisible_ = false;   // or Flush re-draws it over us
+    /* full clear + invalidate so nothing from the live screen -- the
+       nav-map overlay especially, which paints pixel ops -- bleeds
+       through the message */
+    Clear(true);
+    InvalidateScreen();
+    GUITextProperties props;
+    GUIPoint pos;
+    char line[42];
+
+    DrawWordmark((40 - 36) / 2, 5);
+
+    SetColor(CD_HILITE2);
+    pos._x = 6; pos._y = 10;
+    DrawString("-- low-power rest --", pos, props);
+
+    SetColor(CD_NORMAL);
+    pos._x = 4; pos._y = 12;
+    DrawString("screen and clock down to save", pos, props);
+    pos._y = 13;
+    DrawString("power. this is NOT true standby", pos, props);
+    pos._y = 14;
+    DrawString("- it keeps draining slowly.", pos, props);
+
+    SetColor(CD_ROW2);
+    pos._x = 4; pos._y = 16;
+    if (estMinutes >= 120)
+        snprintf(line, sizeof(line), "battery %d%%  ~%dh rest (est)",
+                 battPct, estMinutes / 60);
+    else
+        snprintf(line, sizeof(line), "battery %d%%  ~%dmin rest (est)",
+                 battPct, estMinutes);
+    DrawString(line, pos, props);
+
+    SetColor(CD_HILITE1);
+    pos._x = 4; pos._y = 18;
+    if (secsLeft > 0)
+        snprintf(line, sizeof(line), "screen off in %ds  (POWER=resume)",
+                 secsLeft);
+    else
+        snprintf(line, sizeof(line), "slide POWER again to resume");
+    DrawString(line, pos, props);
+
+    SetColor(CD_ROW);
+    pos._x = 4; pos._y = 20;
+    DrawString("(project auto-saved)", pos, props);
+
+    Flush();
+}
+
+/* Blank the whole screen to the theme background -- the visual half
+   of entering rest (the backlight timeout does the power half). Full
+   clear + invalidate so no live content or overlay survives. */
+void AppWindow::QuasiBlank() {
+    navMapVisible_ = false;   // or Flush re-draws it over us
+    Clear(true);
+    InvalidateScreen();
+    Flush();
+}
+
+
+/* Wake: repaint the real UI in full. InvalidateScreen alone left the
+   static grid stale until the cursor moved (only the always-animating
+   scope/info box repainted); Redraw repaints the whole current view. */
+void AppWindow::QuasiWake() {
+    navMapVisible_ = false;   // or Flush re-draws it over us
+    InvalidateScreen();
+    Redraw();
+    Flush();
+}
+
 void AppWindow::DrawBootProgress(const char *phase, const char *what,
                                  int done, int total) {
     Clear(false);
@@ -1780,6 +1869,8 @@ void AppWindow::LoadProject(const Path &p) {
     _currentView = _songView;
     _currentView->OnFocus();
 
+
+
     // Baseline: what is in memory now is what is on disk.
     _savedChecksum = persist->Checksum();
     _dirtySince = 0;
@@ -1831,21 +1922,31 @@ void AppWindow::CloseProject(bool showPicker) {
        read, so the log carries the answer: whichever line is last in
        lgpt.log is the step that did not come back. Cheap, and only
        written when LOG=YES. */
+
     _closeProject = false;
+#if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
+#define CLOSEMARK(name) pspDiag("close: %s R%u B%u", name,         PSPME_Ready(), PSPME_Busy())
+#else
+#define CLOSEMARK(name) do {} while (0)
+#endif
+    CLOSEMARK("begin");
     Player *player = Player::GetInstance();
     player->Stop();
+    CLOSEMARK("player stopped");
     player->RemoveObserver(*this);
 
     player->Reset();
+    CLOSEMARK("audio closed");
 
     SamplePool *pool = SamplePool::GetInstance();
     pool->Reset();
+    CLOSEMARK("samples freed");
 
     TableHolder::GetInstance()->Reset();
     TablePlayback::Reset();
 
     ApplicationCommandDispatcher::GetInstance()->Close();
-
+    CLOSEMARK("dispatcher closed");
 
     SAFE_DELETE(_songView);
     SAFE_DELETE(_chainView);
@@ -1863,7 +1964,9 @@ void AppWindow::CloseProject(bool showPicker) {
     UIController *controller = UIController::GetInstance();
     controller->Reset();
 
+    CLOSEMARK("views deleted");
     SAFE_DELETE(_viewData);
+    CLOSEMARK("done");
 
     _currentView = _nullView;
     _nullView->SetDirty(true);
@@ -1875,6 +1978,7 @@ void AppWindow::CloseProject(bool showPicker) {
        haunted the session: phantom picker, saves that seemed to land
        only when it was dismissed, crashes on its dead references. */
     if (showPicker) {
+        CLOSEMARK("picker");
         SelectProjectDialog *spd = new SelectProjectDialog(*_currentView);
         _currentView->DoModal(spd, ProjectSelectCallback);
     }

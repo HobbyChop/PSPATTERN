@@ -43,6 +43,21 @@ int kinit(const void* const handler) {
   return -1;
 }
 
+/* Kernel-mode backlight control for quasi-standby: the app is a user
+   module and cannot call the kernel display driver directly, so the
+   prx bridges it. Linked against libpspdisplay_driver. */
+extern void sceDisplaySetBrightness(int level, int unk);
+extern void sceDisplayGetBrightness(int *level, int *unk);
+int meSetBrightness(int level) {
+  sceDisplaySetBrightness(level, 0);
+  return 0;
+}
+int meGetBrightness(void) {
+  int lvl = 0, unk = 0;
+  sceDisplayGetBrightness(&lvl, &unk);
+  return lvl;
+}
+
 int module_start(SceSize args, void *argp) {
   return 0;
 }

@@ -1,3 +1,22 @@
+PSPATTERN 0.27.0a
+
+    Quasi-standby: the power switch now rests the machine instead of a
+        true suspend. True standby is off the table while the second
+        core (the Media Engine, running the send FX) is live -- Sony's
+        suspend cannot safely re-initialise it -- so the switch is
+        repurposed. Slide it and the project auto-saves, a screen
+        explains this is a low-power REST (not a real standby, it keeps
+        draining slowly) with a rough battery-life estimate, then a
+        15-second countdown, then the screen goes truly dark and the
+        clock drops to minimum. Slide again -- or press any button --
+        and it wakes instantly, screen and audio back at once. A
+        descending chirp marks the way down, an ascending one the way
+        back. On a nearly-empty battery it beeps every 30s while
+        resting, so a long rest never quietly dies with unsaved-feeling
+        work (it was saved on the way down regardless). Saves roughly
+        5-10x over leaving it on; note it is not a true standby and
+        will not hold for days.
+
 PSPATTERN 0.26.2a
 
     The freeze after standby is fixed, and it was the second core.

@@ -100,6 +100,9 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     // What is on screen while a project opens. See LoadProject.
     void DrawBootProgress(const char *phase, const char *what,
                           int done, int total);
+    void DrawQuasiMessage(int battPct, int estMinutes, int secsLeft);
+    void QuasiBlank();
+    void QuasiWake();
     virtual void ClearRect(GUIRect &rect);
     virtual void SetColor(ColorDefinition cd);
     void SetDirty();

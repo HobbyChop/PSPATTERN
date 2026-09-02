@@ -64,3 +64,4 @@ response/**
 
 # Local game collection copied in for review; never commit or ship.
 games/
+mkblob.py

@@ -250,6 +250,7 @@ static int lineRound(int shorts, int skewLines) {
 
 #ifdef PSP_ME_OFFLOAD
 extern "C" void PSPME_SetDelayLines(short *dlyL, short *dlyR, int maxLen) ;
+extern "C" void PSPME_Quiesce(void) ;
 #endif
 void Init(int sampleRate) {
 	if (ready_) return ;
@@ -317,6 +318,15 @@ void Init(int sampleRate) {
 }
 
 void Close() {
+#ifdef PSP_ME_OFFLOAD
+	/* The second core writes these delay lines. Before they go back
+	   to the heap it must be provably done (the drain), and it must
+	   not keep pointers into freed memory across the re-init that
+	   follows (the clear). The driver is already stopped when this
+	   runs, so nothing can post a new job in between. */
+	PSPME_Quiesce() ;
+	PSPME_SetDelayLines(0, 0, 0) ;
+#endif
 	SAFE_FREE(BK.dlyL_) ; SAFE_FREE(BK.dlyR_) ;
 	// one block, so one free: the per line pointers are interior
 	SAFE_FREE(revBlock_) ;

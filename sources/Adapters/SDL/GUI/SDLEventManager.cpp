@@ -8,6 +8,8 @@
 #ifdef PLATFORM_PSP
 // defined in PSPmain.cpp: the main-thread half of resume handling
 void PSPHandleResume() ;
+extern "C" int pspQuasiWakeRequested(void) ;
+void PSPHandleQuasiStandby(void) ;
 #endif
 bool SDLEventManager::finished_=false ;
 bool SDLEventManager::dumpEvent_=false ;
@@ -152,6 +154,11 @@ int SDLEventManager::MainLoop()
 					// a resume wakes us with this event: finish the
 					// resume work here, on the main thread
 					PSPHandleResume() ;
+					// the power switch also wakes us here: a slide
+					// toggles quasi-standby (blocks in rest until the
+					// next slide, then returns)
+					if (pspQuasiWakeRequested())
+						PSPHandleQuasiStandby() ;
 #endif
 					sdlWindow->ProcessExpose() ;
 

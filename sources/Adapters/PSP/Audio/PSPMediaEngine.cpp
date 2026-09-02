@@ -33,7 +33,135 @@
  */
 #ifdef PSP_ME_OFFLOAD
 
-#include <me-core-mapper/me-core.h>
+/* me-core.h is NOT included: it defines meLibHandler and
+   meLibOnPreProcess, and this file needs its own copies -- verbatim
+   from the library (header verified identical to the toolchain's),
+   with ONE insertion in the handler. See the CACHES ARE NOISE comment
+   at the handler. Everything else comes through me-core-custom.h
+   exactly as before. */
+#include <me-core-mapper/me-core-custom.h>
+
+__attribute__((noinline, aligned(4)))
+static void meLibOnPreProcess();
+
+/* CACHES ARE NOISE AFTER A STANDBY.
+
+   This is the ME's reset vector code, copied to 0xbfc00000 and entered
+   uncached, byte-for-byte mcidclan's handler except for the block
+   marked INSERTED. The insertion is why the copy exists:
+
+   Standby cuts power to the ME complex, and that includes the tag
+   SRAM of its caches. The core then reboots with cache tags that are
+   NOISE -- random lines marked valid and dirty, claiming random
+   addresses. The first index-writeback the old loop ran (its opening
+   meLibDcacheWritebackInvalidateAll, op 0x14, a WRITEBACK-invalidate)
+   faithfully wrote every one of those noise lines to the address its
+   noise tag named: a spray of 64-byte garbage writes across the
+   address space, a fraction of which land in real RAM. That is the
+   post-standby corruption in its entirety -- wandering, because the
+   tags are different noise every time; absent at cold boot, because
+   Sony's firmware leaves the tags coherent; absent with the core
+   parked, because nothing runs at all. Every earlier fix in this
+   saga (handler re-upload, witness check, job drain, VME hold) was
+   real, and none of them touched this, because the sprayer runs
+   before our first line of loop code.
+
+   So the FIRST instructions the core executes now initialise the
+   tags: TagLo zeroed, then an Index Store Tag walk over both caches
+   -- invalidate everything, write back nothing. After a reset there
+   is nothing in these caches worth writing back, by definition. The
+   walk runs before the clock/unlock calls so even their stack
+   traffic starts from an empty cache. Ops: 0x09 is Index Store Tag D
+   (the D-side twin of the 0x08 the library itself uses); 16KB covers
+   both caches at any plausible size, since index ops wrap. If some
+   model rejects 0x09 the core takes an exception and never signs in
+   -- and the resume's proof-of-life then parks it: the failure mode
+   is the machine we already shipped, never corruption. */
+__attribute__((section("_me_section"), used, noinline, aligned(4)))
+static void meLibHandlerPatched() {
+  asm volatile(
+    ".set push\n"
+    ".set noreorder\n"
+    /* --- cache init: tags to zero, write back nothing --- */
+    "mtc0    $0, $28\n"
+    "sync\n"
+    "move    $k0, $0\n"
+    "1:\n"
+    "cache   0x09, 0($k0)\n"
+    "cache   0x08, 0($k0)\n"
+    "addiu   $k0, $k0, 64\n"
+    "sltiu   $k1, $k0, 16384\n"
+    "bnez    $k1, 1b\n"
+    "nop\n"
+    "sync\n"
+    ".set pop\n"
+    ::: "$k0", "$k1", "memory"
+  );
+
+  HW_SYS_BUS_CLOCK_ENABLE      = 0x0f;
+  HW_SYS_TACHYON_CONFIG_STATUS |= 0x02;
+  HW_SYS_NMI_FLAGS             = 0xffffffff;
+  meLibSync();
+
+  meLibUnlockHwUserRegisters();
+  meLibUnlockMemory();
+
+  /* The AWEdram clock call that lived here is withdrawn. It was
+     added on a theory that was later disproven, and it is the one
+     handler ingredient the 0.16-era wake boots -- weeks of them --
+     never had. At cold boot it is redundant (Sony's init already
+     ran); at SYSEVENT-time wake boots it is the prime suspect for
+     the core hanging before sign-in: at phase 0x10005 Sony's own
+     resume has not yet restored the downstream clock chain, and a
+     resident-kernel clock call against that half-woken fabric can
+     spin the booting core forever. The verifier caught exactly that
+     -- 'core did not verify, parked scalar' -- with cold boots
+     passing. */
+
+  meLibSetMinimalVmeConfig();
+
+  asm volatile(
+    ".set noreorder                   \n"
+    "li             $k0, 0x30000000   \n"
+    "mtc0           $k0, $12          \n"
+    "sync                             \n"
+    "li             $k0, 0x279c637c   \n"
+    "lw             $k1, 0x88300018   \n"
+    "beq            $k0, $k1, 1f      \n"
+    "nop                              \n"
+    "li             $sp, 0x80200000   \n"
+    "b              2f                \n"
+    "nop                              \n"
+    "1:                               \n"
+    "li             $sp, 0x80400000   \n"
+    "2:                               \n"
+    "la             $k0, %0           \n"
+    "li             $k1, 0x80000000   \n"
+    "or             $k0, $k0, $k1     \n"
+    "cache          0x8, 0($k0)       \n"
+    "sync                             \n"
+    "jr             $k0               \n"
+    "nop                              \n"
+    ".set reorder                     \n"
+    :
+    : "i" (meLibOnPreProcess)
+    : "k0", "k1", "memory"
+  );
+}
+
+/* The library's meLibOnPreProcess, verbatim. */
+__attribute__((noinline, aligned(4)))
+static void meLibOnPreProcess() {
+  meLibDcacheInvalidateRange(ME_CORE_BASE_ADDR, (0x90000 + 63) & ~63);
+  meLibIcacheInvalidateRange(ME_CORE_BASE_ADDR, (0x90000 + 63) & ~63);
+
+  hw(0xbc200000) = 511 << 16 | 511;
+  hw(0xBC200004) = 511 << 16 | 511;
+  hw(0xBC200008) = 511 << 16 | 511;
+  meLibSync();
+
+  meLibOnProcess();
+}
 #include <psppower.h>
 #include <pspkernel.h>
 #include <math.h>
@@ -78,6 +206,13 @@ meLibSetSharedUncached32(32);
 #define ME_DTONE  (meLibSharedMemory[23])  // delay feedback LP (0..255)
 #define ME_SPECREQ  (meLibSharedMemory[24]) // main: FFT request sequence
 #define ME_SPECDONE (meLibSharedMemory[25]) // ME: last sequence finished
+// The canary protocol: main asks the ME to write a known pattern
+// through its CACHED view of a main-RAM buffer and write it back.
+// Single uncached words provably arrive (the heartbeat is one); the
+// question is whether burst WRITEBACKS arrive intact after standby.
+#define ME_TESTCMD  (meLibSharedMemory[26]) // 1 = run the cached-write test
+#define ME_TESTPTR  (meLibSharedMemory[27]) // buffer, plain cached address
+#define ME_TESTRES  (meLibSharedMemory[28]) // ME: test finished marker
 
 // Interleaved-stereo I/O, all uncached. Two inputs (the delay and reverb
 // send accumulators) and one output (the finished wet).
@@ -351,6 +486,30 @@ void meLibOnProcess(void) {
 				specDone = rq;
 				ME_SPECDONE = rq;
 			}
+			/* THE QUIET IDLE. This loop's polling was millions of
+			   uncached DDR touches a second -- harmless on a
+			   cold-booted bus, but after standby the arbitration
+			   runs subtly degraded (only Sony's full boot repairs
+			   it, and re-running that init is device-proven fatal),
+			   and an idle core shouting on a damaged bus during the
+			   close's traffic burst was the last freeze standing.
+			   The burst below cuts the idle loop's bus presence
+			   ~256-fold; a posted job is still picked up within
+			   tens of microseconds. */
+			for (int d = 0; d < 256; d++) meLibDelayPipeline();
+			if (ME_TESTCMD == 1) {
+				// the canary: pattern through the CACHED view, then
+				// a burst writeback -- the exact path under suspicion
+				unsigned char *pc =
+				    (unsigned char *)(ME_TESTPTR | 0x80000000u);
+				for (int ci = 0; ci < 4096; ci++)
+					pc[ci] = (unsigned char)(ci * 13 + 7);
+				meLibDcacheWritebackInvalidateRange(
+				    ((u32)pc) & ~63u, 4096 + 64);
+				ME_TESTCMD = 0;
+				ME_TESTRES = 1;
+				meLibSync();
+			}
 		}
 		meLibDelayPipeline();
 	}
@@ -442,6 +601,7 @@ extern "C" void PSPME_Post(const fixed *dlyAcc, const fixed *revAcc,
 	meLibSync();
 }
 static volatile int meAlive_ = 0;   // Init ran; shared words are real
+static volatile int meEverStarted_ = 0;   // ever booted this run (revive gate)
 
 /* The info panel's ME figure, measured WITHOUT an ME-side clock --
    the ME has none worth the name: CP0 Count does not tick on the
@@ -494,7 +654,12 @@ extern "C" int PSPME_LoadPercent(void) {
 	return pct;
 }
 
-#define PSPME_KNOB(FN, WORD) extern "C" void FN(int v) { 	static int last = -1; 	if (v == last) return; 	last = v; 	if (!meAlive_) return; 	WORD = (unsigned int)v; 	meLibSync(); }
+/* While the core is down the cache must remember NOTHING: recording
+   last=v while refusing the write used to mark a knob 'applied' that
+   never crossed, and once the wake revive brought the core back the
+   skip made the staleness permanent. Forgetting instead means the
+   first set after a revive always writes. */
+#define PSPME_KNOB(FN, WORD) extern "C" void FN(int v) { 	static int last = -1; 	if (!meAlive_) { last = -1; return; } 	if (v == last) return; 	last = v; 	WORD = (unsigned int)v; 	meLibSync(); }
 PSPME_KNOB(PSPME_Duck,  ME_DUCK)
 PSPME_KNOB(PSPME_Gate,  ME_GATE)
 PSPME_KNOB(PSPME_Comp,  ME_COMP)
@@ -597,6 +762,8 @@ extern "C" int PSPME_ReadSpectrum(int *bars32) {
 	return 1;
 }
 
+static int meCanaryRun(const char *tag);
+
 extern "C" int PSPME_Init(void) {
 	ME_EXIT_ = 0; ME_BUSY = 0; ME_N = 0; ME_READY = 0; ME_HB = 0; ME_JOBS = 0;
 	ME_DLYL = 0; ME_DLYR = 0; ME_DLYMAX = 0; ME_SIZE = 160; ME_DAMP = 110;
@@ -666,13 +833,14 @@ extern "C" int PSPME_Init(void) {
 	if (meSpecOut) for (int i = 0; i < 32; i++) meSpecOut[i] = 0;
 
 	int tableId = meLibDefaultInit();
-	if (tableId >= 0) meAlive_ = 1;
+	if (tableId >= 0) { meAlive_ = 1; meEverStarted_ = 1; }
 	/* calibrate the load meter: wait for the loop, then time the idle
 	   spin rate against the main core's clock. Done here, before the
 	   audio pump posts its first job, so the sample really is idle. */
 	if (meAlive_) {
 		int guard = 0;
 		while (!ME_READY && guard++ < 1000000) {}
+		if (ME_READY) meCanaryRun("boot");
 		if (ME_READY) {
 			unsigned int t0 = sceKernelGetSystemTimeLow();
 			unsigned int h0 = ME_HB;
@@ -721,50 +889,364 @@ void meLibOnSleep(void) {
 	meLibSync();
 }
 
-/* THE CORE STAYS DOWN AFTER A WAKE.
+/* THE WAKE HOLDS; THE RESUME REVIVES.
 
-   This used to pulse the reset so the ME rebooted from its resident
-   image. The image is in main RAM and survives -- but the core's
-   STACK is in eDRAM, which standby wipes, and a core rebooted onto a
-   wiped stack is a second processor running unknown code with write
-   access to everything. That is not a hang with a place to look: it
-   is corruption that surfaces somewhere else entirely, a different
-   somewhere each run, which is exactly how the freeze after a standby
-   behaved -- once in the project teardown, once on leaving the
-   picker, never the same twice.
+   This used to pulse the reset so the ME rebooted from "the resident
+   image" -- but the handler it boots through lives at ME_HANDLER_BASE
+   = 0xbfc00000, ME-local memory, and standby WIPES the ME's local
+   memory. A core released onto a wiped boot area runs garbage with
+   write access to everything, and its damage surfaces wherever the
+   program touches next: the wandering freeze after standby (project
+   teardown one run, leaving the picker the next).
 
-   So the wake holds the core in reset instead of starting it. Every
-   render takes the scalar path from then on, which the whole design
-   already provides for and which is bit-identical; the cost is a
-   higher dsp figure and no spectrum until the program is next
-   started. A slower machine beats an unpredictable one.
-
-   Reviving it properly means re-uploading the image at wake rather
-   than trusting residency. That is worth doing, and it is not worth
-   doing blind: this makes the machine dependable first. */
+   So this handler -- kernel sysevent context, mid-wake, the worst
+   possible place to do real work -- only parks the core and marks it
+   dead. The actual revival happens later, on the main thread, in
+   PSPME_OnResume: re-copy the handler, verify the resident kernel
+   image, and only then release the reset. If any of that fails the
+   core simply stays parked and every render takes the bit-identical
+   scalar path. */
 extern "C" __attribute__((noinline, aligned(4)))
 void meLibOnWake(void) {
+	/* THE REUNION. The 0.16-era wake did exactly this -- pulse the
+	   reset in the sysevent handler and let the core reboot right
+	   here -- and it carried weeks of standby use. Its one real
+	   defect was the cache-tag noise spray at the rebooted core's
+	   first writeback, and THAT is fixed inside the handler this
+	   pulse boots (the Index-Store-Tag walk). This context is also
+	   the one place the transition is interrupt-safe by
+	   construction: sysevent handlers run with CPU interrupts
+	   masked -- which the app-side revive kcalls spent three builds
+	   rediscovering by hand. The deferred/inline revive machinery is
+	   retired; the resume path merely verifies what already booted
+	   here. */
 	meWakeCount_++;
 	ME_READY = 0;
 	ME_BUSY = 0;
-	HW_SYS_RESET_ENABLE = SC_HW_RESET;   // held, not pulsed
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;   // pulse: both held...
+	HW_SYS_RESET_ENABLE = 0;             // ...both released, 0.16 form
 	meLibSync();
 }
 
-/* Main-thread half of the wake, called from PSPHandleResume: reconcile
-   the job handshake. A job frozen mid-flight at suspend would leave
-   the collect side reading "busy" forever. */
-extern "C" void PSPME_OnResume(void) {
-	/* Nothing is revived here: the core was left in reset by the wake
-	   handler and stays there for the rest of the run. meAlive_ down
-	   as well, so no post can be attempted and the meter reads what is
-	   true -- the second core is not working any more this session. */
+/* The canary buffer: 4KB the ME writes through its cache, with a
+   guard line either side that must come back untouched. Static, so
+   its address is identical every run and every diag line about it
+   is comparable across sessions. */
+static unsigned char __attribute__((aligned(64))) meCanaryBuf_[4096 + 128];
+
+extern "C" void pspDiag(const char *fmt, ...);
+
+/* Returns 1 = the cached-write path is provably intact; 0 = it is
+   not (or the core never answered), with everything written to the
+   diag file either way. */
+static int meCanaryRun(const char *tag) {
+	unsigned char *guard0 = meCanaryBuf_;
+	unsigned char *body   = meCanaryBuf_ + 64;
+	unsigned char *guard1 = meCanaryBuf_ + 64 + 4096;
+	for (int i = 0; i < 4096 + 128; i++) meCanaryBuf_[i] = 0xA5;
+	sceKernelDcacheWritebackInvalidateRange(meCanaryBuf_, 4096 + 128);
+	ME_TESTRES = 0;
+	ME_TESTPTR = (unsigned int)body;
+	ME_TESTCMD = 1;
+	meLibSync();
+	int w = 0;
+	while (!ME_TESTRES && w++ < 100) sceKernelDelayThread(1000);
+	if (!ME_TESTRES) {
+		pspDiag("canary %s: NO ANSWER after %dms", tag, w);
+		return 0;
+	}
+	sceKernelDcacheInvalidateRange(meCanaryBuf_, 4096 + 128);
+	int bad = 0, firstOff = -1;
+	unsigned int firstVal = 0, firstWant = 0;
+	for (int i = 0; i < 4096; i++) {
+		unsigned char want = (unsigned char)(i * 13 + 7);
+		if (body[i] != want) {
+			if (bad++ == 0) { firstOff = i; firstVal = body[i]; firstWant = want; }
+		}
+	}
+	int gbad = 0;
+	for (int i = 0; i < 64; i++) {
+		if (guard0[i] != 0xA5) gbad++;
+		if (guard1[i] != 0xA5) gbad++;
+	}
+	if (bad || gbad) {
+		pspDiag("canary %s: FAIL bad=%d guard=%d first@%d got=%02x want=%02x buf=%08x",
+		        tag, bad, gbad, firstOff, firstVal, firstWant,
+		        (unsigned int)body);
+		return 0;
+	}
+	pspDiag("canary %s: pass buf=%08x", tag, (unsigned int)body);
+	return 1;
+}
+
+/* Kernel half of the revive, run through kcall exactly like the boot
+   path: identify the resident Sony ME kernel image by its witness
+   word (0x88300018, main RAM -- it survives standby, and if resume
+   damaged that image the check refuses before anything boots),
+   re-select the model's syscall table, then meLibReset -- which
+   re-copies our handler over the wiped ME_HANDLER_BASE, writes every
+   dirty main-core cache line back so the ME reads real state, and
+   pulses the reset. This is byte-for-byte the half of
+   meLibDefaultInit a resume needs: no prx load, no second sysevent
+   registration, none of the app-side init that must run only once. */
+static int meReviveKernel(void) {
+	/* INTERRUPTS OFF ACROSS THE WHOLE TRANSITION. Sony brackets every
+	   reset-register operation with sceKernelCpuSuspendIntr, and every
+	   proven ME transition in this project was interrupt-quiet by
+	   accident: the sleep and wake handlers run in sysevent context
+	   with CPU interrupts masked, and cold boot's kcall runs in a
+	   near-silent machine. This kcall was the one transition running
+	   with interrupts LIVE -- vblank, audio DMA, the battery worker's
+	   syscon traffic -- and it failed exactly like a lottery: odds
+	   improving with settle time, never reaching safe. The library
+	   shipped these macros unused, for exactly this. */
+	unsigned int iv;
+	meLibSuspendCpuIntr(iv);
+	const int tableId = meCoreGetTableIdFromWitnessWord();
+	if (tableId < 2) {
+		meLibResumeCpuIntr(iv);
+		return -1;                // resident image no longer identifies
+	}
+	meCoreSelectSystemTable(tableId);
+	/* meLibReset, with one deliberate difference. SC_HW_RESET (0x14)
+	   covers TWO processors: the ME (bit 0x4) and the VME (bit 0x10),
+	   Sony's codec DSP -- a bus master with its own DMA. The library's
+	   release writes 0x00, which frees them BOTH. We re-upload the
+	   ME's code before releasing it; nobody re-programs the VME, and
+	   standby wipes its state like everything else on that side of
+	   the bus. A DMA engine released onto wiped state is the last
+	   corruption source left standing: the parked build (both bits
+	   held) was clean, the revive (both bits freed) wandered again.
+
+	   This program never uses the VME -- no ATRAC, no video -- so
+	   after a standby it simply stays in reset for the rest of the
+	   run. The ME alone is released. Bit 0x2 is the main CPU: never
+	   written, project rule. */
+	{
+		const unsigned int me_section_size =
+		    (unsigned int)(&__stop__me_section - &__start__me_section);
+		memcpy((void *)ME_HANDLER_BASE, (void *)&__start__me_section,
+		       me_section_size);
+		sceKernelDcacheWritebackInvalidateAll();
+		sceKernelIcacheInvalidateAll();
+		HW_SYS_RESET_ENABLE = SC_HW_RESET;   // 0x14: both held...
+		HW_SYS_RESET_ENABLE = 0x10;          // ...ME runs, VME stays
+		meLibSync();
+	}
+	meLibResumeCpuIntr(iv);
+	return tableId;
+}
+
+/* Main-thread half of the wake, called from PSPHandleResume while the
+   audio is still paused (so nothing posts during any of this). First
+   reconcile the handshake a mid-flight suspend can leave wedged, then
+   bring the second core back from a fresh copy of its code.
+
+   The old wake pulsed the reset and trusted residency; standby wipes
+   the ME-local boot area, so that reboot ran garbage and corrupted
+   main memory -- the wandering post-standby freeze. The revive
+   re-uploads first, releases second, and then DEMANDS PROOF: the
+   loop must sign in (ME_READY) and the heartbeat must climb before
+   any render is allowed to post. Anything less and the core is
+   parked in reset, renders keep the bit-identical scalar path, and
+   the machine is merely slower -- the next resume tries again. */
+extern "C" void pspSetAudioPaused(int paused);
+
+static void meReviveAttemptBody(const char *tag);
+
+/* THE QUIET-BUS ENVELOPE. Every revive that ever succeeded on this
+   device ran with audio paused: the forensic build's inline revive
+   sat before the unpause by construction, and the first deferred
+   revive to run against a live render thread died on the song
+   screen. So the envelope is now explicit: whoever calls the
+   revive, the render pipeline is paused, the in-flight block
+   drains, the revive runs on a quiet bus, and audio returns. The
+   cost is a ~300ms sound gap at the moment the second core comes
+   back -- once per wake, and only then. */
+static void meReviveAttempt(const char *tag) {
+	/* The GE drain that briefly lived here is gone: at resume the GE
+	   is LOST (standby wiped it, re-init comes on the next draw) and
+	   sceGeDrawSync on a dead engine is undefined -- the build that
+	   called it froze the UI on its first post-resume draw. The
+	   envelope is audio-only; the inline slot's whole point is that
+	   the GE has not drawn since wake. */
+	pspSetAudioPaused(1);
+	sceKernelDelayThread(60 * 1000);   // a full audio block drains
+	meReviveAttemptBody(tag);
+	pspSetAudioPaused(0);
+}
+
+static void meReviveAttemptBody(const char *tag) {
 	ME_BUSY = 0;
 	ME_READY = 0;
 	meAlive_ = 0;
 	mePrevN_ = 0;
 	meLibSync();
+	if (!meEverStarted_ || ME_EXIT_) return;   // never ran, or exiting
+
+	if (kcall(meReviveKernel, 0) < 0) return;  // stay scalar, still parked
+
+	// the fresh loop flushes the reverb before signing in; give it
+	// time, but never hang a resume on it
+	int waited = 0;
+	while (!ME_READY && waited++ < 200) sceKernelDelayThread(1000);
+	if (ME_READY) {
+		unsigned int h0 = ME_HB;
+		sceKernelDelayThread(2000);
+		if (ME_HB != h0) {
+			/* alive and looping -- but looping is single uncached
+			   words, and the wounds this saga chased arrive by
+			   burst writeback. The canary exercises exactly that
+			   path and the core earns its jobs only by passing. */
+			if (!meCanaryRun(tag)) {
+				pspDiag("%s: canary failed, core parked", tag);
+			} else {
+				meLoadHB_ = ME_HB;
+				meLoadT_ = sceKernelGetSystemTimeLow();
+				meAlive_ = 1;
+				meLibSync();
+				pspDiag("%s: alive, jobs enabled", tag);
+				return;
+			}
+		}
+	}
+	// signed in late or not at all: park it dead rather than wonder
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;
+	meLibSync();
+	ME_READY = 0;
+	meLibSync();
 }
+
+/* THE SETTLE WINDOW. RESUME_COMPLETE means the power service thinks
+   resume is done -- not that every driver's deferred re-init has
+   finished. Reviving the second core inside that tail races other
+   drivers' clock and bus re-initialisation, which showed up exactly
+   the way races do: occasional freezes at resume that became RARE
+   when the diagnostic build's two seconds of card writes were
+   accidentally acting as a settle delay. So the resume path no
+   longer revives inline: it reconciles the handshake, stamps a
+   deadline, and the UI tick performs the revive a few seconds
+   later, on a machine that has finished waking -- the same late,
+   quiet-bus conditions the post-load relaunch already proved. */
+static volatile unsigned int meReviveDueAt_ = 0;
+static volatile int meRevivePending_ = 0;
+
+static int meParkK(void);
+
+/* The verifier: the loop signed in, the heartbeat climbs, the
+   canary passes -- then and only then, jobs. Anything less parks
+   scalar, and the next wake pulse gets another chance. Shared by
+   the resume path and the post-load relaunch. */
+static void meVerifyAfterBoot(const char *tag) {
+	ME_BUSY = 0;
+	meAlive_ = 0;
+	mePrevN_ = 0;
+	meLibSync();
+	if (!meEverStarted_ || ME_EXIT_) return;
+	int waited = 0;
+	while (!ME_READY && waited++ < 200) sceKernelDelayThread(1000);
+	if (ME_READY) {
+		unsigned int h0 = ME_HB;
+		sceKernelDelayThread(2000);
+		if (ME_HB != h0 && meCanaryRun(tag)) {
+			meLoadHB_ = ME_HB;
+			meLoadT_ = sceKernelGetSystemTimeLow();
+			meAlive_ = 1;
+			meLibSync();
+			pspDiag("%s: alive, jobs enabled", tag);
+			return;
+		}
+	}
+	pspDiag("%s: core did not verify, parked scalar", tag);
+	kcall(meParkK, 0);
+	ME_READY = 0;
+	meLibSync();
+}
+
+extern "C" void PSPME_OnResume(void) {
+	/* The core already rebooted at wake, in the sysevent handler,
+	   interrupts masked -- the 0.16 architecture booting the fixed
+	   handler. This path only verifies. */
+	meVerifyAfterBoot("wakeboot");
+}
+
+/* Called from the UI tick on the main thread; runs the deferred
+   revive once its settle window has passed. */
+extern "C" void PSPME_TickRevive(void) {
+	if (!meRevivePending_) return;
+	if ((int)(sceKernelGetSystemTimeLow() - meReviveDueAt_) < 0) return;
+	meRevivePending_ = 0;
+	meReviveAttempt("revive");
+}
+
+/* THE SIDESTEP. Post-standby, the running core plus the close's
+   heavy traffic is the one combination that wedges the bus -- and
+   every attempt to re-order the wake boot sequence around it died
+   on the device. So the wedge's window is removed instead of
+   fought: the close PARKS the core (the sleep handler's own
+   operation), the teardown and load run in the configuration weeks
+   of the parked build proved clean, and the proven revive re-lights
+   the core once the new project is up. Cold sessions are untouched
+   -- their close has been clean for months. */
+/* Kernel half of the close-time park: the sleep handler's exact
+   operation, in the sleep handler's execution context (kernel mode,
+   via kcall like every proven revive). The first attempt parked from
+   USER mode, deep inside the teardown at quiesce time -- and the
+   machine died at exactly that stage. Two things distinguish every
+   park that has ever worked on this device: kernel context, and a
+   quiet bus. This one has both -- it runs before the teardown
+   generates any traffic at all. */
+/* The wake pulse, SC-initiated: register-identical to the sysevent
+   wake that two consecutive standby cycles just verified (hold 0x14,
+   release 0x00, resident handler boots with its cache walk),
+   interrupts masked like every transition that works. Used by the
+   post-load relaunch. */
+static int meWakePulseK(void) {
+	unsigned int iv;
+	meLibSuspendCpuIntr(iv);
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;
+	HW_SYS_RESET_ENABLE = 0;
+	meLibSync();
+	meLibResumeCpuIntr(iv);
+	return 0;
+}
+
+static int meParkK(void) {
+	unsigned int iv;
+	meLibSuspendCpuIntr(iv);
+	HW_SYS_RESET_ENABLE = SC_HW_RESET;
+	meLibSync();
+	meLibResumeCpuIntr(iv);
+	return 0;
+}
+
+extern "C" void PSPME_ParkForClose(void) {
+	if (!meEverStarted_ || meSleepCount_ == 0) return;
+	if (!meAlive_ && !ME_READY) return;   // already dark
+	ME_READY = 0;    // renders go scalar; no new jobs post
+	meLibSync();
+	int w = 0;
+	while (ME_BUSY && w++ < 50) sceKernelDelayThread(1000);
+	kcall(meParkK, 0);
+	ME_BUSY = 0;
+	meAlive_ = 0;
+	meLibSync();
+	pspDiag("park: core held for close (busy drained in %dms)", w);
+}
+
+extern "C" void PSPME_Relaunch(void) {
+	if (meSleepCount_ == 0) return;   // cold session: nothing to do
+	meRevivePending_ = 0;
+	pspDiag("relaunch: wake pulse after load");
+	pspSetAudioPaused(1);
+	sceKernelDelayThread(60 * 1000);
+	ME_READY = 0;
+	meLibSync();
+	kcall(meWakePulseK, 0);
+	meVerifyAfterBoot("relaunch");
+	pspSetAudioPaused(0);
+}
+
 extern "C" unsigned int PSPME_SleepCount(void) { return meSleepCount_; }
 extern "C" unsigned int PSPME_WakeCount(void)  { return meWakeCount_; }
 
@@ -796,6 +1278,36 @@ extern "C" void PSPME_Shutdown(void) {
 }
 
 extern "C" unsigned int PSPME_Ready(void)     { return (unsigned int)ME_READY; }
+extern "C" unsigned int PSPME_Busy(void)      { return (unsigned int)ME_BUSY; }
+
+/* Close-time drain. The delay lines the ME writes belong to SendFx,
+   and SendFx::Close is about to hand them back to the heap: a job
+   still in flight would then be writing freed memory -- and what it
+   lands on is the allocator's own bookkeeping, which turns the NEXT
+   malloc into an infinite walk of a corrupted freelist. That is a
+   freeze with no crash and no place to look.
+
+   The caller has already stopped the audio driver, so no new job can
+   arrive; this waits out the one that may be running. A healthy job
+   is over in a couple of milliseconds; fifty is generosity. A core
+   still busy after that is not running our loop any more, and gets
+   parked in reset -- renders take the scalar path, and the next
+   resume revives it fresh. */
+extern "C" void PSPME_Quiesce(void) {
+	if (!meEverStarted_) return;
+	int w = 0;
+	while (ME_BUSY && w++ < 50) sceKernelDelayThread(1000);
+	if (ME_BUSY) {
+		/* a job that will not drain means the core is not running
+		   our loop; park it -- through the masked kernel call, never
+		   a user-mode register write (the stage-4 lesson) */
+		kcall(meParkK, 0);
+		ME_BUSY = 0;
+		ME_READY = 0;
+		meAlive_ = 0;
+		meLibSync();
+	}
+}
 extern "C" unsigned int PSPME_Heartbeat(void) { return (unsigned int)ME_HB; }
 extern "C" unsigned int PSPME_Jobs(void)      { return (unsigned int)ME_JOBS; }
 extern "C" unsigned int PSPME_Calls(void)     { return meCalls_; }

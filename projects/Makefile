@@ -428,6 +428,7 @@ NDSFILES := \
 
 PSPFILES := \
 	PSPmain.o \
+	me_bright_stub.o \
 	PSPMediaEngine.o \
 	PSPFileSystem.o \
 	Process.o \
