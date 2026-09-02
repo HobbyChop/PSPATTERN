@@ -36,7 +36,10 @@ EPBT_B,
 EPBT_A, 
 EPBT_R, 
 EPBT_START, 
-EPBT_SELECT 
+EPBT_SELECT,
+// 10 and 11 were the retired double-press bits; the mask keeps them
+// reserved, so the import key sits at 12 (EPBM_TRIANGLE = 4096)
+EPBT_TRIANGLE = 12
 } ;
 
 class GUIEvent {

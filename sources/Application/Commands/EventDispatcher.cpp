@@ -83,6 +83,9 @@ void EventDispatcher::Execute(FourCC id,float value) {
 			case TRIG_EVENT_SELECT:
 				mapping=EPBT_SELECT;
 				break ;
+			case TRIG_EVENT_TRIANGLE:
+				mapping=EPBT_TRIANGLE;
+				break ;
 			default:
 				// an unmapped trigger used to fall through with
 				// `mapping` uninitialised and shift by whatever was

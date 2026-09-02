@@ -7,6 +7,7 @@
 #include "Application/Views/ModalDialogs/MessageBox.h"
 #include "Application/Views/ModalDialogs/NewProjectDialog.h"
 #include "Application/Views/ModalDialogs/SelectProjectDialog.h"
+#include "Application/Views/ModalDialogs/SamplesDialog.h"
 #include "BaseClasses/UIActionField.h"
 #include "BaseClasses/UIField.h"
 #include "BaseClasses/UIIntVarField.h"
@@ -26,6 +27,7 @@
 #define ACTION_LOAD             MAKE_FOURCC('L','O','A','D')
 #define ACTION_QUIT             MAKE_FOURCC('Q','U','I','T')
 #define ACTION_PURGE_INSTRUMENT MAKE_FOURCC('P','R','G','I')
+#define ACTION_SAMPLES          MAKE_FOURCC('S','M','P','L')
 #define ACTION_TEMPO_CHANGED    MAKE_FOURCC('T','E','M','P')
 
 static void SaveAsProjectCallback(View &v,ModalView &dialog) {
@@ -241,6 +243,13 @@ ProjectView::ProjectView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	                          project_->MAX_RENDER_MODE - 1, 1, 2);
 	T_SimpleList<UIField>::Insert(field);
 
+	// every sound file the project carries, one at a time -- the
+	// compaction above with the lights on
+	position=GUIPoint(23,18) ;
+	a1 = new UIActionField("samples", ACTION_SAMPLES, position);
+	a1->AddObserver(*this);
+	T_SimpleList<UIField>::Insert(a1);
+
 	/* No exit action any more: quitting to the XMB is what the HOME
 	   button is for, and the OS path is the one Sony hardened. The
 	   in-app path froze the machine on the way out often enough that
@@ -318,25 +327,26 @@ void ProjectView::DrawView() {
 		DrawString(9,20,rate,props) ;
 		SetColor(CD_NORMAL) ;
 	}
-	// 12, not 11: the action rows are boxed too, and the last box's
+	// 14, not 13: the action rows are boxed too, and the last box's
 	// bottom rule and the panel's landed on adjacent pixel rows -- one
-	// spare row keeps them from reading as a doubled rail
-	DrawPanel(22,5,17,12,"FILE") ;
+	// spare row keeps them from reading as a doubled rail. Seven rows
+	// now that samples sits under render.
+	DrawPanel(22,5,17,14,"FILE") ;
 
 	// framed action rows
 	AppWindow &app=(AppWindow &)w_ ;
-	int rows[]={6,8,10,12,14,16} ;
-	for (int i=0;i<6;i++) {
+	int rows[]={6,8,10,12,14,16,18} ;
+	for (int i=0;i<7;i++) {
 		app.OpFrame(23*8-4,rows[i]*8-2,15*8+8,12,CD_ROW) ;
 	}
-	app.OpFrame(23*8-4,19*8-2,6*8+8,12,CD_ROW) ;
+	app.OpFrame(23*8-4,21*8-2,6*8+8,12,CD_ROW) ;
 
 	// maker's mark next to exit
 	{
 		GUITextProperties props ;
 		SetColor(CD_ROW2) ;
 		// col 31 put the last "p" hard against the right bezel
-		DrawString(30,19,"hobbychop",props) ;
+		DrawString(30,21,"hobbychop",props) ;
 		SetColor(CD_NORMAL) ;
 	}
 
@@ -375,6 +385,11 @@ void ProjectView::Update(Observable &,I_ObservableData *data) {
             DoModal(mb,PurgeCallback) ;
 			break ;
 		}
+        case ACTION_SAMPLES: {
+            SamplesDialog *sd = new SamplesDialog(*this);
+            DoModal(sd);
+            break;
+        }
         case ACTION_SAVE: {
             // a full save is up to seconds of Memory Stick I/O: never
             // under the mixer lock (this notify runs inside it), and

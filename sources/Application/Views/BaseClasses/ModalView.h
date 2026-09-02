@@ -14,6 +14,9 @@ class ModalView : public View {
 
   protected:
     void SetWindow(int width, int height);
+    // the whole screen, no frame: a modal that is a screen of its own
+    // and draws with the title strip, panels and hint bar of the real ones
+    void SetFullScreen();
     virtual void ClearRect(int x, int y, int w, int h);
     virtual void DrawString(int x, int y, const char *txt,
                             GUITextProperties &props);

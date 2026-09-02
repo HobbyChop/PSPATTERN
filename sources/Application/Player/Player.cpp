@@ -1540,6 +1540,12 @@ unsigned int PlayerEvent::GetTickCount() { return tickCount_; }
 
 bool Player::StartStreaming(const Path &path) { return mixer_->StartStreaming(path); }
 void Player::StopStreaming() { mixer_->StopStreaming(); }
+bool Player::StartStreamingBuffer(const short *frames,long frameCount,int channels,int rate) {
+	return mixer_->StartStreamingBuffer(frames,frameCount,channels,rate);
+}
+void Player::StopStreamingNow() { mixer_->StopStreamingNow(); }
+bool Player::IsStreaming() { return mixer_->IsStreaming(); }
+void Player::SetStreamingShape(bool mono,int div) { mixer_->SetStreamingShape(mono,div); }
 
 std::string Player::GetAudioAPI() {
     AudioOut *out = mixer_->GetAudioOut();

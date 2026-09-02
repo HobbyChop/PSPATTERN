@@ -1,3 +1,48 @@
+PSPATTERN 0.29.0a
+
+    Importing is two pages and one key. The browser is a full screen:
+        the file list with a FILE panel beside it saying what the file
+        under the cursor is. TRIANGLE chooses the file and opens its
+        settings page -- stereo or folded to mono, rate as it is,
+        halved or quartered, the memory cost following, and an IMPORT
+        panel spelling out what will happen. TRIANGLE again imports;
+        X goes back to the list with nothing taken. Nothing else
+        imports. O never does, so the O-and-arrow editing habit
+        changes a setting instead of taking a file, and a stray X
+        cannot leave the screen from the settings page. Importing a
+        name the project already holds asks first, with No selected.
+
+    TRIANGLE is a button now. It does one thing, on one screen, so
+        no habit from anywhere else can land on it. It is built in
+        like SELECT, so a stale mapping.xml cannot leave it dead. The
+        built-in defaults for O and X used to be square and triangle,
+        a leftover nobody saw because mapping.xml always overrode it;
+        they are circle and cross now, as the manual says.
+
+    Hear it as it will be stored. SELECT on either page plays the file
+        through the same fold and average the import writes, resampled
+        to pitch, so a quarter-rate preview sounds exactly as the
+        sample will. Change a setting while it plays and the sound
+        follows. This fixed a defect on the way: the preview copied
+        samples one for one, so a 22050Hz file played an octave up and
+        a 48kHz file flat. Every preview is at pitch now.
+
+    A samples screen, off a new row on the project screen. Every wav
+        and soundfont the project carries, what each costs in memory
+        and which instruments are on it, plus files on the card the
+        pool could not load. SELECT hears one, O removes it after a
+        yes/no that names who is on it. Removal is safe while a voice
+        is still ringing: it is cut and the instrument set to no sample
+        before the memory goes. Compact inst is the same thing done
+        to every unused sample at once; this is the one to use to see
+        what would go first.
+
+    An instrument whose sample is removed simply has none until one is
+        assigned again: its file row reads "none", the project saves it
+        that way and loads it back the same. Assigning a sample to a
+        slot whose name had failed to match at load used to keep the
+        old name for the next save; it does not now.
+
 PSPATTERN 0.28.0a
 
     Importing a sample asks how to store it. Choosing a wav in the

@@ -7,6 +7,14 @@
 #include "System/FileSystem/FileSystem.h"
 #include <string>
 
+/* The import screen, two pages. The first is the file list with a
+   panel saying what the file under the cursor is; TRIANGLE chooses a
+   file and opens its settings page, where the same key confirms the
+   import and X only steps back to the list. TRIANGLE is the only key
+   that imports, so the O-and-arrow editing habit from the instrument
+   screen cannot take a file by accident, and a stray X cannot leave
+   the screen from the settings. SELECT plays the file as it will be
+   stored. A full screen in the house style. */
 class ImportSampleDialog:public ModalView {
 public:
 	ImportSampleDialog(View &view) ;
@@ -17,21 +25,26 @@ public:
 	virtual void OnFocus() ;
 	virtual void ProcessButtonMask(unsigned short mask,bool pressed) ;
 	virtual void ApplyDeferred() ;
+	// the yes/no on a replacement comes back through here
+	void OnReplaceAnswer(bool yes) ;
 
 protected:
+	enum Page { P_LIST=0, P_SETTINGS=1 } ;
 	void setCurrentFolder(Path *path) ;
 	void warpToNextSample(int dir) ;
 	void import(Path &element,const SampleImportOptions &opt) ;
 	void queueImport(Path &element) ;
+	void askImport() ;
+	void choose() ;
 	void preview(Path &element) ;
 	void endPreview() ;
-	// the options step: read the header, show it, take the choices
-	void openOptions(Path &element) ;
-	void closeOptions() ;
+	void readInfo() ;
+	void stepOption(int dir) ;
 	void drawList() ;
-	void drawOptions() ;
+	void drawChoice() ;      // page one, the right column
+	void drawSettings() ;    // page two
 	void processListButtons(unsigned short mask) ;
-	void processOptionButtons(unsigned short mask) ;
+	void processSettingsButtons(unsigned short mask) ;
 private:
 	Path *getImportElement();
 	bool isSampleLibRoot();
@@ -41,11 +54,11 @@ private:
 	int toInstr_ ;
 	// preview lives while SELECT is held, like audition everywhere else
 	bool previewHeld_ ;
-	// bare-B release backs out one folder (closes at the root); a B
-	// chord (page jump) must not
+	// bare-X release backs out one level: the settings page, then the
+	// folder, then close at the root. A chord must not.
 	bool bHeld_ ;
 	bool bChorded_ ;
-	std::string status_ ;   // one transient line: imported X, can't play Y
+	std::string status_ ;   // one transient line: imported X, can't read Y
 	static bool initStatic_ ;
 	static Path sampleLib_ ;
 	static Path currentPath_ ;
@@ -54,16 +67,19 @@ private:
 	Path pendingPreview_ ;
 	bool previewPending_ ;
 
-	/* The options step. O on a wav lands here rather than importing
-	   at once: what the file is, and how the project should store it.
-	   The choices are remembered for the session, so a batch at the
-	   same settings is O, O per file. The header read is a file open,
-	   so it waits for ApplyDeferred like the preview does. */
-	bool inOptions_ ;
-	Path pendingOptions_ ;
-	bool optionsPending_ ;
-	Path optPath_ ;
+	/* the settings page. What the file is comes from its header, read
+	   deferred like everything that opens a file; the settings are
+	   remembered for the session, so a batch at one setting is
+	   TRIANGLE, TRIANGLE per file. */
+	Page page_ ;
+	Path chosen_ ;           // the file the settings page is about
 	int optRow_ ;            // 0 channels, 1 rate
+	bool infoPending_ ;
+	bool infoValid_ ;
+	// a setting changed while the preview plays: applied deferred, since
+	// the shape change takes the mixer lock and the press holds it
+	bool shapePending_ ;
+	std::string infoName_ ;  // the file the info below describes
 	int srcChannels_ ;
 	int srcRate_ ;
 	int srcBits_ ;
@@ -71,13 +87,12 @@ private:
 	long srcFrames_ ;
 	long srcBytes_ ;
 	static SampleImportOptions options_ ;
-	/* Import is deferred too, in two steps: a conversion is seconds
-	   of card traffic, and Redraw runs ApplyDeferred BEFORE it paints,
-	   so the redraw that announces "importing" has to be a different
-	   one from the redraw that does the work. */
+	/* Import is deferred in two steps: a conversion is seconds of card
+	   traffic, and Redraw runs ApplyDeferred BEFORE it paints, so the
+	   redraw that announces "importing" has to be a different one from
+	   the redraw that does the work. */
 	int importPhase_ ;       // 0 idle, 1 announce, 2 run
 	Path pendingImport_ ;
 } ;
-
 
 #endif

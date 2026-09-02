@@ -22,6 +22,12 @@ void ModalView::DrawString(int x, int y, const char *txt,
     View::DrawString(x + left_, y + top_, txt, props);
 };
 
+void ModalView::SetFullScreen() {
+    left_ = 0;
+    top_ = 0;
+    Clear();
+}
+
 void ModalView::SetWindow(int width, int height) {
 
     if (width > 36) {

@@ -21,6 +21,34 @@ enum SampleConvertResult {
 	SCR_NO_MEMORY
 } ;
 
+/* The one reduction, shared by the converter and the preview so what
+   you hear is what gets written: div frames of srcCh channels folded
+   into one frame of outCh (1 or 2), a plain average. Two frames of
+   stereo into one of mono is four numbers averaged. */
+static inline void SampleConvertFold(const short *src,int srcCh,int div,int outCh,
+                                     long nOut,short *dst) {
+	if (outCh==1) {
+		int taps=div*srcCh ;
+		for (long f=0;f<nOut;f++) {
+			const short *frame=src+f*taps ;
+			int acc=0 ;
+			for (int k=0;k<taps;k++) acc+=frame[k] ;
+			*dst++=(short)(acc/taps) ;
+		}
+	} else {
+		for (long f=0;f<nOut;f++) {
+			const short *frame=src+f*div*srcCh ;
+			int l=0,r=0 ;
+			for (int k=0;k<div;k++) {
+				l+=frame[k*srcCh] ;
+				r+=(srcCh>1)?frame[k*srcCh+1]:frame[k*srcCh] ;
+			}
+			*dst++=(short)(l/div) ;
+			*dst++=(short)(r/div) ;
+		}
+	}
+}
+
 namespace SampleConvert {
 	// true when the file has to be rewritten to come out as asked: a
 	// change of channels or rate, or a source that is not 16-bit PCM

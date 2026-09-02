@@ -214,6 +214,22 @@ void PlayerMixer::StopStreaming() {
 	fileStreamer_.Stop() ;
 } ;
 
+bool PlayerMixer::StartStreamingBuffer(const short *frames,long frameCount,int channels,int rate) {
+	return fileStreamer_.StartBuffer(frames,frameCount,channels,rate) ;
+} ;
+
+void PlayerMixer::StopStreamingNow() {
+	fileStreamer_.StopNow() ;
+} ;
+
+bool PlayerMixer::IsStreaming() {
+	return fileStreamer_.IsPlaying() ;
+} ;
+
+void PlayerMixer::SetStreamingShape(bool mono,int div) {
+	fileStreamer_.SetShape(mono,div) ;
+} ;
+
 void PlayerMixer::OnPlayerStart() {
 	MixerService *ms=MixerService::GetInstance() ;
 	ms->OnPlayerStart();

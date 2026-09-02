@@ -54,6 +54,7 @@ void EventManager::InstallMappings() {
 	mapConfigKey(APP_BUTTON_VOLINC,"KEY_VOLINC") ;
 	mapConfigKey(APP_BUTTON_SELECT,"KEY_SELECT") ;
 	mapConfigKey(APP_BUTTON_VOLDEC,"KEY_VOLDEC") ;
+	mapConfigKey(APP_BUTTON_TRIANGLE,"KEY_TRIANGLE") ;
 	
 	ControlRoom *cr=ControlRoom::GetInstance() ;
 	
@@ -69,5 +70,10 @@ void EventManager::InstallMappings() {
 	cr->Attach(URL_EVENT_SELECT,mapping_[APP_BUTTON_SELECT].c_str()) ;
 	cr->Attach(URL_VOLUME_INCREASE,mapping_[APP_BUTTON_VOLINC].c_str()) ;
 	cr->Attach(URL_VOLUME_DECREASE,mapping_[APP_BUTTON_VOLDEC].c_str()) ;
+	// only where a platform gave it a source: an empty attach is a
+	// node with no button behind it
+	if (!mapping_[APP_BUTTON_TRIANGLE].empty()) {
+		cr->Attach(URL_EVENT_TRIANGLE,mapping_[APP_BUTTON_TRIANGLE].c_str()) ;
+	}
 	
 }

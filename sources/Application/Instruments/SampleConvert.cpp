@@ -71,25 +71,7 @@ SampleConvertResult SampleConvert::Convert(const char *srcPath,const char *dstPa
 		const short *s=(const short *)in->GetSampleBuffer(-1) ;
 		if (!s) { result=SCR_NO_MEMORY ; break ; }
 		long nOut=n/div ;
-		short *d=block ;
-		if (outCh==1) {
-			// div frames of ch channels lie contiguous: one flat average
-			int taps=div*ch ;
-			for (long f=0;f<nOut;f++) {
-				const short *frame=s+f*taps ;
-				int acc=0 ;
-				for (int k=0;k<taps;k++) acc+=frame[k] ;
-				*d++=(short)(acc/taps) ;
-			}
-		} else {
-			for (long f=0;f<nOut;f++) {
-				const short *frame=s+f*div*ch ;
-				int l=0,r=0 ;
-				for (int k=0;k<div;k++) { l+=frame[k*ch] ; r+=frame[k*ch+1] ; }
-				*d++=(short)(l/div) ;
-				*d++=(short)(r/div) ;
-			}
-		}
+		SampleConvertFold(s,ch,div,outCh,nOut,block) ;
 		out.AddShorts(block,(int)nOut) ;
 		pos+=n ;
 	}

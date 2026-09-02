@@ -149,13 +149,22 @@ void PSPSystem::Boot(int argc,char **argv) {
 		invert=true ;
 	}
 
+	/* Circle is O and cross is X, as the manual and the shipped
+	   mapping.xml say. The built-in default used to put O on square
+	   and X on triangle, a leftover nobody could see because
+	   mapping.xml always overrode it -- until triangle was needed
+	   for something of its own. A card with no mapping.xml now
+	   behaves like one with it. */
 	if (!invert) {
-		eventManager_->MapAppButton("but:0:0",APP_BUTTON_B) ;
-		eventManager_->MapAppButton("but:0:3",APP_BUTTON_A) ;
+		eventManager_->MapAppButton("but:0:1",APP_BUTTON_A) ;
+		eventManager_->MapAppButton("but:0:2",APP_BUTTON_B) ;
 	}else {
-		eventManager_->MapAppButton("but:0:0",APP_BUTTON_A) ;
-		eventManager_->MapAppButton("but:0:3",APP_BUTTON_B) ;
+		eventManager_->MapAppButton("but:0:2",APP_BUTTON_A) ;
+		eventManager_->MapAppButton("but:0:1",APP_BUTTON_B) ;
 	}
+	// TRIANGLE is the import key. Built in, like SELECT, so a stale
+	// mapping.xml cannot leave it dead.
+	eventManager_->MapAppButton("but:0:0",APP_BUTTON_TRIANGLE) ;
 	eventManager_->MapAppButton("but:0:7",APP_BUTTON_LEFT) ;
 	eventManager_->MapAppButton("but:0:9",APP_BUTTON_RIGHT) ;
 	eventManager_->MapAppButton("but:0:8",APP_BUTTON_UP) ;
@@ -194,6 +203,7 @@ unsigned short PSPSystem::GetPadUpBits() {
 	if (!(pad.Buttons&PSP_CTRL_RTRIGGER)) up|=128 ;
 	if (!(pad.Buttons&PSP_CTRL_START))    up|=256 ;
 	if (!(pad.Buttons&PSP_CTRL_SELECT))   up|=512 ;
+	if (!(pad.Buttons&PSP_CTRL_TRIANGLE)) up|=4096 ;   // EPBM_TRIANGLE
 	/* the face buttons' EPBM mapping depends on the O/X swap setting,
 	   so no single button can be judged -- but if NONE of the four is
 	   pressed, then A and B are both provably up whatever the mapping

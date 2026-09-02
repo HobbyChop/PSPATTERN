@@ -104,6 +104,13 @@ public:
 
 	bool StartStreaming(const Path &path) ;
 	void StopStreaming() ;
+	// a sound already in RAM (a pool entry); the buffer must outlive
+	// the stream, so StopStreamingNow before it goes anywhere
+	bool StartStreamingBuffer(const short *frames,long frameCount,int channels,int rate) ;
+	void StopStreamingNow() ;
+	bool IsStreaming() ;
+	// the preview heard folded to mono and/or at a divided rate
+	void SetStreamingShape(bool mono,int div) ;
 
 	// Channel data
 

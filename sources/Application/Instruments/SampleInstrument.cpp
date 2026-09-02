@@ -1211,7 +1211,12 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 void SampleInstrument::AssignSample(int i) {
 
 	 Variable *v=FindVariable(SIP_SAMPLE) ;
-	 v->SetInt(i) ;
+	 /* No sample is a NAME, "none", not a bare -1: the file row reads
+	    it, the project saves it, and a later load finds no such file
+	    and lands on the same -1 -- the unmatched path already there.
+	    Either way the slot has no source until something is assigned. */
+	 if (i==NO_SAMPLE) v->SetString("none") ;
+	 else v->SetInt(i) ;
 } ;
 
 int SampleInstrument::GetSampleIndex() {
@@ -1253,6 +1258,11 @@ void SampleInstrument::updateInstrumentData(bool search) {
 	int index=vSample->GetInt() ;
 	int instrSize=0 ;
 
+	/* no sample means NO source. This used to leave the old pointer in
+	   place, which was harmless while nothing ever freed a pool entry
+	   an instrument had been on; the samples screen does exactly that,
+	   after moving the instrument here first. */
+	if (index==NO_SAMPLE) source_=0 ;
 	if (index!=NO_SAMPLE)
   {
 		source_=pool->GetSource(index) ;

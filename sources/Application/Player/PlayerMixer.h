@@ -44,6 +44,10 @@ public:
 	
 	bool StartStreaming(const Path &) ;
 	void StopStreaming()  ;
+	bool StartStreamingBuffer(const short *frames,long frameCount,int channels,int rate) ;
+	void StopStreamingNow() ;
+	bool IsStreaming() ;
+	void SetStreamingShape(bool mono,int div) ;
 
 	bool Clipped() ;
 

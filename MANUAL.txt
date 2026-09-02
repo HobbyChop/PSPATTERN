@@ -48,6 +48,7 @@ The manual refers to the PSP buttons by the names printed on them.
   L and R    The shoulder triggers.
   START      Start and stop playback.
   SELECT     Marking on the grids, audition on the instrument screen.
+  TRIANGLE   Import, on the import screen. Nothing else, anywhere.
   D-pad      Move the cursor.
   Nub        Unused. Stick drift on aging units made anything mapped
              to it a lottery, so nothing listens to it.
@@ -587,27 +588,44 @@ every machine -- and everything imported into this project after it.
 The d-pad walks type, bank, import and the file row; O on "import
 sample >" opens the browser.
 
-In the browser:
+The import screen is two pages. The first is the file list, with a
+FILE panel beside it that says what the file under the cursor is:
+channels, rate, word size, length, its size on the card and what it
+costs in memory.
 
-  up/down       walk the list (X+up/down jumps a page)
-  hold SELECT   hear the file under the cursor; keep holding and walk
-                the list to hear one file after another
-  O             take: enter a folder, or choose the file
+  up/down       walk the list; left/right jump a page
+  O             enter a folder
   X             step out of the folder; at the library root, close
+  hold SELECT   hear the file under the cursor, as it will be stored
+  TRIANGLE      choose the file: its settings page opens
 
-Choosing a wav opens a second step before anything is copied. The
-top of it says what the file is -- channels, rate, word size, length,
-its size on the card and what it costs in memory -- and two rows
-below say how the project should store it:
+The settings page is about that one file. STORE has two rows: chan
+is stereo as it is or folded to mono, rate is as it is, halved or
+quartered. Up and down move between the rows and left and right
+change the value, with or without O held. The in ram line follows the
+choices, and the IMPORT panel spells out what TRIANGLE will do --
+"mono 22050Hz, 101K in ram" -- in the accent colour when a conversion
+is involved.
 
-  channels      stereo as it is, or folded down to mono
-  rate          as it is, halved, or quartered
+  up/down       move between the rows
+  left/right    change the value (O held or not)
+  hold SELECT   hear the file with the settings as they stand
+  TRIANGLE      import it
+  X             back to the list, nothing taken
 
-The "in ram" line under them follows the choices. Up and down move
-between the rows, left and right change the value, SELECT plays the
-original, O imports and X goes back to the list. The choices are
-remembered until you quit, so a batch of files at the same settings
-is O, O for each.
+Nothing else imports: O never does, so a slip from the instrument
+screen's O-and-arrow habit changes a setting instead of taking a
+file, and a stray X on the settings page only steps back to the
+list. A soundfont has no settings; its page says so, and TRIANGLE
+imports it.
+
+Hearing is the check. SELECT plays the file through the same fold and
+average the import writes, resampled to pitch, so a quarter-rate
+preview sounds exactly as the sample will. Change a setting while it
+plays and the sound follows.
+
+The choices are remembered until you quit, so a batch of files at the
+same settings is TRIANGLE, TRIANGLE per file.
 
 Mono halves the memory a stereo file takes; halving the rate halves
 it again. The sampler plays any rate at the right pitch, so a file
@@ -623,14 +641,14 @@ the project is written as 16-bit PCM, the form the sampler keeps in
 memory, so the project folder never holds more than it needs and
 opens faster. A 16-bit file stored as it is comes across unchanged.
 
-Importing a name the project already holds replaces that sample:
-every instrument on it picks up the new version, and their start,
-loop and end points reset to the new length. Two versions of one
-file need two names in samplelib. SoundFonts skip the options step
-and are copied as they are.
+Importing a name the project already holds replaces that sample,
+after a yes/no that defaults to no. Every instrument on it picks up
+the new version, and their start, loop and end points reset to the
+new length. Two versions of one file need two names in samplelib.
+SoundFonts have no settings and are copied as they are.
 
-The status line above the key help says what happened -- imported,
-and the shape it was stored in, or why a file could not be read.
+The line under the panels says what happened -- the name and the
+shape it was stored in, or why a file could not be read.
 
 It is a copy. The original stays in samplelib and the project gets its
 own version. That is what makes a project folder complete on its own:
@@ -679,6 +697,34 @@ The start, loop and end fields on the instrument screen read zero for a
 preset. Those values are per note for a soundfont and the screen has
 one set of fields to show them in.
 
+
+THE SAMPLES SCREEN
+
+The project screen has a samples row under the compaction tools. O on
+it opens a list of every sound file the project carries: each wav,
+each soundfont as one line with its preset count, and what each costs
+in memory. The detail panel says which instruments are on the one
+under the cursor, by slot number, or that nothing is. Files that are
+on the card but could not be loaded -- an unreadable wav, one
+soundfont too many -- are listed too, marked not loaded, because
+nothing else will ever show them.
+
+  up/down       walk the list (X+up/down jumps a page)
+  hold SELECT   hear the one under the cursor, at its own pitch
+  O             remove it, after a yes/no that names who is on it
+  X             back to the project screen
+
+Removing is immediate and permanent on the card, as compacting is.
+An instrument that was on the file is set to no sample. A soundfont
+goes as a whole, every preset of it. The generated drum kit is not a
+file and is not listed. The song has to be stopped to remove
+anything: a playing voice may still be reading the memory about to
+go. The original, if it came from samplelib, is still there to import
+again.
+
+Compact inst on the project screen is the same thing done all at once
+to every unused sample; this screen is the one to use when you want
+to see what would go first.
 
 15. THE DRUM KIT
 
@@ -801,8 +847,8 @@ the sends are doing.
   device   MIDI output device
   rate     audio sample rate
 
-The file column has load, save, save as, two compaction tools, and a
-render switch.
+The file column has load, save, save as, two compaction tools, a
+render switch and the samples screen (section 14).
 
 MIDI CLOCK
 

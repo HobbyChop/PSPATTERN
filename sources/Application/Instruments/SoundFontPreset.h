@@ -19,6 +19,8 @@ public:
 	virtual int GetLoopEnd(int note) ;
 
 	bool IsLooped(int loop) ;
+	// the bank this preset came out of, so the lot can go together
+	int GetBankID() { return sfID_ ; } ;
 
 protected:
 	

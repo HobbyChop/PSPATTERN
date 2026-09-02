@@ -56,6 +56,11 @@ public:
   // int InsertSample(const std::string& sampleName, bool imported, std::string fi);
   int Reassign(std::string name, bool imported);
   void PurgeSample(int i);
+  // the soundfont bank a slot belongs to, or -1 for a wav or a kit drum
+  int GetBankOf(int i);
+  // every preset of a bank out of the pool, the bank out of the
+  // manager, its file off the card. Returns how many slots went.
+  int RemoveBank(int bankId);
   const char *GetSampleLib();
 protected:
   // the synthesised kit, inserted ahead of anything on disk
@@ -73,6 +78,8 @@ protected:
   static ProgressFn progress_;
   static void report(const char *what, int done, int total);
   void unload(int i);
+  // one slot out, observers told; the file is the caller's business
+  void dropEntry(int i);
   int loadSample(const char *path);
   int loadSoundFont(const char *path);
   int getIndexOf(const char *path);

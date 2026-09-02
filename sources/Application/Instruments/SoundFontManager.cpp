@@ -3,23 +3,37 @@
 #include "System/FileSystem/FileSystem.h"
 
 SoundFontManager::SoundFontManager() {
+	for (int i=0;i<MAX_SOUNDFONTS;i++) bankBytes_[i]=0 ;
 } ;
 
 SoundFontManager::~SoundFontManager() {
 } ;
 
-void SoundFontManager::Reset() {
-	std::vector<void *>::iterator it=sampleData_.begin() ;
-	while (it!=sampleData_.end()) {
-		SAFE_FREE(*it) ;
-		it=sampleData_.erase(it) ;
-	} ;
+void SoundFontManager::UnloadBank(sfBankID id) {
+	if (id<0||id>=MAX_SOUNDFONTS) return ;
+	std::vector<void *> &data=sampleData_[id] ;
+	for (size_t i=0;i<data.size();i++) {
+		SAFE_FREE(data[i]) ;
+	}
+	data.clear() ;
+	sfUnloadSFBank(id) ;
+	bankPath_[id].clear() ;
+	bankBytes_[id]=0 ;
+}
 
-        // Unload all SoundFonts
-        sfBankID i;
-        for(i = 0; i < MAX_SOUNDFONTS; i++)
-          sfUnloadSFBank(i);
+void SoundFontManager::Reset() {
+	for (sfBankID i=0;i<MAX_SOUNDFONTS;i++) UnloadBank(i) ;
 } ;
+
+const char *SoundFontManager::GetBankPath(sfBankID id) {
+	if (id<0||id>=MAX_SOUNDFONTS||bankPath_[id].empty()) return 0 ;
+	return bankPath_[id].c_str() ;
+}
+
+long SoundFontManager::GetBankBytes(sfBankID id) {
+	if (id<0||id>=MAX_SOUNDFONTS) return 0 ;
+	return bankBytes_[id] ;
+}
 
 /*
   Returns a nonnegative short or an element of
@@ -27,11 +41,13 @@ void SoundFontManager::Reset() {
  */
 sfBankID SoundFontManager::LoadBank(const char *path) {
 
-	sfBankID id=sfReadSFBFile((char *)path) ; 
+	sfBankID id=sfReadSFBFile((char *)path) ;
 	if (id==-1) {
         enaErrors err_code = sfGetError();
         return -(err_code == enaLOADERROR ? SF_LOAD_ERROR : SF_BANK_TABLE_FULL);
-	} 
+	}
+	if (id<0||id>=MAX_SOUNDFONTS) return -SF_LOAD_ERROR ;
+
 	// open the file
 
 	I_File *fin=FileSystem::GetInstance()->Open(path,"r") ;
@@ -64,6 +80,7 @@ sfBankID SoundFontManager::LoadBank(const char *path) {
 		if (buffer) {
 			fin->Seek(from,SEEK_SET) ;
 			fin->Read(buffer,byteSize,1) ;
+			bankBytes_[id]+=byteSize ;
 		}
 
 		// now adapt the headers so the start is the memory point
@@ -75,10 +92,11 @@ sfBankID SoundFontManager::LoadBank(const char *path) {
         // ADDR is pointer-sized, works on both 32-bit and 64-bit
         current.dwStart = (ADDR)buffer;
 
-        sampleData_.push_back(buffer);
+        sampleData_[id].push_back(buffer);
     }
 	fin->Close() ;
 	SAFE_DELETE(fin) ;
 
+	bankPath_[id]=path ;
 	return id ;
 } ;

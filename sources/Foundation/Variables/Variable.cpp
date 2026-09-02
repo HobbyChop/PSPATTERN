@@ -112,6 +112,10 @@ void Variable::SetInt(int value, bool notify) {
         break;
     case CHAR_LIST:
         value_.index_ = value;
+        // a real index resolves whatever name could not be matched at
+        // load; without this GetString kept returning the stale name,
+        // and the next save wrote it back over the new choice
+        unmatched_.clear();
         break;
     case STRING:
         sprintf(string_,"%d",value);

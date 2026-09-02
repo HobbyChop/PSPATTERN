@@ -474,38 +474,61 @@ void SamplePool::PurgeSample(int i) {
 		return ;
 	}
 
-	// construct the path of the sample to delete
-
+	// the file goes by the name the slot holds -- taken before the slot does
 	std::string wavPath="samples:" ;
 	wavPath+=names_[i] ;
 	Path path(wavPath.c_str()) ;
-	//delete wav
-	SAFE_DELETE(wav_[i]) ;
-	// delete name entry -- names_ comes from SYS_MALLOC (see Load), so
-	// it has to go back through free; Reset does this correctly and
-	// this path was calling delete on it
-	SAFE_FREE(names_[i]) ;
 
-	// delete file
+	dropEntry(i) ;
+
 	FileSystem::GetInstance()->Delete(path.GetPath().c_str()) ;
+} ;
 
-	// shift all entries from deleted to end
+/* One slot out of the pool: the source and its name freed, everything
+   above shifted down, observers told so every sample variable above
+   it renumbers. Whoever calls this has moved every instrument off the
+   slot already -- the source is deleted, not leaked. */
+void SamplePool::dropEntry(int i) {
+	if ((i<0)||(i>=count_)) return ;
+	SAFE_DELETE(wav_[i]) ;
+	// names_ comes from SYS_MALLOC (see Load), so it goes back through free
+	SAFE_FREE(names_[i]) ;
 	for (int j=i;j<count_-1;j++) {
 		wav_[j]=wav_[j+1] ;
 		names_[j]=names_[j+1] ;
 	} ;
-	// decrease sample count
 	count_-- ;
 	wav_[count_]=0 ;
 	names_[count_]=0 ;
 
-	// now notify observers
 	SetChanged() ;
 	SamplePoolEvent ev ;
 	ev.index_=i ;
 	ev.type_=SPET_DELETE ;
 	NotifyObservers(&ev) ;
-} ;
+}
+
+int SamplePool::GetBankOf(int i) {
+	if ((i<0)||(i>=count_)||(!wav_[i])||(!wav_[i]->IsMulti())) return -1 ;
+	return ((SoundFontPreset *)wav_[i])->GetBankID() ;
+}
+
+int SamplePool::RemoveBank(int bankId) {
+	if (bankId<0) return 0 ;
+	SoundFontManager *sfm=SoundFontManager::GetInstance() ;
+	// the path first: once the bank is unloaded nobody remembers it
+	const char *path=sfm->GetBankPath(bankId) ;
+	std::string file=path?path:"" ;
+	// highest slot first, so a shift never moves a slot still to go
+	int removed=0 ;
+	for (int i=count_-1;i>=0;i--) {
+		if (GetBankOf(i)==bankId) { dropEntry(i) ; removed++ ; }
+	}
+	sfm->UnloadBank(bankId) ;
+	if (!file.empty()) FileSystem::GetInstance()->Delete(file.c_str()) ;
+	Trace::Log("POOL","bank %d out: %d presets, %s",bankId,removed,file.c_str()) ;
+	return removed ;
+}
 
 void SamplePool::unload(int i) {
 

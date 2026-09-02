@@ -36,7 +36,10 @@ enum GUIEventPadButtonMasks {
     EPBM_START = 256,
     EPBM_SELECT = 512,
     EPBM_DOUBLE_A = 1024,
-    EPBM_DOUBLE_B = 2048
+    EPBM_DOUBLE_B = 2048,
+    // the import key. Nothing else in the app listens to it, so no
+    // habit from another screen can land on it by accident.
+    EPBM_TRIANGLE = 4096
 };
 
 enum ViewType {
