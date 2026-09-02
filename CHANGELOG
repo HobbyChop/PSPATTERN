@@ -1,3 +1,14 @@
+PSPATTERN 0.27.1a
+
+    Quasi-standby: the screen now stays truly dark. The backlight was
+        creeping back on about 30 seconds into a rest -- that was the
+        system's own backlight auto-off setting firing and taking
+        control back from the manual blackout. Rest now suspends that
+        system timer for its duration and drives the backlight
+        directly (kernel), so it goes fully dark and stays dark until
+        you wake it, then restores your setting. Wake relights the
+        screen instantly (no button-press needed).
+
 PSPATTERN 0.27.0a
 
     Quasi-standby: the power switch now rests the machine instead of a

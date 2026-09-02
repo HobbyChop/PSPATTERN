@@ -58,6 +58,16 @@ int meGetBrightness(void) {
   return lvl;
 }
 
+/* Power-LED control for the quasi-standby "resting" blink. The power
+   LED is bi-color hardware (green/amber) -- no arbitrary colours -- so
+   this is on/off only; a slow blink is the caller toggling it.
+   sceSysconCtrlLED is in libpspkernel (already linked). */
+extern int sceSysconCtrlLED(int led, int state);
+int meSetPowerLED(int on) {
+  sceSysconCtrlLED(1 /* SCE_LED_POWER */, on ? 1 : 0);
+  return 0;
+}
+
 int module_start(SceSize args, void *argp) {
   return 0;
 }

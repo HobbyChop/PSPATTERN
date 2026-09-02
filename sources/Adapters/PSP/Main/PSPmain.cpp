@@ -190,6 +190,7 @@ void PSPHandleQuasiStandby(void) {
 
 	int savedBright = meGetBrightness();
 	if (savedBright <= 0) savedBright = 84;   // restore to something visible
+	int savedBl = sceImposeGetBacklightOffTime();
 	g_quasiBtnArmed = 0;
 	pspQuasiClearWake();
 
@@ -212,10 +213,18 @@ void PSPHandleQuasiStandby(void) {
 		// 5. lights out for real -- kernel backlight off -- and black
 		//    the content, then rest until a slide or a button
 		w->QuasiBlank();
+		// stop the system's own backlight auto-off timer from firing
+		// (~30s) and wrestling control back -- we drive the backlight
+		// directly while resting
+		sceImposeSetBacklightOffTime(3600);
 		meSetBrightness(0);
 		unsigned int lastBeep = 0;
+		int reassert = 0;
 		while (!quasiWakeNow()) {
 			sceKernelDelayThread(250 * 1000);
+			// the system re-applies the user's brightness after a
+			// moment, so hold it dark by re-asserting ~once a second
+			if (++reassert >= 4) { reassert = 0; meSetBrightness(0); }
 			int p = scePowerGetBatteryLifePercent();
 			if (p >= 0 && p <= 5) {
 				unsigned int now = sceKernelGetSystemTimeLow();
@@ -230,6 +239,7 @@ void PSPHandleQuasiStandby(void) {
 
 	// 6. wake: backlight back on instantly (kernel), full clock, audio,
 	//    an ascending chirp, and a full repaint
+	sceImposeSetBacklightOffTime(savedBl > 0 ? savedBl : 30);
 	meSetBrightness(savedBright);
 	scePowerTick(PSP_POWER_TICK_DISPLAY);
 	scePowerSetClockFrequency(333, 333, 166);
