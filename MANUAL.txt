@@ -450,6 +450,16 @@ like a key: press for note on, release for note off. Tap it between
 preset steps and you are browsing the bank by ear.
 
 
+THE FILE PANEL
+
+The bottom of the sample page describes the sample the slot is on:
+its whole name (the file row shows seventeen characters of it), then
+channels, rate, length in seconds, length in frames -- in hex,
+because start, loop and end count in hex frames -- and what it costs
+in memory. A generated kit drum says so beside its name. A SoundFont
+preset carries a sample per note, so it is described as such rather
+than measured.
+
 12. THE SYNTH ENGINES
 
 TONE is a single oscillator. Saw, square, triangle or sine, with a pulse
@@ -582,12 +592,45 @@ In the browser:
   up/down       walk the list (X+up/down jumps a page)
   hold SELECT   hear the file under the cursor; keep holding and walk
                 the list to hear one file after another
-  O             take: enter a folder, or import the file
+  O             take: enter a folder, or choose the file
   X             step out of the folder; at the library root, close
 
-Importing copies the file into the current project samples folder and
-loads it straight away. The status line above the key help says what
-happened -- imported, or why a file could not be played.
+Choosing a wav opens a second step before anything is copied. The
+top of it says what the file is -- channels, rate, word size, length,
+its size on the card and what it costs in memory -- and two rows
+below say how the project should store it:
+
+  channels      stereo as it is, or folded down to mono
+  rate          as it is, halved, or quartered
+
+The "in ram" line under them follows the choices. Up and down move
+between the rows, left and right change the value, SELECT plays the
+original, O imports and X goes back to the list. The choices are
+remembered until you quit, so a batch of files at the same settings
+is O, O for each.
+
+Mono halves the memory a stereo file takes; halving the rate halves
+it again. The sampler plays any rate at the right pitch, so a file
+stored at 22050Hz sounds the same note it did at 44100, with less
+top end. The reduction is a plain average of two or four frames,
+not a filtered resample: bright material can alias, which on this
+machine is as often wanted as not. There is no word size choice.
+The sampler holds everything as 16-bit, and the crush row on the
+instrument screen already does bit reduction at play time.
+
+Whatever the original was -- 8, 16, 24 bit or float -- the copy in
+the project is written as 16-bit PCM, the form the sampler keeps in
+memory, so the project folder never holds more than it needs and
+opens faster. A 16-bit file stored as it is comes across unchanged.
+
+Importing a name the project already holds replaces that sample:
+every instrument on it picks up the new version, and their start,
+loop and end points reset to the new length. Two versions of one
+file need two names in samplelib. SoundFonts skip the options step
+and are copied as they are.
+
+The status line above the key help says what happened -- imported,
+and the shape it was stored in, or why a file could not be read.
 
 It is a copy. The original stays in samplelib and the project gets its
 own version. That is what makes a project folder complete on its own:
@@ -596,6 +639,7 @@ file used in four projects is stored four times.
 
 Saving a song does not move or copy any audio. The copy already
 happened when you imported.
+
 
 THE SAMPLE LIST
 

@@ -49,6 +49,12 @@ WavFile::WavFile(I_File *file) {
 	readBuffer_=0 ;
 	readBufferSize_=0 ;
 	sampleBufferSize_=0 ;
+	sampleRate_=0 ;
+	channelCount_=0 ;
+	isFloat_=false ;
+	bytePerSample_=2 ;
+	dataPosition_=0 ;
+	fileBytes_=0 ;
 	file_=file ;
 } ;
 
@@ -93,6 +99,7 @@ WavFile *WavFile::Open(const char *path) {
 	file->Seek(0,SEEK_END) ;
 	long fileEnd=file->Tell() ;
 	file->Seek(0,SEEK_SET) ;
+	wav->fileBytes_=fileEnd ;
 	if (fileEnd<12) {
 		Trace::Error("wav is %ld bytes: not a wav",fileEnd) ;
 		delete wav ;

@@ -18,6 +18,7 @@
 #include "ModalDialogs/ImportSampleDialog.h"
 #include "BaseClasses/UIActionField.h"
 #include "Application/Instruments/DrumKit.h"
+#include "Application/Instruments/SampleInfo.h"
 #include "ModalDialogs/NewProjectDialog.h"
 #include "ModalDialogs/MessageBox.h"
 #include "System/System/System.h"
@@ -1461,9 +1462,34 @@ void InstrumentView::drawSampleChrome() {
 		instrument->FindVariable(SIP_DECAY)->GetInt(),
 		instrument->FindVariable(SIP_SUSTAIN)->GetInt()) ;
 	DrawPanel(1,21,38,2,"TABLE") ;
+
+	/* What the slot is working with. The whole name -- the file row
+	   cuts it at seventeen cells -- and the shape of the sound, frames
+	   in hex because start, loop and end count in hex frames. Rows
+	   24-28 are free on every page; the hint bar owns 29. */
+	DrawPanel(1,24,38,2,"FILE") ;
+	{
+		SampleInstrument *si=(SampleInstrument *)instrument ;
+		SamplePool *pool=SamplePool::GetInstance() ;
+		int index=si->GetSampleIndex() ;
+		SoundSource *src=(index>=0)?pool->GetSource(index):0 ;
+		GUITextProperties props ;
+		char line[40] ;
+		SetColor(CD_NORMAL) ;
+		if (!src) {
+			DrawString(2,25,"no sample",props) ;
+		} else {
+			const char *name=(index<pool->GetNameListSize())?pool->GetNameList()[index]:0 ;
+			snprintf(line,37,"%s%s",name?name:"",src->IsBaked()?"  (generated kit)":"") ;
+			DrawString(2,25,line,props) ;
+			SampleInfo::DescribeSource(src,line,37) ;
+			DrawString(2,26,line,props) ;
+		}
+	}
 } ;
 
 void InstrumentView::drawMidiChrome() {
+
 
 	DrawPanel(1,5,19,4,"MIDI OUT") ;
 	DrawPanel(21,5,18,4,"CONTROL") ;

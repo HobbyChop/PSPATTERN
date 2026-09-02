@@ -4,6 +4,7 @@
 
 #include "Foundation/T_Singleton.h"
 #include "WavFile.h"
+#include "SampleConvert.h"
 #include "Application/Model/Song.h"
 #include "Foundation/Observable.h"
 
@@ -45,7 +46,12 @@ public:
   int GetBakedEnd();
   char **GetNameList();
   int GetNameListSize();
-  int ImportSample(Path &path);
+  // copies (or converts -- see SampleConvert) the file into the project
+  // and loads it. A wav whose name the pool already holds replaces the
+  // old entry; see the note on the definition about instruments.
+  int ImportSample(Path &path,const SampleImportOptions &opt=SampleImportOptions());
+  // pool slot holding this name, or -1
+  int GetIndexOf(const char *name);
   bool IsImported(std::string name);
   // int InsertSample(const std::string& sampleName, bool imported, std::string fi);
   int Reassign(std::string name, bool imported);

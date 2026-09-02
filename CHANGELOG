@@ -1,3 +1,43 @@
+PSPATTERN 0.28.0a
+
+    Importing a sample asks how to store it. Choosing a wav in the
+        browser opens a second step: the top says what the file is --
+        channels, rate, word size, length, size on the card and what
+        it costs in memory -- and two rows below choose the shape the
+        project keeps: stereo or folded to mono, and the rate as it
+        is, halved or quartered. An "in ram" line follows the choices.
+        Mono halves what a stereo file costs and halving the rate
+        halves it again; the sampler plays any rate at the right
+        pitch, so a 22050Hz copy sounds the same note with less top
+        end. The reduction is a plain average, not a filtered
+        resample -- bright material can alias, which on this machine
+        is as often wanted as not. The choices are remembered until
+        you quit, so a batch at one setting is O, O per file. SELECT
+        still plays the original. Soundfonts skip the step.
+
+    The copy the project keeps is always 16-bit PCM, the form the
+        sampler holds in memory. A 24-bit or float source used to be
+        copied as it came and converted on every project open; now
+        the folder holds only what the machine plays, and opens
+        faster for it. A 16-bit file stored as it is comes across
+        byte for byte.
+
+    Importing a name the project already holds replaces that sample.
+        Every instrument on it picks up the new version; their start,
+        loop and end reset to the new length. The new file is written
+        beside the old one and moved into place only when complete,
+        so a full card cannot take the existing copy with it.
+
+    The sample page says what the slot is working with. A FILE panel
+        at the bottom shows the whole name -- the file row shows
+        seventeen characters of it -- then channels, rate, length in
+        seconds, length in frames (hex, the unit start, loop and end
+        count in) and what it costs in memory. A generated kit drum
+        says so; a soundfont preset says it carries a sample per note.
+
+    There is no word size choice, on purpose: memory is always 16-bit,
+        and the crush row already does bit reduction at play time.
+
 PSPATTERN 0.27.1a
 
     Quasi-standby: the screen now stays truly dark. The backlight was

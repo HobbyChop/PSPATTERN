@@ -20,6 +20,11 @@ public:
 	bool GetBuffer(long start,long sampleCount) ; // values in smples
 	void Close() ;
 	virtual bool IsMulti() {return false ; } ;
+	// what the FILE is, as opposed to what RAM holds (always 16-bit):
+	// its word size, whether it was float, and its length on the card
+	int GetBitDepth() { return bytePerSample_*8 ; } ;
+	bool IsFloat() { return isFloat_ ; } ;
+	long GetFileBytes() { return fileBytes_ ; } ;
 
 protected:
 	long readBlock(long position,long count) ;
@@ -35,6 +40,7 @@ private:
 	bool isFloat_ ;        // source is 32-bit IEEE float (converted on load)
 	int bytePerSample_ ; // original file is in 8/16bit
 	int dataPosition_ ; // offset in file to get to data
+	long fileBytes_ ; // the whole file, header included
 
 	static int bufferChunkSize_ ;
 	static bool initChunkSize_ ;

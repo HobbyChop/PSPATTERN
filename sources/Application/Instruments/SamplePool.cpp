@@ -10,6 +10,7 @@
 #include "SoundFontPreset.h"
 #include "SoundFontManager.h"
 #include "Application/Model/Config.h"
+#include "SampleConvert.h"
 
 #define SAMPLE_LIB "root:samplelib" 
 
@@ -216,6 +217,10 @@ int SamplePool::getIndexOf(const char *name) {
 	return -1;
 }
 
+int SamplePool::GetIndexOf(const char *name) {
+	return getIndexOf(name) ;
+}
+
 int SamplePool::GetBakedEnd() {
 	int i=0 ;
 	while (i<count_&&wav_[i]&&wav_[i]->IsBaked()) i++ ;
@@ -283,42 +288,27 @@ if (wave) {
    the heap is tight during an import. */
 #define IMPORT_CHUNK_SIZE 65536
 
-/*
-  Returns a nonnegative int or an element of
-  {-SLOAD_ERR_INVALID_DIR, -SLOAD_ERR_INPUT_FILE, -SLOAD_ERR_MAX_SAMPLES,
-   -SLOAD_ERR_MAX_SOUNDFONTS}.
-*/
-int SamplePool::ImportSample(Path &path) {
-
-    if (count_ == MAX_PIG_SAMPLES)
-        return -SLOAD_ERR_MAX_SAMPLES;
-
-    // construct target path
-
-    std::string dpath = "samples:";
-    dpath+=path.GetName() ;
-	Path dstPath(dpath.c_str()) ;
-
-    // Opens files
-
-	I_File *fin=FileSystem::GetInstance()->Open(path.GetPath().c_str(),"r") ;
+/* Byte-for-byte copy, for a file already in the shape the pool
+   wants. Returns SLOAD_OK or a positive SLOAD_ERR code; a failed
+   copy leaves nothing behind at dst. */
+static int copyFile(Path &src,Path &dst) {
+    FileSystem *fs=FileSystem::GetInstance() ;
+    I_File *fin=fs->Open(src.GetPath().c_str(),"r") ;
     if (!fin) {
         Trace::Error("Failed to open input file %s",
-                     path.GetCanonicalPath().c_str());
-        return -SLOAD_ERR_INPUT_FILE;
+                     src.GetCanonicalPath().c_str());
+        return SLOAD_ERR_INPUT_FILE;
     };
     fin->Seek(0, SEEK_END);
     long size=fin->Tell() ;
-	fin->Seek(0,SEEK_SET) ;
+    fin->Seek(0,SEEK_SET) ;
 
-	I_File *fout=FileSystem::GetInstance()->Open(dstPath.GetPath().c_str(),"w") ;
-	if (!fout) {
-		fin->Close() ;
+    I_File *fout=fs->Open(dst.GetPath().c_str(),"w") ;
+    if (!fout) {
+        fin->Close() ;
         delete (fin);
-        return -SLOAD_ERR_OUTPUT_FILE ;
-	} ;
-
-    // copy file to current project
+        return SLOAD_ERR_OUTPUT_FILE ;
+    } ;
 
     int chunk=IMPORT_CHUNK_SIZE ;
     char *buffer=(char *)malloc(chunk) ;
@@ -326,33 +316,116 @@ int SamplePool::ImportSample(Path &path) {
     if (!buffer) {
         fin->Close() ; fout->Close() ;
         delete (fin) ; delete (fout) ;
-        return -SLOAD_ERR_OUTPUT_FILE ;
+        fs->Delete(dst.GetPath().c_str()) ;
+        return SLOAD_ERR_OUTPUT_FILE ;
     }
     while (size>0) {
-		int count=(size>chunk)?chunk:size ;
-		fin->Read(buffer,1,count) ;
-		fout->Write(buffer,1,count) ;
-		size-=count ;
-	} ;
+        int count=(size>chunk)?chunk:size ;
+        fin->Read(buffer,1,count) ;
+        fout->Write(buffer,1,count) ;
+        size-=count ;
+    } ;
     free(buffer) ;
 
-	fin->Close() ;
-	fout->Close() ;
-	delete(fin) ;
-	delete(fout) ;
+    fin->Close() ;
+    fout->Close() ;
+    delete(fin) ;
+    delete(fout) ;
+    return SLOAD_OK ;
+}
+
+/*
+  Copies the file into the project and loads it. A wav is written in
+  the shape the pool keeps -- 16-bit PCM, the channels and rate asked
+  for -- rather than copied as it came; a 16-bit file with nothing to
+  change is copied byte for byte. Soundfonts carry their own shape and
+  are always copied.
+
+  A wav whose name the pool already holds REPLACES it: the old entry
+  is unloaded and the new one lands at the end. The unload shifts every
+  index above it, so callers move any instrument off the old index
+  before this and back on to the returned one after.
+
+  Returns a nonnegative int or an element of
+  {-SLOAD_ERR_INVALID_DIR, -SLOAD_ERR_INPUT_FILE, -SLOAD_ERR_OUTPUT_FILE,
+   -SLOAD_ERR_MAX_SAMPLES, -SLOAD_ERR_MAX_SOUNDFONTS}.
+*/
+int SamplePool::ImportSample(Path &path,const SampleImportOptions &opt) {
+
+    if (count_ == MAX_PIG_SAMPLES)
+        return -SLOAD_ERR_MAX_SAMPLES;
+
+    FileSystem *fs=FileSystem::GetInstance() ;
+    bool isWav=path.Matches("*.wav") ;
+
+    // construct target path
+
+    std::string dpath = "samples:";
+    dpath+=path.GetName() ;
+    Path dstPath(dpath.c_str()) ;
+
+    /* Written beside its final name and moved into place afterwards,
+       so a write that fails part way -- a full card -- cannot take
+       the existing copy in the project with it. Load() only lists
+       *.wav and *.sf2, so a temp left by a crash is never picked up. */
+    std::string tpath=dpath+".imp" ;
+    Path tmpPath(tpath.c_str()) ;
+
+    int status=SLOAD_OK ;
+    if (isWav) {
+        WavFile *src=WavFile::Open(path.GetPath().c_str()) ;
+        if (!src) {
+            Trace::Error("Failed to read %s",path.GetCanonicalPath().c_str()) ;
+            return -SLOAD_ERR_INPUT_FILE ;
+        }
+        bool convert=SampleConvert::NeedsConversion(src,opt) ;
+        delete src ;
+        if (convert) {
+            Trace::Log("IMPORT","%s: %s, rate/%d",path.GetName().c_str(),
+                       opt.mono?"mono":"channels kept",opt.rateDiv) ;
+            SampleConvertResult r=SampleConvert::Convert(path.GetPath().c_str(),
+                                                          tmpPath.GetPath().c_str(),opt) ;
+            if (r==SCR_CANT_READ) status=SLOAD_ERR_INPUT_FILE ;
+            else if (r!=SCR_OK) status=SLOAD_ERR_OUTPUT_FILE ;
+        } else {
+            status=copyFile(path,tmpPath) ;
+        }
+    } else {
+        status=copyFile(path,tmpPath) ;
+    }
+    if (status!=SLOAD_OK) {
+        // never leave half a file where anyone could find it
+        fs->Delete(tmpPath.GetPath().c_str()) ;
+        return -status ;
+    }
+
+    fs->Delete(dstPath.GetPath().c_str()) ;
+    if (!fs->Rename(tmpPath.GetPath().c_str(),dstPath.GetPath().c_str())) {
+        // no rename on this adapter: copy across and drop the temp
+        status=copyFile(tmpPath,dstPath) ;
+        fs->Delete(tmpPath.GetPath().c_str()) ;
+        if (status!=SLOAD_OK) return -status ;
+    }
+
+    // the old entry under this name goes before the new one is loaded
+    int existing=isWav?getIndexOf(path.GetName().c_str()):-1 ;
+    if (existing>=0) {
+        Trace::Log("IMPORT","%s replaces pool slot %d",path.GetName().c_str(),existing) ;
+        unload(existing) ;
+    }
 
     // now load the sample
-    int status = dstPath.Matches("*.wav")
-                     ? loadSample(dstPath.GetPath().c_str())
-                     : loadSoundFont(dstPath.GetPath().c_str());
+    status = isWav ? loadSample(dstPath.GetPath().c_str())
+                   : loadSoundFont(dstPath.GetPath().c_str());
 
     SetChanged();
     SamplePoolEvent ev ;
-	ev.index_=count_-1 ;
-	ev.type_=SPET_INSERT ;
+    ev.index_=count_-1 ;
+    ev.type_=SPET_INSERT ;
     NotifyObservers(&ev);
     return !status ?(count_-1):(-status) ;
 };
+
 
 bool SamplePool::IsImported(std::string name) {
     std::string dpath="samples:";
