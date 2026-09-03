@@ -27,6 +27,7 @@ public:
 	int GetTableRatio() ;
 	void SetTableRatio(int ratio) ;
 	unsigned int GetBeatCount() ;
+	unsigned int GetTickCount() ;
 	float GetTickTime() ;
 private:
 	int tempo_ ;
@@ -34,6 +35,8 @@ private:
 	int currentSlice_ ;
 	int tableRatio_ ;
 	unsigned int beatCount_ ;
+	// ticks since Start: the song clock anything free-running is timed from
+	unsigned int tickCount_ ;
 	float playSampleCount_ ;
 	float tickSampleCount_ ;
 

@@ -1,3 +1,29 @@
+PSPATTERN 0.31.0a
+
+    A free-running LFO is a command. LFO_ aabb starts an LFO on the
+        channel -- aa the rate, bb the depth, on the instrument's LFO
+        destination, pitch if that is off -- that runs through rests
+        and across notes and instruments until LFO_ 0000 stops it,
+        another LFO_ re-tunes it without a hiccup, or the song stops.
+        It needs no note under it: arm it on a bare step and whatever
+        synth plays on that channel next carries it. Two channels
+        started on one step at one rate stay locked. The lfo sync pill
+        0.30.0a put on the instrument page is withdrawn: the
+        instrument's own LFO restarts with every note, as it did
+        before, and LFOD and LFOR still shape that one.
+
+    LFO rates can be tempo divisions. F0 to FF -- on the instrument's
+        rate, LFOR and LFO_ alike -- are cycles counted in ticks, eight
+        bars down to a thirty-second with dotted and triplet values,
+        exact at any tempo. A channel LFO on a division takes its
+        phase from the song's own grid, so a bar-long sweep peaks on
+        the downbeat wherever it was switched on. The table is in the
+        manual under the command list.
+
+    The free LFO measured its time in table ticks, which are twice as
+        long on projects saved by older versions; it now counts audio
+        slices, so it runs at the rate asked for on every project.
+
 PSPATTERN 0.30.0a
 
     The command list opens on the phrase screen. O with up or down on

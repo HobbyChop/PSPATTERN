@@ -51,7 +51,6 @@
 #define SYP_LFODEST   MAKE_FOURCC('S','Y','L','T')
 #define SYP_LFORATE   MAKE_FOURCC('S','Y','L','R')
 #define SYP_LFODEPTH  MAKE_FOURCC('S','Y','L','D')
-#define SYP_LFOSYNC   MAKE_FOURCC('S','Y','L','S')
 // ---- FM (4 operator) -------------------------------------------
 // One block of six parameters per operator, laid out on screen as a
 // column each. Written out rather than generated because a FourCC has
@@ -316,6 +315,7 @@ public:
 	virtual void NoteFollowsNote(int channel) ;
 	virtual bool IsReleasing(int channel) ;
 	virtual void OnStart() ;
+	virtual void OnStop() ;
 	virtual bool Render(int channel,fixed *buffer,int size,bool updateTick) ;
 	virtual bool IsInitialized() ;
 	virtual bool IsEmpty() ;
@@ -360,6 +360,8 @@ private:
 	// tick-rate command work (ARPG steps, RTRG retriggers), called
 	// from the renderers as the voice crosses tick boundaries
 	void serviceTicks(SynthVoice &v,int channel,int samples) ;
+	// which LFO a block runs: the instrument's own, or the channel's LFO_
+	void lfoBlockStart(SynthVoice &v,int &lfoDest,unsigned int &lfoIncV,int &lfoDepth) ;
 	void retrigger(SynthVoice &v) ;
 	void setVoicePitch(SynthVoice &v,int note) ;
 
@@ -388,6 +390,10 @@ private:
 	 * nothing changes. */
 	static unsigned int *noteInc_ ;      /* [128] */
 	static unsigned int *lfoInc_ ;       /* [256] */
+public:
+	// the hertz table, for the rate helper outside the class
+	static unsigned int LfoInc(int i) { return lfoInc_[i&0xFF] ; }
+private:
 	static short *sineTable_ ;           /* [256] */
 	static short *cosTable_ ;            /* [1025] */
 	static short *cutTable_ ;            /* [256] cutoff param -> SVF f (Q15) */

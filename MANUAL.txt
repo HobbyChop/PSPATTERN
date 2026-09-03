@@ -369,6 +369,19 @@ read separately, or as aaaa when all four are one number.
   LEGA  slide from the previous note
   LFOD  LFO depth
   LFOR  LFO rate
+  LFO_  a free-running LFO on the channel: aa rate, bb depth, 0000 stops
+
+LFO rates -- the instrument's, LFOR's and LFO_'s -- are a curve from
+0.05Hz at 00 to 16Hz at EF. F0 to FF are tempo divisions instead:
+
+  F0 8 bars   F1 4 bars   F2 2 bars   F3 1 bar    F4 1/2     F5 1/4
+  F6 1/8      F7 1/16     F8 1/32     F9 dotted 1/2   FA dotted 1/4
+  FB dotted 1/8   FC triplet 1/4   FD triplet 1/8   FE triplet 1/16
+  FF 16 bars
+
+A division is exact at any tempo, and a channel LFO on one takes its
+phase from the song's own grid, so a bar-long sweep peaks on the
+downbeat wherever it was switched on.
   LPOF  shift the sample loop points
   MAYB  a step that only sometimes happens
   MCCA  send a value on one of the instrument CC slots
@@ -489,11 +502,19 @@ width and a noise source colour the throat behind them. Point the
 LFO at flt and the vowels move on their own, which is where the
 talking comes from.
 
-Every engine has the LFO, and a pill beside its destination sets its
-sync: note restarts the LFO with every note, free lets it carry on
-from wherever the last note on that channel left it, so a slow sweep
-keeps sweeping across a run of notes instead of starting over on
-each.
+The LFO on the instrument page restarts with every note. For one that
+does not, use the LFO_ command: aa is the rate and bb the depth. It
+belongs to the channel, not to the note or the instrument: put it on
+a step with or without a note, and whichever synth plays on that
+channel from then on carries it, each through its own LFO destination
+(pitch if that is off). It is timed from the song clock rather than
+from the note, so it runs through rests and across notes, and every
+channel running the same rate moves together. On a tempo division
+(rate F0 to FF, see the command list) it also sits on the beat. It keeps going until
+LFO_ 0000 stops it, another LFO_ changes its rate or depth without a
+hiccup, or the song stops. LFOD and LFOR still shape the note's own
+LFO, and the next note puts them back. Samplers and MIDI instruments
+do not listen to it.
 
 PRESETS
 

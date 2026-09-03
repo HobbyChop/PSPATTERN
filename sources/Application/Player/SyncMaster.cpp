@@ -16,6 +16,7 @@ SyncMaster::SyncMaster() {
 	tempo_=138 ;
 	currentSlice_=0 ;
 	beatCount_=0 ;
+	tickCount_=0 ;
 	playSampleCount_=0.0f ;
 	tickSampleCount_=0.0f ;
 	fineTempo_=120.0f ;
@@ -24,6 +25,7 @@ SyncMaster::SyncMaster() {
 void SyncMaster::Start() {
 	currentSlice_=0 ;
 	beatCount_=0 ;
+	tickCount_=0 ;
 } ;
 
 void SyncMaster::Stop() {
@@ -53,6 +55,7 @@ int SyncMaster::GetTempo() {
 } ;
 
 void SyncMaster::NextSlice() {
+	tickCount_++ ;
  	currentSlice_=(currentSlice_+1)%AUDIO_SLICES_PER_STEP ;
 	if (currentSlice_==0) {
 		beatCount_++ ;
@@ -107,4 +110,8 @@ int SyncMaster::GetTableRatio() {
 
 unsigned int SyncMaster::GetBeatCount() {
 	return beatCount_ ;
+} ;
+
+unsigned int SyncMaster::GetTickCount() {
+	return tickCount_ ;
 } ;

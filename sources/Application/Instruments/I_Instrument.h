@@ -83,6 +83,10 @@ public:
 
 	  virtual void OnStart()=0 ;
 
+	  // the song stopped: whatever a command left running on the
+	  // instrument (a free LFO) ends here. Non-pure: most have nothing.
+	  virtual void OnStop() {} ;
+
       // size refers to the number of samples
       // should always fill interleaved stereo / 16bit
       

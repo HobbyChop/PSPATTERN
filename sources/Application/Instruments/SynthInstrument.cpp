@@ -104,11 +104,24 @@ static const char *fltModeNames[VFM_LAST]= {
 static const char *lfoDestNames[SLD_LAST]= {
 	"off","pit","flt","pwm"
 } ;
-// note restarts the LFO with every note, as it always did; free lets
-// it carry on from wherever the last note on the channel left it
-static const char *lfoSyncNames[2]= {
-	"note","free"
+
+/* LFO_: a free-running LFO that belongs to the CHANNEL, not to an
+   instrument or a note. Whichever synth plays on the channel reads
+   it, this note or the next, each through its own LFO destination.
+   Timed from the song clock; ended by LFO_ 0000 or by the song
+   stopping. Static because a channel is one thing across every
+   instrument that ever plays on it. */
+struct ChannelLfo {
+	bool on ;
+	int rate ;
+	int depth ;
+	unsigned int start ;      // the tick it began on
 } ;
+static ChannelLfo chLfo_[PLAYER_CHANNEL_COUNT] ;
+
+static void clearChannelLfos() {
+	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) chLfo_[i].on=false ;
+}
 
 // unison detune spread: offsets per stack voice, used -3..3
 static const int unisonOff[VAX_MAX_UNISON]={0,-3,3,-2,2,-1,1} ;
@@ -388,8 +401,6 @@ SynthInstrument::SynthInstrument() {
 	Insert(v) ;
 	v=new Variable("lfo depth",SYP_LFODEPTH,0x80) ;
 	Insert(v) ;
-	v=new Variable("lfo sync",SYP_LFOSYNC,lfoSyncNames,2,0) ;
-	Insert(v) ;
 	// VOX vowel morph endpoints. Default ooh -> eee spans the whole
 	// table, so the vowel knob behaves exactly as it did before these
 	// existed; narrowing them focuses the morph on two chosen vowels.
@@ -548,9 +559,16 @@ bool SynthInstrument::Init() {
 
 void SynthInstrument::OnStart() {
 	tableState_.Reset() ;
+	clearChannelLfos() ;   // the song starts clean
 	for (int i=0;i<PLAYER_CHANNEL_COUNT;i++) {
 		voice_[i].active_=false ;
 	}
+} ;
+
+// the song stopped: the free LFO a command left running ends here,
+// so an audition afterwards hears the patch, not the last song's LFO
+void SynthInstrument::OnStop() {
+	clearChannelLfos() ;
 } ;
 
 void SynthInstrument::Update(Observable &o,I_ObservableData *d) {
@@ -707,8 +725,7 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	}
 	v.subPhase_=0 ;
 	v.syncPhase_=0 ;
-	// note sync restarts the LFO; free lets it run on across notes
-	if (pv(SYP_LFOSYNC)->GetInt()==0) v.lfoPhase_=0 ;
+	v.lfoPhase_=0 ;
 	if (v.rng_==0) v.rng_=0x1234567+channel ;
 	if (!wasActive) {
 		v.svfLow_=0 ;
@@ -951,6 +968,66 @@ static inline void glideStep(SynthVoice &v,int samples) {
 	}
 }
 
+/* Which LFO this block runs, and where it stands. The instrument's own
+   LFO restarts with every note, as it always did. An LFO_ command on
+   the channel overrides it with a rate and depth of its own and a
+   phase taken from the song clock, so it runs through rests and note
+   changes alike, and every channel at the same rate moves together.
+   The engines then advance the phase inside the block as before; the
+   next block takes it from the clock again. */
+/* LFO rates F0..FF are tempo divisions rather than hertz: the cycle
+   in ticks, six ticks to a step, twenty-four to a beat. A wobble set
+   to an eighth is then exactly an eighth at any tempo, and a channel
+   LFO on one of these takes its phase from the song grid itself, so a
+   bar-long sweep peaks on the downbeat wherever it was switched on. */
+static const unsigned int lfoSyncTicks[16]={
+	768,384,192,96,48,24,12,6,3,   // F0..F8: 8 bars down to a 32nd
+	72,36,18,                      // F9..FB: dotted half, quarter, eighth
+	16,8,4,                        // FC..FE: triplet quarter, eighth, 16th
+	1536                           // FF: 16 bars
+} ;
+
+// the per-sample increment for a rate index, hertz table or division
+static unsigned int lfoIncFor(int rate,float samplesPerTick) {
+	rate&=0xFF ;
+	if (rate<0xF0) return SynthInstrument::LfoInc(rate) ;
+	double samples=(double)lfoSyncTicks[rate-0xF0]*(double)samplesPerTick ;
+	if (samples<1.0) samples=1.0 ;
+	return (unsigned int)(4294967296.0/samples) ;
+}
+
+void SynthInstrument::lfoBlockStart(SynthVoice &v,int &lfoDest,unsigned int &lfoIncV,int &lfoDepth) {
+	lfoDest=pv(SYP_LFODEST)->GetInt() ;
+	int channel=(int)(&v-voice_) ;
+	ChannelLfo &c=chLfo_[channel] ;
+	SyncMaster *sm=SyncMaster::GetInstance() ;
+	// a render block is one audio slice, which is what the tick count
+	// counts -- NOT the table tick, which is longer at a table ratio of 2
+	float perTick=sm->GetPlaySampleCount() ;
+	if (c.on) {
+		if (lfoDest==SLD_OFF) lfoDest=SLD_PITCH ;
+		int rate=c.rate&0xFF ;
+		lfoIncV=lfoIncFor(rate,perTick) ;
+		lfoDepth=c.depth<<7 ;
+		unsigned int now=sm->GetTickCount() ;
+		double ph ;
+		if (rate>=0xF0) {
+			// on the grid: where this tick falls in the cycle
+			unsigned int cyc=lfoSyncTicks[rate-0xF0] ;
+			ph=(double)(now%cyc)/(double)cyc*4294967296.0 ;
+		} else {
+			// free: increment per sample times samples since it began,
+			// modulo 2^32 -- what an accumulator would hold, without drift
+			unsigned int ticks=now-c.start ;
+			ph=fmod((double)lfoIncV*(double)ticks*(double)perTick,4294967296.0) ;
+		}
+		v.lfoPhase_=(unsigned int)ph ;
+	} else {
+		lfoIncV=lfoIncFor(v.lfoRate_,perTick) ;
+		lfoDepth=v.lfoDepth_<<7 ;
+	}
+}
+
 bool SynthInstrument::Render(int channel,fixed *buffer,int size,bool updateTick) {
 
 	SynthVoice &v=voice_[channel] ;
@@ -1052,9 +1129,10 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 
 	// ...and no LFO either, so pointing lfo dest at anything on this
 	// engine did nothing at all
-	int lfoDest=pv(SYP_LFODEST)->GetInt() ;
-	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
-	int lfoDepth=v.lfoDepth_<<7 ;
+	int lfoDest ;
+	unsigned int lfoIncV ;
+	int lfoDepth ;
+	lfoBlockStart(v,lfoDest,lfoIncV,lfoDepth) ;
 
 	unsigned int phase=v.phase_ ;
 	// PTCH/ARPG/glide walk curInc_ toward the target for every engine,
@@ -1222,9 +1300,10 @@ bool SynthInstrument::renderPdx(SynthVoice &v,fixed *buffer,int size) {
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
 
-	int lfoDest=pv(SYP_LFODEST)->GetInt() ;
-	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
-	int lfoDepth=v.lfoDepth_<<7 ;
+	int lfoDest ;
+	unsigned int lfoIncV ;
+	int lfoDepth ;
+	lfoBlockStart(v,lfoDest,lfoIncV,lfoDepth) ;
 
 	unsigned int phase=v.phase_ ;
 	unsigned int inc=v.curInc_ ;
@@ -1759,9 +1838,10 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 	int drive3=v.drive_*3 ;
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
-	int lfoDest=pv(SYP_LFODEST)->GetInt() ;
-	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
-	int lfoDepth=v.lfoDepth_<<7 ;
+	int lfoDest ;
+	unsigned int lfoIncV ;
+	int lfoDepth ;
+	lfoBlockStart(v,lfoDest,lfoIncV,lfoDepth) ;
 
 	int unisonAmp=32768/unison ;
 	unsigned int urcp[VAX_MAX_UNISON]={0} ;
@@ -1992,9 +2072,10 @@ bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
 	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
 	int panL,panR ;
 	panLR(v.pan_,panL,panR) ;
-	int lfoDest=pv(SYP_LFODEST)->GetInt() ;
-	unsigned int lfoIncV=lfoInc_[v.lfoRate_&0xFF] ;
-	int lfoDepth=v.lfoDepth_<<7 ;
+	int lfoDest ;
+	unsigned int lfoIncV ;
+	int lfoDepth ;
+	lfoBlockStart(v,lfoDest,lfoIncV,lfoDepth) ;
 	int viA=pv(SYP_VOXVA)->GetInt() ;   // vowel morph endpoints
 	int viB=pv(SYP_VOXVB)->GetInt() ;
 
@@ -2229,6 +2310,28 @@ const char *SynthInstrument::GetName() {
 } ;
 
 void SynthInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
+
+	/* LFO_ is the channel's, not the note's: it needs no voice
+	   sounding, so it sits on a bare step as well as on a note, and
+	   whichever synth plays on the channel next picks it up. aabb:
+	   aa the rate, bb the depth; 0000 stops it, another LFO_ re-tunes
+	   it without a hiccup. */
+	if (cc==I_CMD_LFO_) {
+		if ((channel>=0)&&(channel<PLAYER_CHANNEL_COUNT)) {
+			ChannelLfo &c=chLfo_[channel] ;
+			if (value==0) {
+				c.on=false ;
+			} else {
+				if (!c.on) {
+					c.on=true ;
+					c.start=SyncMaster::GetInstance()->GetTickCount() ;
+				}
+				c.rate=(value>>8)&0xFF ;
+				c.depth=value&0xFF ;
+			}
+		}
+		return ;
+	}
 
 	int engine=pv(SYP_ENGINE)->GetInt() ;
 	SynthVoice &v=voice_[channel] ;

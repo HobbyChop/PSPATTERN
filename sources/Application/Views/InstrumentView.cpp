@@ -561,10 +561,6 @@ void InstrumentView::fillSynthParameters() {
 		UIStepperField *ds=new UIStepperField(pos,*v,"lfo    ","%s",0,
 		                                      SLD_LAST-1) ;
 		T_SimpleList<UIField>::Insert(ds) ;
-		// note or free: whether a new note restarts the LFO
-		pos=GUIPoint(14,8) ;
-		v=instrument->FindVariable(SYP_LFOSYNC) ;
-		T_SimpleList<UIField>::Insert(new UIPillField(pos,*v,0,2)) ;
 		pos=GUIPoint(2,9) ;
 		v=instrument->FindVariable(SYP_LFORATE) ;
 		sl=new UISliderField(pos,*v,"rate   ",0,0xFF,1,0x10,7,SD_AUTO,19) ;
@@ -633,10 +629,6 @@ void InstrumentView::fillSynthParameters() {
 		v=instrument->FindVariable(SYP_LFODEST) ;
 		fms=new UIStepperField(pos,*v,"lfo    ","%s",0,SLD_LAST-1) ;
 		T_SimpleList<UIField>::Insert(fms) ;
-		// note or free: whether a new note restarts the LFO
-		pos=GUIPoint(33,12) ;
-		v=instrument->FindVariable(SYP_LFOSYNC) ;
-		T_SimpleList<UIField>::Insert(new UIPillField(pos,*v,0,2)) ;
 		pos=GUIPoint(22,13) ;
 		v=instrument->FindVariable(SYP_LFORATE) ;
 		fs=new UISliderField(pos,*v,"rate   ",0,0xFF,1,0x10,7) ;
@@ -686,10 +678,6 @@ void InstrumentView::fillSynthParameters() {
 		v=instrument->FindVariable(SYP_LFODEST) ;
 		vst=new UIStepperField(pos,*v,"lfo    ","%s",0,SLD_LAST-1) ;
 		T_SimpleList<UIField>::Insert(vst) ;
-		// note or free: whether a new note restarts the LFO
-		pos=GUIPoint(33,11) ;
-		v=instrument->FindVariable(SYP_LFOSYNC) ;
-		T_SimpleList<UIField>::Insert(new UIPillField(pos,*v,0,2)) ;
 		pos=GUIPoint(22,12) ;
 		v=instrument->FindVariable(SYP_LFORATE) ;
 		vfs=new UISliderField(pos,*v,"rate   ",0,0xFF,1,0x10,7) ;
@@ -754,10 +742,6 @@ void InstrumentView::fillSynthParameters() {
 		UIStepperField *ds=new UIStepperField(pos,*v,"lfo    ","%s",0,
 		                                      SLD_LAST-1) ;
 		T_SimpleList<UIField>::Insert(ds) ;
-		// note or free: whether a new note restarts the LFO
-		pos=GUIPoint(33,16) ;
-		v=instrument->FindVariable(SYP_LFOSYNC) ;
-		T_SimpleList<UIField>::Insert(new UIPillField(pos,*v,0,2)) ;
 		pos=GUIPoint(22,17) ;
 		v=instrument->FindVariable(SYP_LFORATE) ;
 		sl=new UISliderField(pos,*v,"rate   ",0,0xFF,1,0x10,7) ;

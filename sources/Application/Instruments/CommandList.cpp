@@ -32,6 +32,7 @@ static FourCC _all[]= {
 	I_CMD_LEGA,
 	I_CMD_LFOD,
 	I_CMD_LFOR,
+	I_CMD_LFO_,
 	I_CMD_LPOF,
 	I_CMD_MCCA,
 	I_CMD_MCCB,
@@ -84,7 +85,7 @@ int CommandList::AppliesTo(FourCC command) {
 		// synth only
 		case I_CMD_RTGR: case I_CMD_RAND:
 		case I_CMD_DRIV: case I_CMD_UNIS: case I_CMD_DTUN:
-		case I_CMD_LFOD: case I_CMD_LFOR:
+		case I_CMD_LFOD: case I_CMD_LFOR: case I_CMD_LFO_:
 		case I_CMD_FML1: case I_CMD_FML2: case I_CMD_FML3:
 		case I_CMD_FML4: case I_CMD_FMFB:
 			return CMD_ON_SYNTH ;

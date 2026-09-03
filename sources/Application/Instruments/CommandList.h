@@ -66,6 +66,7 @@
 #define I_CMD_DTUN MAKE_FOURCC('D','T','U','N')
 #define I_CMD_LFOD MAKE_FOURCC('L','F','O','D')
 #define I_CMD_LFOR MAKE_FOURCC('L','F','O','R')
+#define I_CMD_LFO_ MAKE_FOURCC('L','F','O','_')
 // FM: an operator's level is where the automation goes -- sweeping a
 // modulator is the timbral move, the way cutoff is on a filter.
 #define I_CMD_FML1 MAKE_FOURCC('F','M','L','1')

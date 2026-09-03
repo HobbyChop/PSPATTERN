@@ -124,6 +124,11 @@ static inline std::string* getHelpLegend(FourCC command) {
 			result[1].assign("how fast the lfo runs");
 			result[2].assign("");
 			break;
+		case I_CMD_LFO_:
+			result[0].assign("LFO Free:aabb");
+			result[1].assign("aa rate bb depth, on the");
+			result[2].assign("channel until 0000");
+			break;
 		case I_CMD_FML1:
 		case I_CMD_FML2:
 		case I_CMD_FML3:

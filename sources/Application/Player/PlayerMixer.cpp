@@ -238,6 +238,15 @@ void PlayerMixer::OnPlayerStart() {
 void PlayerMixer::OnPlayerStop() {
 	MixerService *ms=MixerService::GetInstance() ;
 	ms->OnPlayerStop();
+	// a stopped song ends whatever a command left running on an
+	// instrument -- the free LFO -- so an audition afterwards is clean
+	if (project_) {
+		InstrumentBank *bank=project_->GetInstrumentBank() ;
+		for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {
+			I_Instrument *in=bank->GetInstrument(i) ;
+			if (in) in->OnStop() ;
+		}
+	}
 }
 
 static char noteBuffer[5] ;
