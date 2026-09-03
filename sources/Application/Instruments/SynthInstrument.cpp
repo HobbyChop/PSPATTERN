@@ -104,6 +104,11 @@ static const char *fltModeNames[VFM_LAST]= {
 static const char *lfoDestNames[SLD_LAST]= {
 	"off","pit","flt","pwm"
 } ;
+// note restarts the LFO with every note, as it always did; free lets
+// it carry on from wherever the last note on the channel left it
+static const char *lfoSyncNames[2]= {
+	"note","free"
+} ;
 
 // unison detune spread: offsets per stack voice, used -3..3
 static const int unisonOff[VAX_MAX_UNISON]={0,-3,3,-2,2,-1,1} ;
@@ -383,6 +388,8 @@ SynthInstrument::SynthInstrument() {
 	Insert(v) ;
 	v=new Variable("lfo depth",SYP_LFODEPTH,0x80) ;
 	Insert(v) ;
+	v=new Variable("lfo sync",SYP_LFOSYNC,lfoSyncNames,2,0) ;
+	Insert(v) ;
 	// VOX vowel morph endpoints. Default ooh -> eee spans the whole
 	// table, so the vowel knob behaves exactly as it did before these
 	// existed; narrowing them focuses the morph on two chosen vowels.
@@ -646,6 +653,7 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	// per-voice command state starts from the instrument's settings;
 	// commands then bend THIS voice only, and the next note resets it
 	v.volume_=pv(SYP_VOLUME)->GetInt() ;
+	v.volStep_=0 ;   // a new note ends a slide
 	v.cutoff_=pv(SYP_CUTOFF)->GetInt() ;
 	v.reso_=pv(SYP_RESO)->GetInt() ;
 	v.modAmt_=pv(SYP_DCWAMT)->GetInt() ;
@@ -699,7 +707,8 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	}
 	v.subPhase_=0 ;
 	v.syncPhase_=0 ;
-	v.lfoPhase_=0 ;
+	// note sync restarts the LFO; free lets it run on across notes
+	if (pv(SYP_LFOSYNC)->GetInt()==0) v.lfoPhase_=0 ;
 	if (v.rng_==0) v.rng_=0x1234567+channel ;
 	if (!wasActive) {
 		v.svfLow_=0 ;
@@ -830,11 +839,20 @@ void SynthInstrument::setVoicePitch(SynthVoice &v,int note) {
 // on tick boundaries.
 void SynthInstrument::serviceTicks(SynthVoice &v,int channel,int samples) {
 
-	if (!v.arpOn_ && v.rtgTicks_==0 && v.vibSpeed_==0) return ;
+	if (!v.arpOn_ && v.rtgTicks_==0 && v.vibSpeed_==0 && v.volStep_==0) return ;
 
 	v.tickAcc_+=samples ;
 	while (v.tickAcc_>=v.tickLen_) {
 		v.tickAcc_-=v.tickLen_ ;
+
+		// VOLM with a rate: one step of the slide per tick
+		if (v.volStep_) {
+			v.volAcc_+=v.volStep_ ;
+			int level=v.volAcc_>>16 ;
+			bool done=(v.volStep_>0)?(level>=v.volTarget_):(level<=v.volTarget_) ;
+			if (done) { level=v.volTarget_ ; v.volStep_=0 ; }
+			v.volume_=level ;
+		}
 
 		if (v.vibSpeed_ && v.vibDepth_) {
 			float semis=VibratoSemitones(v.vibPhase_,v.vibSpeed_,v.vibDepth_) ;
@@ -2221,10 +2239,27 @@ void SynthInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 		// (see cmdLocks_): an explicit command outranks the knob, but
 		// only for what it actually set, and only until the next note.
 
-		case I_CMD_VOLM:
-			v.volume_=value&0xFF ;
+		case I_CMD_VOLM: {
+			/* aabb: bb the level, aa the rate. Rate 0 jumps, as it
+			   always did. Otherwise the level slides there over aa*4
+			   ticks, the sampler's clock for the same command -- the
+			   synths used to jump whatever aa said, which the tester
+			   heard: the rate only ever worked on samples. */
+			int target=value&0xFF ;
+			int rate=(value>>8)&0xFF ;
 			v.cmdLocks_|=SVL_VOLUME ;
+			if (rate==0) {
+				v.volume_=target ;
+				v.volStep_=0 ;
+			} else {
+				v.volTarget_=target ;
+				v.volAcc_=v.volume_<<16 ;
+				v.volStep_=((target-v.volume_)<<16)/(rate*4) ;
+				if (v.volStep_==0) v.volStep_=(target>v.volume_)?1:-1 ;
+				v.tickLen_=tickLength() ;
+			}
 			break ;
+		}
 
 		case I_CMD_FCUT:
 			// TONE and VAX both run the SVF, so this is a real cutoff.

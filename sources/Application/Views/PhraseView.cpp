@@ -133,7 +133,7 @@ bool PhraseView::isCommandColumn() const { return col_ == 3 || col_ == 5; }
 
 FourCC *PhraseView::getCurrentCommandPointer() {
     return CommandSelectorCommon::getCommandPointerByCol(
-        col_, 2, phrase_->cmd1_ + (16 * viewData_->currentPhrase_ + row_), 4,
+        col_, 3, phrase_->cmd1_ + (16 * viewData_->currentPhrase_ + row_), 5,
         phrase_->cmd2_ + (16 * viewData_->currentPhrase_ + row_));
 }
 

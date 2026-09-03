@@ -489,6 +489,12 @@ width and a noise source colour the throat behind them. Point the
 LFO at flt and the vowels move on their own, which is where the
 talking comes from.
 
+Every engine has the LFO, and a pill beside its destination sets its
+sync: note restarts the LFO with every note, free lets it carry on
+from wherever the last note on that channel left it, so a slow sweep
+keeps sweeping across a run of notes instead of starting over on
+each.
+
 PRESETS
 
 The third row of the synth page is the preset. Left and right step

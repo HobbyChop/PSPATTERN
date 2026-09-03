@@ -1,3 +1,24 @@
+PSPATTERN 0.30.0a
+
+    The command list opens on the phrase screen. O with up or down on
+        a command column always had the code behind it, but the
+        lookup still counted the columns the way they were before the
+        velocity column pushed everything one to the right, so the
+        picker found nothing and said nothing. It works, as the
+        manual always said it did.
+
+    VOLM slides on the synths. The rate in the first two digits only
+        ever worked on samples; a synth jumped to the level whatever
+        the rate said. It now walks there over the same time the
+        sampler takes, rate times four ticks. Rate 00 still jumps.
+
+    Synth LFOs can run free. A sync pill beside the LFO destination on
+        every engine page: note restarts the LFO with each note, as it
+        always did; free lets it carry on from wherever the last note
+        on that channel left it, so a slow sweep keeps sweeping across
+        a run of notes. Saved with the project and with presets; older
+        songs and presets load as note.
+
 PSPATTERN 0.29.0a
 
     Importing is two pages and one key. The browser is a full screen:

@@ -51,6 +51,7 @@
 #define SYP_LFODEST   MAKE_FOURCC('S','Y','L','T')
 #define SYP_LFORATE   MAKE_FOURCC('S','Y','L','R')
 #define SYP_LFODEPTH  MAKE_FOURCC('S','Y','L','D')
+#define SYP_LFOSYNC   MAKE_FOURCC('S','Y','L','S')
 // ---- FM (4 operator) -------------------------------------------
 // One block of six parameters per operator, laid out on screen as a
 // column each. Written out rather than generated because a FourCC has
@@ -243,6 +244,12 @@ struct SynthVoice {
 	// what gets saved, so writing there let one channel's FCUT bend
 	// another channel and bake itself into the project file.
 	int volume_ ;             // VOLM
+	// VOLM with a rate: the level walks to volTarget_ over the ticks
+	// the rate asks for, as the sampler's does. volStep_ is 16.16 per
+	// tick; zero means no slide is running.
+	int volTarget_ ;
+	int volAcc_ ;
+	int volStep_ ;
 	int cutoff_ ;             // FCUT / FLTR (VAX)
 	int reso_ ;               // FRES / FLTR (VAX)
 	int modAmt_ ;             // FCUT on PDX = DCW amount
