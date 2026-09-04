@@ -691,9 +691,15 @@ void PhraseView::interpolateSelection() {
     }
 
     GUIRect rect = getSelectionRect();
-    // Only interpolate if we're in note (0) or param (3, 5) columns
+    /* One column at a time, and only the ones that hold a value that
+       can ramp: the note (0), the velocity (2), and the two
+       parameters (4 and 6). The check used to name 3 and 5, the
+       parameter columns of the layout before velocity arrived -- so
+       it refused the real parameter columns and, on a command column,
+       ramped the parameters underneath it without saying so. */
     int col = rect.Left();
-    if (col != rect.Right() || (col != 0 && col != 3 && col != 5)) {
+    if (col != rect.Right() || (col != 0 && col != 2 && col != 4 && col != 6)) {
+        View::SetNotification("interpolate: note, velocity or a parameter");
         return;
     }
 
@@ -725,9 +731,24 @@ void PhraseView::interpolateSelection() {
             int value = startNote + (noteDiff * step) / (numSteps);
             noteData[row] = (uchar)value;
         }
+    } else if (col == 2) {
+        // the velocity column: a ramp of dynamics, both ends written
+        uchar *velData = phrase_->velocity_ + (16 * viewData_->currentPhrase_);
+        uchar startVel = velData[startRow];
+        uchar endVel = velData[endRow];
+        if (startVel == VELOCITY_EMPTY || endVel == VELOCITY_EMPTY) {
+            View::SetNotification("No velocity at both ends");
+            return;
+        }
+        int numSteps = endRow - startRow;
+        int velDiff = (int)endVel - (int)startVel;
+        for (int step = 0; step <= numSteps; step++) {
+            int row = startRow + step;
+            velData[row] = (uchar)(startVel + (velDiff * step) / numSteps);
+        }
     } else {
-        // Parameter columns (3 or 5)
-        ushort *paramData = (col == 3) ? 
+        // the parameter columns, 4 and 6
+        ushort *paramData = (col == 4) ?
             phrase_->param1_ + (16 * viewData_->currentPhrase_) :
             phrase_->param2_ + (16 * viewData_->currentPhrase_);
 
@@ -752,11 +773,29 @@ void PhraseView::interpolateSelection() {
         clipboard & end selection process
  ******************************************************/
 
+/* What belongs together comes along. A selection whose right edge is
+   a command takes the command's parameter; one that is only the note
+   column takes the instrument and the velocity. These are the pairs
+   the single-step cut uses, so copy, cut and paste agree -- and a
+   command copied with X lands with its value, which is what was
+   asked for. */
+void PhraseView::pairSelection() {
+    int right = (clipboard_.col_ > col_) ? clipboard_.col_ : col_;
+    int want = right;
+    if (right == 3) want = 4;
+    else if (right == 5) want = 6;
+    else if (right == 0) want = 2;
+    if (want == right) return;
+    if (clipboard_.col_ > col_) clipboard_.col_ = want;
+    else col_ = want;
+}
+
 void PhraseView::copySelection() {
 
     // Keep up with row,col of selection coz
     // fillClipboardData will trash it
 
+    pairSelection();
     fillClipboardData();
 
     clipboard_.active_ = false;
@@ -778,6 +817,7 @@ void PhraseView::cutSelection() {
     // Keep up with row,col of selection coz
     // fillClipboardData will trash it
 
+    pairSelection();
     fillClipboardData();
 
     // Loop over selection col, row & clear data inside it

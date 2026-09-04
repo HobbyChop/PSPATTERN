@@ -290,7 +290,8 @@ Hold X and press R. The cell under the cursor is highlighted. Move with
 the D-pad and the selection grows to cover what you pass over.
 
   X then R          start a selection at the cursor
-  X on its own      copy the selection and end it
+  X on its own      copy the selection and end it; a command brings
+                    its parameter, a note its instrument and velocity
   O then R          cut the selection
   O then direction  change every value in the selection at once
   R then X          widen: first to all columns, again to all sixteen rows

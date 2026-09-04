@@ -1,3 +1,16 @@
+PSPATTERN 0.37.0a
+
+    X on a command copies its parameter with it, on the phrase screen's
+        copy and cut alike, and a selection that is only the note
+        column brings the instrument and the velocity. Paste lays the
+        pair back down, so copy, cut and paste agree.
+
+    Interpolate works on the real parameter columns again, and on the
+        velocity column, which is new. It still named the parameter
+        columns of the layout before velocity arrived, so it refused
+        the real ones and quietly ramped the values under a command.
+        It now says what it accepts when refused.
+
 PSPATTERN 0.36.1a
 
     Cut on the phrase screen takes the right things again. It used to

@@ -52,6 +52,7 @@ class PhraseView : public View {
     void fillClipboardData();
     void interpolateSelection();
     void copySelection();
+    void pairSelection();   // a command with its parameter, a note with its instrument and velocity
     void cutSelection();
     void pasteClipboard();
 
