@@ -1,3 +1,17 @@
+PSPATTERN 0.31.1a
+
+    The spectrum's first four bars moved as one because they were the
+        same number: the log spacing over the analyser's 256 points put
+        all of them on the first bin. No bar shares a bin with the one
+        before it now, so the low bars move on their own. The analyser
+        itself is unchanged -- a longer one was tried and starved the
+        second core's send job, which the whole machine felt.
+
+    A type box under the live box on the song screen: a pill for each
+        kind of instrument -- sm sample, mi midi, tn tone, pd pdx, va
+        vax, fm, vo vox -- lit in its own colour while something of
+        that kind sounds on any channel.
+
 PSPATTERN 0.31.0a
 
     A free-running LFO is a command. LFO_ aabb starts an LFO on the

@@ -116,6 +116,10 @@ the master output; under it, a spectrum of the mix, computed by the
 second processor in its spare moments -- bass on the left, air on
 the right. Both clear when the song stops.
 
+Under the live box, type is a pill for each kind of instrument -- sm
+sample, mi midi, tn tone, pd pdx, va vax, fm, vo vox -- lit in its own
+colour while something of that kind sounds on any channel.
+
 L and X mutes the channel under the cursor.
 
 IS THE ADAPTER WORKING

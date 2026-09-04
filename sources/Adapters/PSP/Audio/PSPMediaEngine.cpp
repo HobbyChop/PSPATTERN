@@ -817,14 +817,26 @@ extern "C" int PSPME_Init(void) {
 		specTwR_[k] = cosf(a);
 		specTwI_[k] = sinf(a);
 	}
-	for (int b = 0; b < 32; b++) {
-		int lo = (int)powf(127.0f, b / 32.0f);
-		int hi = (int)powf(127.0f, (b + 1) / 32.0f);
-		if (lo < 1) lo = 1;
-		if (hi < lo) hi = lo;
-		if (hi > 127) hi = 127;
-		specGLo_[b] = (unsigned char)lo;
-		specGHi_[b] = (unsigned char)hi;
+	/* No bar shares a bin with the bar before it. The plain log
+	   spacing put bars 0..3 all on bin one, so the first four bars
+	   were the same number and moved as one -- the tester's report.
+	   The FFT is unchanged (a longer one was tried and starved the
+	   ME's send job); the low bars simply walk up one bin each until
+	   the log curve overtakes them. */
+	{
+		int prevHi = 0;
+		for (int b = 0; b < 32; b++) {
+			int lo = (int)powf(127.0f, b / 32.0f);
+			int hi = (int)powf(127.0f, (b + 1) / 32.0f);
+			if (lo < 1) lo = 1;
+			if (lo <= prevHi) lo = prevHi + 1;
+			if (hi < lo) hi = lo;
+			if (hi > 127) hi = 127;
+			if (lo > 127) lo = 127;
+			specGLo_[b] = (unsigned char)lo;
+			specGHi_[b] = (unsigned char)hi;
+			prevHi = hi;
+		}
 	}
 	meLibAllocUncached32(&meSpecInH_, SPEC_N / 2);   // 256 shorts
 	meLibAllocUncached32(&meSpecOutH_, 32);          // 32 words

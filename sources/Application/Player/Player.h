@@ -115,6 +115,9 @@ public:
 	// Channel data
 
     bool IsChannelPlaying(int channel);
+    // the instrument sounding on a channel, or 0: the side panel lights
+    // a pill per instrument kind from this
+    I_Instrument *GetChannelInstrument(int channel);
     void SetChannelMute(int channel,bool mute) ;
     bool IsChannelMuted(int channel);
 

@@ -454,6 +454,10 @@ void Player::SetSequencerMode(SequencerMode mode) {
 
 SequencerMode Player::GetSequencerMode() { return sequencerMode_; }
 
+I_Instrument *Player::GetChannelInstrument(int channel) {
+    return mixer_->GetInstrument(channel);
+}
+
 bool Player::IsChannelPlaying(int channel) {
     return mixer_->IsChannelPlaying(channel);
 }
