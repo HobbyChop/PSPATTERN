@@ -207,8 +207,17 @@ class View : public Observable {
     void SetNotification(const char *notification, int offset = 29);
     bool notificationLive();
 
+    /* O twice. The grids fill an empty cell with the last value on one
+       tap and with a NEW one on a second tap in the same place inside
+       a third of a second. Call with the cell's address on every tap:
+       the first returns false and arms, the second returns true and
+       disarms, a tap anywhere else re-arms there. */
+    bool doubleTap(const void *cell);
+
   protected:
     virtual void ProcessButtonMask(unsigned short mask, bool pressed) = 0;
+    const void *tapCell_;
+    unsigned long tapMs_;
 
     // to remove once everything got to viewdata
 

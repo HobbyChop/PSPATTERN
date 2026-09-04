@@ -81,6 +81,7 @@ class PhraseView : public View {
     }
 
     int lastInstr_;
+    bool tapFilled_;      // the last O tap filled an empty cell
     // remembered so an empty velocity step fills with the last one
     // you actually typed, the way the note and instrument columns do
     uchar lastVelocity_ = VELOCITY_FULL;

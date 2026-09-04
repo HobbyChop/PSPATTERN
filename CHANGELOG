@@ -1,3 +1,13 @@
+PSPATTERN 0.35.0a
+
+    O on an empty cell repeats the last chain, phrase or instrument;
+        O twice, quickly, makes a new one -- the next unused chain on
+        the song screen, the next unused phrase on the chain screen,
+        and on the phrase screen's instrument column a new instrument,
+        a copy of the one you were using, in the next empty slot. The
+        notice line says whether you got a repeat or a new one. The
+        second tap only ever replaces what the first tap wrote.
+
 PSPATTERN 0.34.0a
 
     The song's rows can be inserted and deleted, on TRIANGLE. Held

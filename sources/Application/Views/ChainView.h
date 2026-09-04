@@ -50,6 +50,7 @@ class ChainView : public View {
                                //  allocation of unused phrases
     int updateRow_;            // .Tells which row is being updated
     unsigned char lastPhrase_; // .Clipboard for phrase
+    bool tapFilled_;      // the last O tap filled an empty row
     int lastPlayingPos_;
     int lastQueuedPos_;
 

@@ -101,9 +101,13 @@ stepping through the chain first would have.
 Eight columns, one per channel. Each cell holds a chain number in
 hexadecimal, or two dashes for an empty slot.
 
-Hold O and press up or down to place a chain. The tracker plays down the
-rows. A channel with a blank cell at row zero never starts, so start
-every channel you want to hear at row zero.
+Tap O on an empty cell to repeat the last chain you touched; tap it
+twice, quickly, and the cell gets a new chain instead. The notice line
+says which you got, because two cells holding one chain are one chain:
+write in either and the other changes. Hold O and press up or down to
+dial a specific number. The tracker plays down the rows. A channel
+with a blank cell at row zero never starts, so start every channel you
+want to hear at row zero.
 
 The info panel on the right carries the tempo, the project name, the
 MIDI adapter, the battery, and the machine's health: dsp is the render
@@ -235,6 +239,9 @@ semitones. The chain plays its rows in order, then returns to the song.
 Transpose shifts every note in that phrase. It is signed, so a value of
 FE is two semitones down.
 
+Tap O on an empty row to repeat the last phrase; tap it twice, quickly,
+for a new one. The notice line says which you got.
+
 
 7. THE PHRASE SCREEN
 
@@ -341,7 +348,10 @@ number is free it says so and changes nothing.
 SINGLE STEPS
 
   O on its own  on an empty note step, repeat the last note and
-                instrument entered
+                instrument entered; on an empty instrument cell,
+                repeat the last instrument
+  O twice       on the instrument column, a new instrument: a copy of
+                the one there, in the next empty slot
   X then O      clear the step, taking the instrument with the note and
                 the parameter with the command
   X then L      mute the channel

@@ -20,7 +20,9 @@ View::View(GUIWindow &w,ViewData *viewData):
 	w_(w),
 	modalView_(0),
 	modalViewCallback_(0),
-	hasFocus_(false)
+	hasFocus_(false),
+	tapCell_(0),
+	tapMs_(0)
 {
   if (!initPrivate_) 
   {
@@ -160,6 +162,21 @@ void View::ProcessButton(unsigned short mask, bool pressed) {
 	}
 	if (isDirty_) ((AppWindow &)w_).SetDirty() ;
 } ;
+
+#define DOUBLE_TAP_MS 350
+
+bool View::doubleTap(const void *cell) {
+	unsigned long now=System::GetInstance()->GetClock() ;
+	bool twice=(cell==tapCell_)&&(tapMs_!=0)&&((now-tapMs_)<DOUBLE_TAP_MS) ;
+	if (twice) {
+		tapCell_=0 ;
+		tapMs_=0 ;
+	} else {
+		tapCell_=cell ;
+		tapMs_=now ;
+	}
+	return twice ;
+}
 
 void View::Clear() {
 	((AppWindow &)w_).Clear() ;

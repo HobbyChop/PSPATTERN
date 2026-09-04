@@ -1,4 +1,5 @@
 #include "ChainView.h"
+#include <stdio.h>
 #include "Application/AppWindow.h"
 #include "Application/Utils/char.h"
 #include "System/Console/Trace.h"
@@ -7,6 +8,7 @@
 ChainView::ChainView(GUIWindow &w, ViewData *viewData) : View(w, viewData) {
     updatingPhrase_ = false;
     lastPhrase_ = 0;
+    tapFilled_ = false;
     lastPlayingPos_ = 0;
     lastQueuedPos_ = 0;
 
@@ -37,17 +39,41 @@ void ChainView::cutPosition() {
 
 void ChainView::pasteLastPhrase() {
 
-    // If we're on an empty spot, we past the last phrase
-    // otherwise we take the current phrase as last
+    // O on an empty row: the last phrase on one tap, a NEW phrase on
+    // a second tap in the same place. The second tap only replaces
+    // what the first one wrote.
 
     unsigned char *c = viewData_->GetCurrentChainPointer();
+    char msg[40];
     if ((*c == 0xFF)) {
         *c = lastPhrase_;
+        viewData_->song_->phrase_->SetUsed(*c);
+        tapFilled_ = true;
+        doubleTap(c);
+        sprintf(msg, "phrase %02X again", *c);
+        View::SetNotification(msg);
         isDirty_ = true;
     } else {
-        lastPhrase_ = *c;
+        bool twice = doubleTap(c);
+        if (twice && tapFilled_) {
+            unsigned short next = viewData_->song_->phrase_->GetNext();
+            if (next == NO_MORE_PHRASE) {
+                View::SetNotification("no free phrases left");
+            } else {
+                *c = (unsigned char)next;
+                viewData_->song_->phrase_->SetUsed(*c);
+                lastPhrase_ = *c;
+                sprintf(msg, "new phrase %02X", *c);
+                View::SetNotification(msg);
+                isDirty_ = true;
+            }
+        } else {
+            lastPhrase_ = *c;
+        }
+        tapFilled_ = false;
     }
 };
+
 
 void ChainView::updateCursor(int dx, int dy) {
     viewData_->UpdateChainCursor(dx, dy);

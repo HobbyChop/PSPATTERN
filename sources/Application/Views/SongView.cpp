@@ -61,6 +61,7 @@ SongView::SongView(GUIWindow &w, ViewData *viewData, const char *song)
     canDeepClone_ = false;
     jumpLength_ = 0x10; // B-jump 16 rows like LSDJ
     pendingDeleteRow_ = 0;
+    tapFilled_ = false;
 }
 
 /****************
@@ -153,33 +154,48 @@ void SongView::cutPosition() {
 
 void SongView::pasteLast() {
 
-    /* O on an empty song slot makes a NEW chain.
+    /* O on an empty song slot: the last chain you touched on one
+       tap, a NEW chain on a second tap in the same place.
 
-       It used to put back the last chain number you had touched, and
-       a fresh one arrived only if you pressed O a second time. The
-       trouble with reuse is that it is invisible: two song positions
-       end up holding the same chain, so writing a phrase at the new
-       position quietly rewrites the old one. The song then reads as
-       though its parts were not connected to anything, when in truth
-       they were connected to each other.
+       A single O used to make a new chain every time, because reusing
+       the last one is invisible: two positions holding one chain are
+       joined, and writing at one rewrites the other. One tap for the
+       repeat is what a tracker hand expects, though, so it is back --
+       and the notice line says which of the two you got, every time,
+       which is what the old rule was protecting against. Typing a
+       number is still how a chain is deliberately repeated.
 
-       O on a slot that already holds a chain still remembers it, so
-       clone and paste keep working from it, and typing a number by
-       hand is still how you deliberately repeat a chain. */
+       The second tap only ever replaces what the first tap wrote: a
+       double tap on a chain that was already there just remembers it. */
 
     unsigned char *c = viewData_->GetCurrentSongPointer();
+    char msg[40];
     if (*c == 0xFF) {
-        unsigned short next = viewData_->song_->chain_->GetNext();
-        if (next == NO_MORE_CHAIN) {
-            View::SetNotification("no free chains left");
-            return;
-        }
-        *c = (unsigned char)next;
+        *c = lastChain_;
         viewData_->song_->chain_->SetUsed(*c);
-        lastChain_ = *c;
+        tapFilled_ = true;
+        doubleTap(c);
+        sprintf(msg, "chain %02X again", *c);
+        View::SetNotification(msg);
         isDirty_ = true;
     } else {
-        lastChain_ = *c;
+        bool twice = doubleTap(c);
+        if (twice && tapFilled_) {
+            unsigned short next = viewData_->song_->chain_->GetNext();
+            if (next == NO_MORE_CHAIN) {
+                View::SetNotification("no free chains left");
+            } else {
+                *c = (unsigned char)next;
+                viewData_->song_->chain_->SetUsed(*c);
+                lastChain_ = *c;
+                sprintf(msg, "new chain %02X", *c);
+                View::SetNotification(msg);
+                isDirty_ = true;
+            }
+        } else {
+            lastChain_ = *c;
+        }
+        tapFilled_ = false;
     }
 };
 

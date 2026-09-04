@@ -363,6 +363,35 @@ unsigned short InstrumentBank::Clone(unsigned short i) {
 
 }
 
+unsigned short InstrumentBank::CloneNext(unsigned short i,bool retype) {
+	if (i>=MAX_INSTRUMENT_COUNT) return NO_MORE_INSTRUMENT ;
+	I_Instrument *src=instrument_[i] ;
+	if (!src) return NO_MORE_INSTRUMENT ;
+	InstrumentType type=src->GetType() ;
+	int next=-1 ;
+	// the next empty slot of the same type, walking on from this one
+	for (int k=1;k<MAX_INSTRUMENT_COUNT;k++) {
+		int j=(i+k)%MAX_INSTRUMENT_COUNT ;
+		if (instrument_[j]->IsEmpty()&&(instrument_[j]->GetType()==type)) { next=j ; break ; }
+	}
+	if ((next<0)&&retype) {
+		for (int k=1;k<MAX_INSTRUMENT_COUNT;k++) {
+			int j=(i+k)%MAX_INSTRUMENT_COUNT ;
+			if (instrument_[j]->IsEmpty()) { next=j ; break ; }
+		}
+		if (next>=0) SetType(next,type) ;
+	}
+	if (next<0) return NO_MORE_INSTRUMENT ;
+	I_Instrument *dst=instrument_[next] ;
+	IteratorPtr<Variable> it(src->GetIterator()) ;
+	for (it->Begin();!it->IsDone();it->Next()) {
+		Variable &srcV=it->CurrentItem() ;
+		Variable *dstV=dst->FindVariable(srcV.GetID()) ;
+		if (dstV) dstV->CopyFrom(srcV) ;
+	}
+	return (unsigned short)next ;
+}
+
 void InstrumentBank::OnStart() {
 	for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {
 		instrument_[i]->OnStart() ;

@@ -23,6 +23,12 @@ public:
 	void OnStart() ;
 	unsigned short GetNext() ;
 	unsigned short Clone(unsigned short i) ;
+	/* A copy of i in the next empty slot after it, of any type: O
+	   twice on the phrase screen's instrument column. An empty slot of
+	   the same type is preferred; failing that, any empty slot is
+	   switched to the type -- only when retype is allowed, because
+	   SetType must not run under a playing voice. */
+	unsigned short CloneNext(unsigned short i,bool retype) ;
 	// swap the instrument at a slot to another type (never while the
 	// player runs: a live voice would keep a pointer to the old one)
 	void SetType(int i,InstrumentType it) ;

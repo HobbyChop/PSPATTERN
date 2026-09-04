@@ -1,4 +1,7 @@
 #include "PhraseView.h"
+#include "Application/Player/Player.h"
+#include "Application/Instruments/InstrumentBank.h"
+#include <stdio.h>
 #include "Application/AppWindow.h"
 #include "Application/Instruments/CommandList.h"
 #include "Application/Model/Scale.h"
@@ -33,6 +36,7 @@ PhraseView::PhraseView(GUIWindow &w, ViewData *viewData)
     viewData->phraseCurPos_ = 0;
     col_ = 0;
     lastNote_ = 60;
+    tapFilled_ = false;
     lastInstr_ = 0;
     lastCmd_ = I_CMD_NONE;
     lastParam_ = 0;
@@ -399,9 +403,35 @@ void PhraseView::pasteLast() {
         c = phrase_->instr_ + (16 * viewData_->currentPhrase_ + row_);
         if ((*c == 0xFF)) {
             *c = lastInstr_;
+            tapFilled_ = true;
+            doubleTap(c);
             isDirty_ = true;
         } else {
-            lastInstr_ = *c;
+            bool twice = doubleTap(c);
+            if (twice && tapFilled_) {
+                /* O twice: a NEW instrument, a copy of this one in the
+                   next empty slot, so a melody can move to a varied
+                   voice without a trip to the instrument screen. A
+                   slot has to change type for it only when every slot
+                   of the type is taken, and never under a playing
+                   voice. */
+                InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
+                bool retype = !Player::GetInstance()->IsRunning();
+                unsigned short next = bank->CloneNext(*c, retype);
+                char msg[40];
+                if (next == NO_MORE_INSTRUMENT) {
+                    View::SetNotification("no empty instrument slot");
+                } else {
+                    *c = (unsigned char)next;
+                    lastInstr_ = *c;
+                    sprintf(msg, "new instrument %02X", *c);
+                    View::SetNotification(msg);
+                    isDirty_ = true;
+                }
+            } else {
+                lastInstr_ = *c;
+            }
+            tapFilled_ = false;
         }
         break;
     case 3:

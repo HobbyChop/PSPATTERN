@@ -56,6 +56,7 @@ class SongView : public View {
     void deleteRow();
     void gotoRow(int row);
     int pendingDeleteRow_;
+    bool tapFilled_;      // the last O tap filled an empty cell
 
     void unMuteAll();
     void toggleMute();
