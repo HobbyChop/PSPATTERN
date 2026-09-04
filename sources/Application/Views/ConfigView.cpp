@@ -65,6 +65,10 @@ ConfigView::ConfigView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	// Stick write (frozen input, chewed tails) must never happen.
 	// Applies immediately -- the autosave tick reads it every pass.
 	addList(17,"asave  ", "AUTOSAVE",         YES_NO,2, 0, false, false) ;
+	// follow: the song screen pages along with the playhead. NO holds
+	// the window still for anyone who uses the screen as a map.
+	// Applies immediately -- the player update reads it every pass.
+	addList(18,"follow ", "SONGFOLLOW",       YES_NO,2, 0, false, false) ;
 
 	themeApplied_=settings_[0].ui->GetInt() ;   // the theme row is first
 }
@@ -209,7 +213,7 @@ void ConfigView::DrawView() {
 
 	DrawPanel(1,5,20,4,"DISPLAY") ;    // theme, font, alt-rows
 	DrawPanel(1,10,20,4,"AUDIO") ;     // buffer, prebuffer, me offload
-	DrawPanel(1,15,20,3,"ENGINES") ;   // fm, asave
+	DrawPanel(1,15,20,4,"ENGINES, BEHAVIOUR") ;   // fm, asave, follow
 	// ENGINES' bottom rule owns row 19, and every panel needs the row
 	// under its rule free -- row 20 starts the next frame safely
 	DrawPanel(1,20,20,3,"SYNC") ;      // clock out, synco, sendo

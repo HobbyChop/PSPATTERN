@@ -1722,6 +1722,48 @@ void SongView::OnPlayerUpdate(PlayerEventType eventType, unsigned int tick) {
 
     Player *player = Player::GetInstance();
 
+    /* Page follow. The window used to sit still while the song played
+       past its bottom edge, hiding the playhead behind rows it had
+       already left. When the furthest playing channel leaves the
+       window, the window jumps a page so that row lands at the top --
+       and the same on the way back up when the song loops. The cursor
+       keeps its row on screen and comes along, which is the trade LSDJ
+       makes. Not while a block is being selected, and not for the
+       audition. follow NO on the config screen brings the fixed view
+       back. */
+    if ((eventType != PET_STOP) && player->IsRunning() &&
+        (viewData_->playMode_ != PM_AUDITION) &&
+        (viewMode_ != VM_SELECTION) && !clipboard_.active_) {
+        const char *cfg = Config::GetInstance()->GetValue("SONGFOLLOW");
+        bool follow = !(cfg && (cfg[0] == 'N' || cfg[0] == 'n'));
+        if (follow) {
+            int far = -1;
+            for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
+                if (player->IsChannelPlaying(i) &&
+                    (viewData_->currentPlayChain_[i] != 0xFF) &&
+                    (viewData_->songPlayPos_[i] > far)) {
+                    far = viewData_->songPlayPos_[i];
+                }
+            }
+            int rows = View::songRowCount_;
+            int off = viewData_->songOffset_;
+            if ((far >= 0) && ((far < off) || (far >= off + rows))) {
+                int page = (far / rows) * rows;
+                viewData_->UpdateSongOffset(page - off);
+                if (viewData_->songOffset_ != off) {
+                    // a moved window is a full repaint, not a marker
+                    // update; the old marker rows mean nothing now
+                    for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
+                        lastPlayedPosition_[i] = -1;
+                        lastQueuedPosition_[i] = -1;
+                    }
+                    isDirty_ = true;
+                    return;
+                }
+            }
+        }
+    }
+
 
     GUIPoint anchor = GetAnchor();
     anchor._x = SONG_GRID_X;

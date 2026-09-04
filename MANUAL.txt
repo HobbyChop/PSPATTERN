@@ -105,9 +105,11 @@ Tap O on an empty cell to repeat the last chain you touched; tap it
 twice, quickly, and the cell gets a new chain instead. The notice line
 says which you got, because two cells holding one chain are one chain:
 write in either and the other changes. Hold O and press up or down to
-dial a specific number. The tracker plays down the rows. A channel
-with a blank cell at row zero never starts, so start every channel you
-want to hear at row zero.
+dial a specific number. The tracker plays down the rows, and the
+screen pages along with it, so the playhead is never hidden below the
+bottom edge; follow NO on the config screen holds the window still. A
+channel with a blank cell at row zero never starts, so start every
+channel you want to hear at row zero.
 
 The info panel on the right carries the tempo, the project name, the
 MIDI adapter, the battery, and the machine's health: dsp is the render
@@ -1004,6 +1006,17 @@ chewed by the Memory Stick write. Playing live, set asave to NO on
 the config screen (or AUTOSAVE NO in config.xml) and the machine will
 never touch the stick on its own at all. It applies immediately, and
 manual saving is not affected.
+
+
+FOLLOW
+
+While the song plays, the song screen pages along with it: when the
+furthest playing channel leaves the visible rows, the window jumps a
+page so that row lands at the top, and jumps back when the song loops.
+The cursor keeps its row on the screen and comes along. It holds still
+while a block is being selected. Set follow to NO on the config screen
+(or SONGFOLLOW NO in config.xml) for the old fixed view, which some
+people use as a map while a song plays.
 
 
 18. SAVING AND RENDERING

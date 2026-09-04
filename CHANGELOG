@@ -1,3 +1,13 @@
+PSPATTERN 0.36.0a
+
+    The song screen pages along with the playhead. When the furthest
+        playing channel leaves the visible rows the window jumps a
+        page so that row lands at the top, and jumps back when the
+        song loops; the cursor keeps its row on screen and comes
+        along. It holds still while a block is being selected. A
+        follow row on the config screen (SONGFOLLOW in config.xml)
+        switches it off for anyone who uses the screen as a map.
+
 PSPATTERN 0.35.0a
 
     O on an empty cell repeats the last chain, phrase or instrument;
