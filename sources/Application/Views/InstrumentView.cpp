@@ -1181,6 +1181,23 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 			} else if ((mask&EPBM_DOWN)&&cur<nSel-1) {
 				SetFocus(sel[cur+1]) ;
 				lastFocusID_=lastLadderID_=sel[cur+1]->GetVariableID() ;
+			} else if (mask&EPBM_DOWN) {
+				/* Down off the ladder's last row crosses into the
+				   parameters, the same landing X+down makes: the first
+				   row that is not a selector, in the screen's reading
+				   order. The zones meet at their edges now; the X chord
+				   stays as the jump from anywhere. */
+				UIField *target=0 ;
+				IteratorPtr<UIField> itd(T_SimpleList<UIField>::GetIterator()) ;
+				for (itd->Begin();!itd->IsDone();itd->Next()) {
+					UIField &fld=itd->CurrentItem() ;
+					if (fld.IsStatic()) continue ;
+					if (!ivIsSelectorId(fld.GetVariableID())) { target=&fld ; break ; }
+				}
+				if (target) {
+					SetFocus(target) ;
+					lastFocusID_=target->GetVariableID() ;
+				}
 			}
 			isDirty_=true ;
 		}
@@ -1206,16 +1223,26 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		}
 	}
 
-	/* Plain arrows stay in the parameter zone: the selector rows sit
-	   in the same field list and the same column, so ordinary
-	   navigation (and its wrap) walked straight back onto the ladder.
-	   X+up is the only way back. */
+	/* Plain arrows and the zone edge. The selector rows sit in the
+	   same field list and the same column, so ordinary navigation
+	   (and its wrap) walks onto the ladder. UP off the top parameter
+	   is allowed through -- that is the edge, and the cursor should
+	   cross it the way it does on every other tracker -- while any
+	   other direction that lands on a selector is put back, so a wrap
+	   or a sideways step never changes what the instrument is by
+	   accident. X+up/down remains the jump from anywhere. */
 	UIField *beforeNav=GetFocus() ;
 	bool wasParam=beforeNav&&!ivIsSelectorId(beforeNav->GetVariableID()) ;
 	FieldView::ProcessButtonMask(mask) ;
 	if (wasParam&&!(mask&(EPBM_A|EPBM_B))) {
 		UIField *nowF=GetFocus() ;
-		if (nowF&&ivIsSelectorId(nowF->GetVariableID())) SetFocus(beforeNav) ;
+		if (nowF&&ivIsSelectorId(nowF->GetVariableID())) {
+			if (mask&EPBM_UP) {
+				lastFocusID_=lastLadderID_=nowF->GetVariableID() ;
+			} else {
+				SetFocus(beforeNav) ;
+			}
+		}
 	}
 	checkPresetStep() ;
 
@@ -1465,7 +1492,14 @@ void InstrumentView::DrawView() {
     // Draw fields
 
     FieldView::Redraw();
-    DrawHintBar("X+u/d zone  O+arw edit  L inst  SEL hear");
+    {
+        // on the ladder, left and right CHANGE the row; say so where
+        // it applies
+        UIField *hf=GetFocus() ;
+        bool onLadder=hf&&ivIsSelectorId(hf->GetVariableID()) ;
+        DrawHintBar(onLadder?"</> change  v params  L inst  SEL hear"
+                            :"X+u/d zone  O+arw edit  L inst  SEL hear");
+    }
 } ;
 
 void InstrumentView::drawSampleChrome() {

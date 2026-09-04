@@ -1,3 +1,13 @@
+PSPATTERN 0.38.0a
+
+    The instrument screen's two zones meet at their edges. Up from
+        the top parameter lands on the selector ladder, down from the
+        ladder's last row lands on the parameters, and the bottom line
+        says which zone you are in. X with up or down still jumps
+        between them from anywhere. Sideways steps and wraps still
+        never land on the ladder, so what the instrument is cannot
+        change by accident.
+
 PSPATTERN 0.37.0a
 
     X on a command copies its parameter with it, on the phrase screen's

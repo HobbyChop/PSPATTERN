@@ -481,9 +481,12 @@ at the top -- type, engine or preset, import -- are one zone: up and
 down move between the rows, left and right step the focused row's
 value. The parameters are the other: the d-pad walks between them,
 and O with a direction edits the focused value one step at a time.
-X with up or down crosses between the zones. The analog stick does
-nothing here: stick drift on aging units made it a liability, and
-everything it did, the d-pad does.
+The zones meet at their edges: up from the top parameter lands on the
+ladder, down from the ladder's last row lands on the parameters, and
+the bottom line says which zone you are in. X with up or down jumps
+between them from anywhere. The analog stick does nothing here: stick
+drift on aging units made it a liability, and everything it did, the
+d-pad does.
 
 L with a direction is the only control that changes which instrument
 slot you are editing.
