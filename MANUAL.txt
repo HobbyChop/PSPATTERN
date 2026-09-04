@@ -117,8 +117,8 @@ second processor in its spare moments -- bass on the left, air on
 the right. Both clear when the song stops.
 
 Under the live box, type is a pill for each kind of instrument -- sm
-sample, mi midi, tn tone, pd pdx, va vax, fm, vo vox -- lit in its own
-colour while something of that kind sounds on any channel.
+sample, mi midi, tn tone, pd pdx, va vax, fm, vo vox, hv hive -- lit
+in its own colour while something of that kind sounds on any channel.
 
 L and X mutes the channel under the cursor.
 
@@ -354,7 +354,7 @@ parameter as aabb, meaning the first two digits and the last two are
 read separately, or as aaaa when all four are one number.
 
   ARPG  cycle through pitches relative to the note
-  CHRD  a chord: like ARPG but always at tick rate
+  CHRD  a chord: like ARPG but always at tick rate; a real chord on hive
   CRSH  drive and bit crush
   DLAY  delay the step by bb ticks
   DRIV  post filter drive, vax engine
@@ -446,7 +446,7 @@ type, a feedback stage, an attenuator and an amplitude envelope.
 MIDI sends notes out of the PSP-MIDI adapter. It has a channel, volume,
 note length, pitch bend range and four CC slots.
 
-SYNTH generates sound on the PSP. Pick one of five engines on the
+SYNTH generates sound on the PSP. Pick one of six engines on the
 second row.
 
 THE INSTRUMENT DECK
@@ -497,7 +497,13 @@ algorithm names describe the routing directly. A greater than sign means
 the operator on the left modulates the one on the right, a space
 separates independent branches, and any operator not followed by a
 greater than sign reaches the output. Each operator has a ratio, level,
-detune and its own envelope.
+detune and its own envelope. Feedback belongs to operator four alone: it
+does nothing while operator four's level is zero, and it is heard
+through whatever operator four feeds, so it is boldest in the additive
+algorithm where four is a carrier. Its bottom half is quiet by design;
+the tone breaks toward a saw around the middle and into noise at the
+top. Detune is a few cents at most, meant to make two operators at one
+ratio beat rather than cancel.
 
 VOX is a formant engine, a voice rather than an instrument. The
 cutoff control morphs the sound between two vowels of your choosing,
@@ -505,6 +511,21 @@ picked on the vowel a and vowel b rows, and the source wave, pulse
 width and a noise source colour the throat behind them. Point the
 LFO at flt and the vowels move on their own, which is where the
 talking comes from.
+
+HIVE is the chord engine: up to five wavetable voices from one note.
+Chord picks the shape -- maj, min, 7, m7, maj7, 9, m9, sus2, sus4,
+dim, aug, 6, m6, oct, 5th, or off for a single note -- and voices says
+how many sound, one to five. A shape with fewer notes than voices
+doubles its tones; one with more drops its top. Spread detunes the
+voices against each other, a chorus at the bottom and a swarm at the
+top, and width places them across the stereo field. The wave is the
+tone engine's list, saw, square, triangle or sine, read from band
+limited tables. Filter, envelopes, glide, drive and the LFO are shared
+by the whole chord. A CHRD command on a hive note plays its nibbles as
+a real chord, every note at once, where on every other engine it is a
+flutter; CHRD 0000 hands the note back to the chord row. Every voice
+is one oscillator at about two and a half percent of a block per
+channel, so five voices with width cost about what an FM voice does.
 
 The LFO on the instrument page restarts with every note. For one that
 does not, use the LFO_ command: aa is the rate and bb the depth. It

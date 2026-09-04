@@ -3,6 +3,7 @@
 #include "CommandList.h"
 #include "Application/Player/SyncMaster.h"
 #include "Application/Model/Config.h"
+#include "System/System/System.h"
 #include "Services/Audio/AudioStats.h"
 #include <math.h>
 #include <string.h>
@@ -18,7 +19,7 @@
 #define PDX_KNEE_MIN 1024
 
 static const char *engineNames[SET_LAST]= {
-	"tone","pdx","vax","fm","vox"
+	"tone","pdx","vax","fm","vox","hive"
 } ;
 
 // ---- VOX formant engine tables --------------------------------------
@@ -125,6 +126,34 @@ static void clearChannelLfos() {
 
 // unison detune spread: offsets per stack voice, used -3..3
 static const int unisonOff[VAX_MAX_UNISON]={0,-3,3,-2,2,-1,1} ;
+/* HIVE: the chord shapes. Up to five intervals in semitones, 0xFF
+   ending a shape. The chord row picks one; a CHRD on the step
+   supplies its own from the nibbles for that note. */
+static const char *hiveChordNames[HIVE_CHORD_COUNT]= {
+	"off","maj","min","7","m7","maj7","9","m9",
+	"sus2","sus4","dim","aug","6","m6","oct","5th"
+} ;
+static const unsigned char hiveChordIv[HIVE_CHORD_COUNT][HIVE_MAX_VOICES]= {
+	{0,0xFF,0xFF,0xFF,0xFF},        // off: one note
+	{0,4,7,0xFF,0xFF},              // maj
+	{0,3,7,0xFF,0xFF},              // min
+	{0,4,7,10,0xFF},                // 7
+	{0,3,7,10,0xFF},                // m7
+	{0,4,7,11,0xFF},                // maj7
+	{0,4,7,10,14},                  // 9
+	{0,3,7,10,14},                  // m9
+	{0,2,7,0xFF,0xFF},              // sus2
+	{0,5,7,0xFF,0xFF},              // sus4
+	{0,3,6,0xFF,0xFF},              // dim
+	{0,4,8,0xFF,0xFF},              // aug
+	{0,4,7,9,0xFF},                 // 6
+	{0,3,7,9,0xFF},                 // m6
+	{0,12,0xFF,0xFF,0xFF},          // oct
+	{0,7,12,0xFF,0xFF}              // 5th
+} ;
+// per-voice detune and pan offsets, the vax stack's alternation: the
+// first voice stays put and the others fan out around it
+static const int hiveOff[HIVE_MAX_VOICES]={0,-2,2,-1,1} ;
 static const char *waveNames[SWT_LAST]= {
 	"saw","square","triangle","sine"
 } ;
@@ -133,6 +162,8 @@ static const char *pdxWaveNames[PWT_LAST]= {
 } ;
 
 bool SynthInstrument::tablesBuilt_=false ;
+short *SynthInstrument::hiveTab_[4][HIVE_LEVELS]={{0}} ;
+unsigned int SynthInstrument::hiveSemiQ16_[32] ;
 unsigned int *SynthInstrument::noteInc_ = 0 ;
 unsigned int *SynthInstrument::lfoInc_ = 0 ;
 short *SynthInstrument::sineTable_ = 0 ;
@@ -408,6 +439,15 @@ SynthInstrument::SynthInstrument() {
 	Insert(v) ;
 	v=new Variable("vowel b",SYP_VOXVB,(char**)voxVowelNames,VOX_NVOWEL,VOX_NVOWEL-1) ;
 	Insert(v) ;
+	// HIVE: how many voices, what shape, how far apart, how wide
+	v=new Variable("voices",SYP_HVVOICES,3) ;
+	Insert(v) ;
+	v=new Variable("chord",SYP_HVCHORD,(char**)hiveChordNames,HIVE_CHORD_COUNT,0) ;
+	Insert(v) ;
+	v=new Variable("spread",SYP_HVSPREAD,0x30) ;
+	Insert(v) ;
+	v=new Variable("width",SYP_HVWIDTH,0x80) ;
+	Insert(v) ;
 	v=new Variable("algo",SYP_FMALGO,(char**)fmAlgoNames,FM_ALGO_COUNT,0) ;
 	Insert(v) ;
 	v=new Variable("feedback",SYP_FMFB,0x00) ;
@@ -551,6 +591,7 @@ bool SynthInstrument::Init() {
 				if (f>30000.0) f=30000.0 ;
 				voxCoef_[vw][k]=(short)f ;
 			}
+		buildHiveTables() ;
 		tablesBuilt_=true ;
 	}
 	tableState_.Reset() ;
@@ -697,6 +738,7 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	v.arpStep_=0 ;
 	v.arpData_=0 ;
 	v.arpTick_=0 ;
+	v.hvChord_=0 ;
 	// arpRate_ deliberately survives: it is set once for a part and a
 	// note-on should not throw it away.
 	if (v.arpRate_==0) v.arpRate_=1 ;
@@ -730,6 +772,8 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	if (!wasActive) {
 		v.svfLow_=0 ;
 		v.svfBand_=0 ;
+		v.svfLow2_=0 ;
+		v.svfBand2_=0 ;
 		for (int k=0;k<4;k++) { v.fmtLow_[k]=0 ; v.fmtBand_[k]=0 ; }
 		v.curInc_=v.phaseInc_ ;
 		v.click_=0 ;
@@ -1102,6 +1146,8 @@ bool SynthInstrument::Render(int channel,fixed *buffer,int size,bool updateTick)
 #else
 			return renderVox(v,buffer,size) ;
 #endif
+		case SET_HIVE:
+			return renderHive(v,buffer,size) ;
 		case SET_TONE:
 		default:
 			return renderTone(v,buffer,size) ;
@@ -2048,6 +2094,306 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 	return true ;
 } ;
 
+
+// ---- HIVE: chord / swarm ------------------------------------------
+//
+// Up to five wavetable voices from one note. Every synth channel here
+// is one voice, so a chord in the standard sense -- every note
+// sounding at once -- needs an engine that carries the notes inside
+// the voice. This is it: the chord row picks a shape, voices says how
+// many of it sound, spread detunes them against each other and width
+// places them across the stereo field. Filter, envelopes, glide and
+// the LFO are shared by the whole chord, as they are on the machines
+// this borrows the idea from.
+//
+// The oscillators read band-limited tables, one per octave, built at
+// init from a harmonic sum -- a table read and one interpolation per
+// voice per sample, cheaper than the vax stack's polyBLEP, and any of
+// the four tone waves.
+
+void SynthInstrument::buildHiveTables() {
+	if (hiveTab_[0][0]) return ;
+	for (int i=0;i<32;i++) {
+		hiveSemiQ16_[i]=(unsigned int)(65536.0*pow(2.0,i/12.0)+0.5) ;
+	}
+	// 31 tables: three waves at ten octave levels, and one sine that
+	// every level of the sine wave points at
+	const int stride=HIVE_TABLE_SIZE+1 ;
+	short *blk=(short *)SYS_MALLOC(31*stride*sizeof(short)) ;
+	if (!blk) return ;
+	static short sin1k[HIVE_TABLE_SIZE] ;
+	for (int i=0;i<HIVE_TABLE_SIZE;i++) {
+		sin1k[i]=(short)(32767.0*sin(i*2.0*3.14159265358979/HIVE_TABLE_SIZE)) ;
+	}
+	static long long acc[HIVE_TABLE_SIZE] ;
+	short *t=blk ;
+	for (int w=0;w<3;w++) {
+		for (int lvl=0;lvl<HIVE_LEVELS;lvl++) {
+			int H=(HIVE_TABLE_SIZE/2)>>lvl ;
+			for (int n=0;n<HIVE_TABLE_SIZE;n++) acc[n]=0 ;
+			// saw: every harmonic at 1/k. square: the odd ones at 1/k.
+			// triangle: the odd ones at 1/k^2, alternating in sign.
+			int kstep=(w==SWT_SAW)?1:2 ;
+			for (int k=1;k<=H;k+=kstep) {
+				int a ;
+				if (w==SWT_TRIANGLE) {
+					a=32767/(k*k) ;
+					if (((k>>1)&1)) a=-a ;
+				} else {
+					a=32767/k ;
+				}
+				if (a==0) break ;
+				unsigned int ph=0 ;
+				for (int n=0;n<HIVE_TABLE_SIZE;n++) {
+					acc[n]+=(long long)a*sin1k[ph&(HIVE_TABLE_SIZE-1)] ;
+					ph+=(unsigned int)k ;
+				}
+			}
+			long long peak=1 ;
+			for (int n=0;n<HIVE_TABLE_SIZE;n++) {
+				long long v=acc[n]<0?-acc[n]:acc[n] ;
+				if (v>peak) peak=v ;
+			}
+			for (int n=0;n<HIVE_TABLE_SIZE;n++) {
+				t[n]=(short)((acc[n]*32000)/peak) ;
+			}
+			t[HIVE_TABLE_SIZE]=t[0] ;
+			hiveTab_[w][lvl]=t ;
+			t+=stride ;
+		}
+	}
+	for (int n=0;n<HIVE_TABLE_SIZE;n++) t[n]=(short)((sin1k[n]*32000)/32767) ;
+	t[HIVE_TABLE_SIZE]=t[0] ;
+	for (int lvl=0;lvl<HIVE_LEVELS;lvl++) hiveTab_[SWT_SINE][lvl]=t ;
+}
+
+// the Chamberlin SVF the other engines run, two passes, on one side
+static inline int hiveSvf(int in,int &low,int &band,int f,int qQ,int mode) {
+	int high=0 ;
+	for (int pass=0;pass<2;pass++) {
+		low+=(int)(((long long)f*band)>>15) ;
+		high=in-low-(int)(((long long)qQ*band)>>15) ;
+		band+=(int)(((long long)f*high)>>15) ;
+		if (band>SVF_CLAMP) band=SVF_CLAMP ;
+		if (band<-SVF_CLAMP) band=-SVF_CLAMP ;
+		if (low>SVF_CLAMP) low=SVF_CLAMP ;
+		if (low<-SVF_CLAMP) low=-SVF_CLAMP ;
+		if (high>SVF_CLAMP) high=SVF_CLAMP ;
+		if (high<-SVF_CLAMP) high=-SVF_CLAMP ;
+	}
+	return (mode==VFM_LP)?low:((mode==VFM_BP)?band:high) ;
+}
+
+static inline int hiveDrive(int s,int drive3) {
+	if (drive3) {
+		s=(s*(256+drive3))>>8 ;
+		if (s>24576) s=24576+((s-24576)>>2) ;
+		else if (s<-24576) s=-24576+((s+24576)>>2) ;
+	}
+	if (s>32700) s=32700 ;
+	if (s<-32700) s=-32700 ;
+	return s ;
+}
+
+bool SynthInstrument::renderHive(SynthVoice &v,fixed *buffer,int size) {
+
+	if (!hiveTab_[0][0]) return false ;
+
+	int wave=pv(SYP_WAVE)->GetInt() ;
+	if ((wave<0)||(wave>=SWT_LAST)) wave=SWT_SAW ;
+	int voices=pv(SYP_HVVOICES)->GetInt() ;
+	if (voices<1) voices=1 ;
+	if (voices>HIVE_MAX_VOICES) voices=HIVE_MAX_VOICES ;
+	int spread=pv(SYP_HVSPREAD)->GetInt() ;
+	int width=pv(SYP_HVWIDTH)->GetInt() ;
+
+	// the shape: a CHRD on the step, else the chord row. Trailing
+	// zero nibbles shorten a CHRD shape, as they do for ARPG.
+	unsigned char iv[HIVE_MAX_VOICES] ;
+	int notes=0 ;
+	if (v.hvChord_) {
+		iv[notes++]=0 ;
+		for (int i=0;i<4;i++) {
+			int nib=(v.hvChord_>>(12-4*i))&0xF ;
+			if (nib==0) break ;
+			iv[notes++]=(unsigned char)nib ;
+		}
+	} else {
+		int chord=pv(SYP_HVCHORD)->GetInt() ;
+		if ((chord<0)||(chord>=HIVE_CHORD_COUNT)) chord=0 ;
+		for (int i=0;i<HIVE_MAX_VOICES;i++) {
+			if (hiveChordIv[chord][i]==0xFF) break ;
+			iv[notes++]=hiveChordIv[chord][i] ;
+		}
+	}
+	if (notes<1) { iv[0]=0 ; notes=1 ; }
+
+	// Per voice: its chord tone, then spread fans the voices apart --
+	// up to about 1.5% at the top, the vax stack's range -- and width
+	// places them, the pan law lifted so a centred pair is as loud as
+	// the mono path.
+	unsigned int ratio[HIVE_MAX_VOICES] ;
+	int gL[HIVE_MAX_VOICES],gR[HIVE_MAX_VOICES] ;
+	for (int j=0;j<voices;j++) {
+		unsigned int r=hiveSemiQ16_[iv[j%notes]&31] ;
+		int det=hiveOff[j]*spread ;
+		r=(unsigned int)((long long)r+(((long long)r*det)>>15)) ;
+		ratio[j]=r ;
+		int p=0x7F+((hiveOff[j]*width)>>2) ;
+		if (p<0) p=0 ;
+		if (p>0xFE) p=0xFE ;
+		panLR(p,gL[j],gR[j]) ;
+		gL[j]=(gL[j]*46341)>>15 ; if (gL[j]>32767) gL[j]=32767 ;
+		gR[j]=(gR[j]*46341)>>15 ; if (gR[j]>32767) gR[j]=32767 ;
+	}
+
+	int cut=v.cutoff_ ;
+	int resoP=v.reso_ ;
+	int fltMode=pv(SYP_FLTMODE)->GetInt() ;
+	int modAmt=v.modAmt_ ;
+	fixed modSus=sustainFromParam(pv(SYP_DCWSUS)->GetInt()) ;
+	int modDec=pv(SYP_DCWDEC)->GetInt() ;
+	fixed ampSus=sustainFromParam(pv(SYP_SUSTAIN)->GetInt()) ;
+	int ampDec=pv(SYP_DECAY)->GetInt() ;
+	fixed vol=(fixed)(((int)v.volume_*v.cmdGain_)>>8)<<7 ;
+	int drive3=v.drive_*3 ;
+	int panL,panR ;
+	panLR(v.pan_,panL,panR) ;
+	int lfoDest ;
+	unsigned int lfoIncV ;
+	int lfoDepth ;
+	lfoBlockStart(v,lfoDest,lfoIncV,lfoDepth) ;
+
+	int qQ=32768-(resoP<<7) ;
+	if (qQ<1024) qQ=1024 ;
+	bool filtered=(cut<0xFF)||(resoP>0)||(fltMode!=VFM_LP)||
+	              (modAmt!=0)||((lfoDest==SLD_FILTER)&&lfoDepth) ;
+	// width costs a second filter, so a mono hive does not pay it
+	bool stereo=(width>0)&&(voices>1) ;
+	int voiceAmp=32768/voices ;
+
+	unsigned int curInc=v.curInc_ ;
+	unsigned int inc[HIVE_MAX_VOICES] ;
+	const short *tab[HIVE_MAX_VOICES] ;
+	for (int j=0;j<voices;j++) { inc[j]=curInc ; tab[j]=hiveTab_[wave][0] ; }
+	int f=cutTable_[cut] ;
+	int low=v.svfLow_,band=v.svfBand_ ;
+	int low2=v.svfLow2_,band2=v.svfBand2_ ;
+	int refresh=0 ;
+
+	fixed *out=buffer ;
+	for (int i=0;i<size;i++) {
+
+		if (refresh==0) {
+			refresh=16 ;
+			v.curInc_=curInc ;
+			glideStep(v,16) ;
+			curInc=v.curInc_ ;
+
+			int mod=0 ;
+			if (lfoDest!=SLD_OFF && lfoDepth) {
+				v.lfoPhase_+=lfoIncV*16 ;
+				mod=(sineTable_[v.lfoPhase_>>24]*lfoDepth)>>15 ;
+			}
+			unsigned int baseInc=curInc ;
+			if (lfoDest==SLD_PITCH && mod) {
+				baseInc=(unsigned int)((long long)curInc+
+					((long long)curInc*mod)/557056) ;
+			}
+			for (int j=0;j<voices;j++) {
+				unsigned int ij=(unsigned int)(((unsigned long long)baseInc*ratio[j])>>16) ;
+				inc[j]=ij ;
+				// The table for this octave. Level 0 holds 512
+				// harmonics and is right up to 43Hz; each level up
+				// halves that, so nothing reaches past nyquist.
+				int oct=0 ;
+				unsigned int q=ij ;
+				while (q>=(1u<<22)) { q>>=1 ; oct++ ; }
+				if (oct>=HIVE_LEVELS) oct=HIVE_LEVELS-1 ;
+				tab[j]=hiveTab_[wave][oct] ;
+			}
+			if (filtered) {
+				int cutEff=cut+((modAmt*(v.mod_.level_>>8))>>15) ;
+				if (lfoDest==SLD_FILTER) cutEff+=mod>>8 ;
+				if (cutEff>255) cutEff=255 ;
+				if (cutEff<0) cutEff=0 ;
+				f=cutTable_[cutEff] ;
+			}
+		}
+		refresh-- ;
+
+		// the voices: a table read with linear interpolation each
+		int sL,sR ;
+		if (stereo) {
+			int mixL=0,mixR=0 ;
+			for (int j=0;j<voices;j++) {
+				unsigned int p=v.uphase_[j] ;
+				const short *t=tab[j] ;
+				unsigned int idx=p>>(32-HIVE_TABLE_BITS) ;
+				int s0=t[idx] ;
+				int o=s0+(((t[idx+1]-s0)*(int)((p>>6)&0xFFFF))>>16) ;
+				v.uphase_[j]=p+inc[j] ;
+				mixL+=(o*gL[j])>>15 ;
+				mixR+=(o*gR[j])>>15 ;
+			}
+			mixL=(mixL*voiceAmp)>>15 ;
+			mixR=(mixR*voiceAmp)>>15 ;
+			if (filtered) {
+				sL=hiveSvf(mixL,low,band,f,qQ,fltMode) ;
+				sR=hiveSvf(mixR,low2,band2,f,qQ,fltMode) ;
+			} else {
+				sL=mixL ;
+				sR=mixR ;
+			}
+			sL=hiveDrive(sL,drive3) ;
+			sR=hiveDrive(sR,drive3) ;
+		} else {
+			int mix=0 ;
+			for (int j=0;j<voices;j++) {
+				unsigned int p=v.uphase_[j] ;
+				const short *t=tab[j] ;
+				unsigned int idx=p>>(32-HIVE_TABLE_BITS) ;
+				int s0=t[idx] ;
+				mix+=s0+(((t[idx+1]-s0)*(int)((p>>6)&0xFFFF))>>16) ;
+				v.uphase_[j]=p+inc[j] ;
+			}
+			mix=(mix*voiceAmp)>>15 ;
+			sL=filtered?hiveSvf(mix,low,band,f,qQ,fltMode):mix ;
+			sL=hiveDrive(sL,drive3) ;
+			sR=sL ;
+		}
+
+		stepRamp(v.amp_,ampSus,ampDec) ;
+		stepRamp(v.mod_,modSus,modDec) ;
+
+		int env=v.amp_.level_>>8 ;
+		if (stereo) {
+			fixed smpL=fp_mul(sL*env,vol) ;
+			fixed smpR=fp_mul(sR*env,vol) ;
+			// the declick is measured on the left; the right takes
+			// the same correction, so a retrigger does not step on
+			// one side only
+			fixed before=smpL ;
+			applyVoiceClick(v,smpL) ;
+			smpR+=smpL-before ;
+			*out++=(fixed)(((long long)smpL*panL)>>15) ;
+			*out++=(fixed)(((long long)smpR*panR)>>15) ;
+		} else {
+			fixed smp=fp_mul(sL*env,vol) ;
+			applyVoiceClick(v,smp) ;
+			*out++=(fixed)(((long long)smp*panL)>>15) ;
+			*out++=(fixed)(((long long)smp*panR)>>15) ;
+		}
+	}
+
+	v.curInc_=curInc ;
+	v.svfLow_=low ;
+	v.svfBand_=band ;
+	v.svfLow2_=low2 ;
+	v.svfBand2_=band2 ;
+	return true ;
+} ;
+
 // VOX: a formant / vocal engine. A band-limited glottal source (saw or
 // pulse) plus breath noise is fed through a bank of parallel resonant
 // bandpass SVFs tuned to a vowel's formants, summed by formant level.
@@ -2301,6 +2647,10 @@ const char *SynthInstrument::GetName() {
 			break ;
 		case SET_VOX:
 			sprintf(name_,"VOX %s",waveNames[pv(SYP_WAVE)->GetInt()]) ;
+			break ;
+		case SET_HIVE:
+			// the chord is the identity of a hive patch
+			sprintf(name_,"HIVE %s",hiveChordNames[pv(SYP_HVCHORD)->GetInt()&(HIVE_CHORD_COUNT-1)]) ;
 			break ;
 		default:
 			sprintf(name_,"TONE %s",waveNames[pv(SYP_WAVE)->GetInt()]) ;
@@ -2584,6 +2934,15 @@ void SynthInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 		}
 
 		case I_CMD_CHRD:
+			if (pv(SYP_ENGINE)->GetInt()==SET_HIVE) {
+				/* On a hive voice the nibbles ARE the chord: every note
+				   sounds at once, no flutter. 0000 hands the note back
+				   to the chord row. */
+				v.hvChord_=value ;
+				v.arpOn_=false ;
+				setVoicePitch(v,v.baseNote_) ;
+				break ;
+			}
 			/* A chord, on a monophonic channel, is an arpeggio at the
 			   fastest rate there is -- which is also what it is on the
 			   trackers this borrows the idea from. ARPG can already do

@@ -25,9 +25,9 @@ extern "C" unsigned int PSPME_FmCycles(void) ;
 // two lines of legend -- plus the title, the budget line and the
 // column header above them
 #ifdef PSP_ME_OFFLOAD
-#define BENCH_H 23
+#define BENCH_H 24
 #else
-#define BENCH_H 19
+#define BENCH_H 20
 #endif
 
 DspBenchModal::DspBenchModal(View &view) : ModalView(view) {

@@ -22,11 +22,11 @@ namespace DspBench {
 // Chosen to be the shapes people actually use, not the cheapest
 // settings each engine has: a bare saw tells you nothing about
 // whether a track will fit.
-enum { B_TONE=0, B_TONEF, B_VAX, B_PDX, B_FM2, B_FM4, B_VOX,
+enum { B_TONE=0, B_TONEF, B_VAX, B_PDX, B_FM2, B_FM4, B_VOX, B_HIVE,
        B_DELAY, B_REVERB, B_BOTH } ;
 
 static const char *names_[DSPB_ENGINES]= {
-	"tone","tone+flt","vax x2","pdx","fm 2op","fm 4op","vox",
+	"tone","tone+flt","vax x2","pdx","fm 2op","fm 4op","vox","hive x5",
 	"delay","reverb","dly+rev"
 } ;
 
@@ -102,6 +102,17 @@ static void configure(SynthInstrument &s,int which) {
 			}
 			break ;
 		}
+		// HIVE at its ceiling: five voices, a seventh chord, full
+		// width (so both filters run) and the filter half closed.
+		case B_HIVE:
+			s.FindVariable(SYP_ENGINE)->SetInt(SET_HIVE) ;
+			s.FindVariable(SYP_WAVE)->SetInt(SWT_SAW) ;
+			s.FindVariable(SYP_HVVOICES)->SetInt(HIVE_MAX_VOICES) ;
+			s.FindVariable(SYP_HVCHORD)->SetInt(4) ;
+			s.FindVariable(SYP_HVWIDTH)->SetInt(0xFF) ;
+			s.FindVariable(SYP_CUTOFF)->SetInt(0x80) ;
+			s.FindVariable(SYP_RESO)->SetInt(0x60) ;
+			break ;
 		case B_VOX:
 			s.FindVariable(SYP_ENGINE)->SetInt(SET_VOX) ;
 			s.FindVariable(SYP_WAVE)->SetInt(SWT_SAW) ;   // saw glottal source

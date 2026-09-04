@@ -86,6 +86,15 @@
 // table through any vowels that lie between them.
 #define SYP_VOXVA     MAKE_FOURCC('V','O','V','A')
 #define SYP_VOXVB     MAKE_FOURCC('V','O','V','B')
+// ---- HIVE (chord / swarm) --------------------------------------------
+// Up to five wavetable voices from one note: a chord shape, a detune
+// spread across the voices and a stereo width. The wave row is shared
+// with TONE (saw, square, triangle, sine), read from band-limited
+// tables built once at init.
+#define SYP_HVVOICES  MAKE_FOURCC('H','V','V','C')
+#define SYP_HVCHORD   MAKE_FOURCC('H','V','C','H')
+#define SYP_HVSPREAD  MAKE_FOURCC('H','V','S','P')
+#define SYP_HVWIDTH   MAKE_FOURCC('H','V','W','D')
 
 #define SYP_TABLE     MAKE_FOURCC('S','Y','T','B')
 #define SYP_TABLEAUTO MAKE_FOURCC('S','Y','T','A')
@@ -96,6 +105,7 @@ enum SynthEngineType {
 	SET_VAX,
 	SET_FM,
 	SET_VOX,      // formant / vocal: excitation -> parallel formant SVFs
+	SET_HIVE,     // chord / swarm: up to five wavetable voices from one note
 	SET_LAST
 } ;
 
@@ -137,6 +147,16 @@ enum SynthLfoDest {
 } ;
 
 #define VAX_MAX_UNISON 7
+// HIVE: five voices is the cap. Every voice is one band-limited
+// oscillator at about 2.5% of a block per channel on hardware, and
+// five covers a ninth chord and a doubled triad while two hive
+// channels stay under a quarter of the budget. The vax stack's seven
+// phases are reused, so raising this is a rebuild, not a redesign.
+#define HIVE_MAX_VOICES 5
+#define HIVE_TABLE_BITS 10
+#define HIVE_TABLE_SIZE (1<<HIVE_TABLE_BITS)
+#define HIVE_LEVELS 10            // 512 harmonics down to 1, an octave a step
+#define HIVE_CHORD_COUNT 16
 
 enum SynthWaveType {
 	SWT_SAW=0,
@@ -210,6 +230,12 @@ struct SynthVoice {
 	unsigned int rng_ ;
 	int svfLow_ ;
 	int svfBand_ ;
+	// HIVE with width: the right side runs its own filter
+	int svfLow2_ ;
+	int svfBand2_ ;
+	// HIVE: a CHRD on the step overrides the instrument's chord row
+	// with its nibbles for this note; 0 is the row's own shape
+	unsigned short hvChord_ ;
 	// VOX (formant) engine: per-formant Chamberlin SVF state (low+band)
 	int fmtLow_[4] ;
 	int fmtBand_[4] ;
@@ -341,6 +367,8 @@ private:
 	bool renderVax(SynthVoice &v,fixed *buffer,int size) ;
 	bool renderFm(SynthVoice &v,fixed *buffer,int size) ;
 	bool renderVox(SynthVoice &v,fixed *buffer,int size) ;
+	bool renderHive(SynthVoice &v,fixed *buffer,int size) ;
+	static void buildHiveTables() ;
 	void startFmOps(SynthVoice &v,bool fromCurrent) ;
 	void releaseFmOps(SynthVoice &v) ;
 	void setFmPitch(SynthVoice &v) ;
@@ -401,6 +429,12 @@ private:
 	// use: at 8 bits a modulator's own quantisation lands in the
 	// sidebands, which is exactly where it is audible.
 	static int *fmSinPacked_ ;          /* [1024] base<<16 | delta */
+	/* HIVE wavetables: per wave, per octave level, 1024 samples plus a
+	   wrap sample for the interpolation. Main memory, not the
+	   scratchpad -- 63KB will not fit there and each voice only walks
+	   one table. */
+	static short *hiveTab_[4][HIVE_LEVELS] ;
+	static unsigned int hiveSemiQ16_[32] ;  /* 2^(s/12), s = 0..31 */
 	static void placeTables() ;
 public:
 	/* Where operator `op` sends its output under `algo`: another

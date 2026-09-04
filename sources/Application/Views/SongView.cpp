@@ -1319,12 +1319,12 @@ void SongView::DrawSidePanel() {
     // a glance, rather than which slot. ------------------------------
     DrawPanel(PANEL_X, 25, 12, 2, "type");
     {
-        enum { K_SMP, K_MID, K_TONE, K_PDX, K_VAX, K_FM, K_VOX, K_LAST };
+        enum { K_SMP, K_MID, K_TONE, K_PDX, K_VAX, K_FM, K_VOX, K_HIVE, K_LAST };
         static const char *kindName[K_LAST] =
-            {"sm", "mi", "tn", "pd", "va", "fm", "vo"};
+            {"sm", "mi", "tn", "pd", "va", "fm", "vo", "hv"};
         static const ColorDefinition kindColor[K_LAST] =
-            {CD_PLAY, CD_NORMAL, CD_HILITE2, CD_CURSOR, CD_MUTE, CD_HILITE1, CD_ROW2};
-        bool on[K_LAST] = {false, false, false, false, false, false, false};
+            {CD_PLAY, CD_NORMAL, CD_HILITE2, CD_CURSOR, CD_MUTE, CD_HILITE1, CD_ROW2, CD_MAJORBEAT};
+        bool on[K_LAST] = {false};
         for (int i = 0; running && i < SONG_CHANNEL_COUNT; i++) {
             I_Instrument *in = player->GetChannelInstrument(i);
             if (!in) continue;
@@ -1335,7 +1335,7 @@ void SongView::DrawSidePanel() {
                     Variable *e = in->FindVariable(SYP_ENGINE);
                     int eng = e ? e->GetInt() : 0;
                     if (eng < 0 || eng >= SET_LAST) eng = 0;
-                    on[K_TONE + eng] = true;   // tone, pdx, vax, fm, vox in enum order
+                    on[K_TONE + eng] = true;   // tone, pdx, vax, fm, vox, hive in enum order
                     break;
                 }
                 default: break;

@@ -409,6 +409,7 @@ void InstrumentView::fillSynthParameters() {
 	bool vax=(engine==SET_VAX) ;
 	bool fm=(engine==SET_FM) ;
 	bool vox=(engine==SET_VOX) ;
+	bool hive=(engine==SET_HIVE) ;
 
 	// engine pills under the type row
 	GUIPoint pos(6,3) ;
@@ -494,13 +495,39 @@ void InstrumentView::fillSynthParameters() {
 		T_SimpleList<UIField>::Insert(sl) ;
 	}
 
+	if (hive) {
+		// ---- left column: the swarm (content rows 7-11) ----
+		// voices first, because it is the cost knob: every voice is
+		// one oscillator, about 2.5% of a block per channel
+		pos=GUIPoint(2,7) ;
+		v=instrument->FindVariable(SYP_HVVOICES) ;
+		UIStepperField *hs=new UIStepperField(pos,*v,"voices ","%d",1,HIVE_MAX_VOICES) ;
+		T_SimpleList<UIField>::Insert(hs) ;
+		pos=GUIPoint(2,8) ;
+		v=instrument->FindVariable(SYP_HVCHORD) ;
+		hs=new UIStepperField(pos,*v,"chord  ","%s",0,HIVE_CHORD_COUNT-1) ;
+		T_SimpleList<UIField>::Insert(hs) ;
+		pos=GUIPoint(2,9) ;
+		v=instrument->FindVariable(SYP_HVSPREAD) ;
+		UISliderField *hl=new UISliderField(pos,*v,"spread ",0,0xFF,1,0x10,7,SD_AUTO,19) ;
+		T_SimpleList<UIField>::Insert(hl) ;
+		pos=GUIPoint(2,10) ;
+		v=instrument->FindVariable(SYP_HVWIDTH) ;
+		hl=new UISliderField(pos,*v,"width  ",0,0xFF,1,0x10,7,SD_AUTO,19) ;
+		T_SimpleList<UIField>::Insert(hl) ;
+		pos=GUIPoint(2,11) ;
+		v=instrument->FindVariable(SYP_GLIDE) ;
+		hl=new UISliderField(pos,*v,"glide  ",0,0xFF,1,0x10,7,SD_AUTO,19) ;
+		T_SimpleList<UIField>::Insert(hl) ;
+	}
+
 	// TONE showed one control on a page sized for eight. It has the
 	// same sub, noise and pulse width the VAX engine has -- pulse
 	// width only on the wave where it means something -- and now an
 	// LFO it can actually reach. Oscillator rows sit above the wave
 	// graph; filter and LFO go in the right column, where VAX keeps
 	// its own.
-	if (!fm && !pdx && !vax && !vox) {
+	if (!fm && !pdx && !vax && !vox && !hive) {
 		int wv=instrument->FindVariable(SYP_WAVE)->GetInt() ;
 		int ty=7 ;
 		UISliderField *ts ;
@@ -610,7 +637,7 @@ void InstrumentView::fillSynthParameters() {
 		}
 	}
 
-	if (!fm && !pdx && !vax && !vox) {
+	if (!fm && !pdx && !vax && !vox && !hive) {
 		// ---- right column: FILTER (6-8) then LFO (12-14) ----
 		pos=GUIPoint(22,6) ;
 		v=instrument->FindVariable(SYP_CUTOFF) ;
@@ -688,10 +715,10 @@ void InstrumentView::fillSynthParameters() {
 		T_SimpleList<UIField>::Insert(vfs) ;
 	}
 
-	if (pdx||vax) {
+	if (pdx||vax||hive) {
 		// ---- right column: FILTER / DCW (content rows 6-13) ----
 		int ry=6 ;
-		if (vax) {
+		if (vax||hive) {
 			pos=GUIPoint(22,ry++) ;
 			v=instrument->FindVariable(SYP_CUTOFF) ;
 			sl=new UISliderField(pos,*v,"cutoff ",0,0xFF,1,0x10,7) ;
@@ -708,7 +735,7 @@ void InstrumentView::fillSynthParameters() {
 		}
 		pos=GUIPoint(22,ry) ;
 		v=instrument->FindVariable(SYP_DCWAMT) ;
-		sl=new UISliderField(pos,*v,vax?"env    ":"amount ",0,0xFF,1,0x10,7) ;
+		sl=new UISliderField(pos,*v,(vax||hive)?"env    ":"amount ",0,0xFF,1,0x10,7) ;
 		T_SimpleList<UIField>::Insert(sl) ;
 		ry++ ;
 		// mod envelope a/d/s beside its graph
@@ -750,7 +777,7 @@ void InstrumentView::fillSynthParameters() {
 		v=instrument->FindVariable(SYP_LFODEPTH) ;
 		sl=new UISliderField(pos,*v,"depth  ",0,0xFF,1,0x10,7) ;
 		T_SimpleList<UIField>::Insert(sl) ;
-		if (vax) {
+		if (vax||hive) {
 			pos=GUIPoint(22,19) ;
 			v=instrument->FindVariable(SYP_DRIVE) ;
 			sl=new UISliderField(pos,*v,"drive  ",0,0xFF,1,0x10,7) ;
@@ -1506,6 +1533,7 @@ void InstrumentView::drawSynthChrome() {
 	bool pdx=(engine==SET_PDX) ;
 	bool vax=(engine==SET_VAX) ;
 	bool fm=(engine==SET_FM) ;
+	bool hive=(engine==SET_HIVE) ;
 
 	if (fm) {
 		// FM: routing and the LFO on the left, one column per
@@ -1541,7 +1569,7 @@ void InstrumentView::drawSynthChrome() {
 		return ;
 	}
 
-	DrawPanel(1,5,19,8,"OSC") ;
+	DrawPanel(1,5,19,8,hive?"HIVE":"OSC") ;
 	int wk=0 ;
 	if (vax) wk=(instrument->FindVariable(SYP_VAXWAVE)->GetInt()==VWT_PULSE)?1:0 ;
 	else if (!pdx) {
@@ -1554,8 +1582,8 @@ void InstrumentView::drawSynthChrome() {
 	// the shape written next to it, so the icon was repeating what
 	// the label already said. PDX and TONE keep theirs: they have
 	// four wave shapes each and the spare rows to show one.
-	if (vax) {
-		// no graph
+	if (vax||hive) {
+		// no graph: the rows are full
 	} else if (pdx) {
 		app.OpWave(2*8+2,8*8+2,52,14,wk) ;
 	} else {
@@ -1570,20 +1598,20 @@ void InstrumentView::drawSynthChrome() {
 		instrument->FindVariable(SYP_DECAY)->GetInt(),
 		instrument->FindVariable(SYP_SUSTAIN)->GetInt()) ;
 
-	if (!pdx&&!vax) {
+	if (!pdx&&!vax&&!hive) {
 		// TONE runs the same SVF; it just never had the controls on
 		// screen, so FCUT and FRES looked like they did nothing
 		DrawPanel(21,5,18,3,"FILTER") ;
 		DrawPanel(21,11,18,3,"LFO") ;
 	}
-	if (pdx||vax) {
-		DrawPanel(21,5,18,8,vax?"FILTER":"DCW") ;
-		int gy=vax?10:7 ;
+	if (pdx||vax||hive) {
+		DrawPanel(21,5,18,8,(vax||hive)?"FILTER":"DCW") ;
+		int gy=(vax||hive)?10:7 ;
 		app.OpAdsr(22*8+2,gy*8+1,44,22,
 			instrument->FindVariable(SYP_DCWATK)->GetInt(),
 			instrument->FindVariable(SYP_DCWDEC)->GetInt(),
 			instrument->FindVariable(SYP_DCWSUS)->GetInt()) ;
-		DrawPanel(21,15,18,4,vax?"LFO + DRIVE":"LFO") ;
+		DrawPanel(21,15,18,4,(vax||hive)?"LFO + DRIVE":"LFO") ;
 	}
 	DrawPanel(1,21,38,2,"TABLE") ;
 } ;

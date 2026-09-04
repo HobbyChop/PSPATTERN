@@ -1,3 +1,27 @@
+PSPATTERN 0.33.0a
+
+    A sixth synth engine: hive, the chord engine. Up to five wavetable
+        voices from one note -- a chord shape from a triad to a ninth,
+        or off for a single note, spread to detune the voices against
+        each other, width to place them across the stereo field. The
+        wave is the tone list, saw, square, triangle or sine, from
+        band-limited tables built once at start. Filter, envelopes,
+        glide, drive and the LFO are shared by the whole chord. Every
+        voice is one oscillator, so the voices row is the cost knob;
+        the CPU LOAD bench has a hive row.
+
+    CHRD on a hive note is a real chord: the nibbles are the
+        intervals, every note sounds at once. Everywhere else it is
+        the tick-rate flutter it always was. CHRD 0000 hands a hive
+        note back to its chord row.
+
+    Four hive presets: HIVE-PAD, HIVE-STAB, HIVE-SUPERSAW, HIVE-CHIME.
+        The song screen's type box has an hv pill.
+
+    The manual and the site now say that FM feedback belongs to
+        operator four alone -- it does nothing while operator four's
+        level is zero -- and that its bottom half is quiet by design.
+
 PSPATTERN 0.32.0a
 
     A render no longer ends on the last note. The file stays open
