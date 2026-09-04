@@ -21,6 +21,7 @@ public: // System implementation
 	// the song screen's battery readout was dead because this returned -1
 	// on the only platform where it means anything
 	virtual int GetBatteryLevel() ;
+	virtual void GetDateTime(char *buf,int size) ;
 	virtual void PostQuitMessage() ;
 	virtual unsigned int GetMemoryUsage() ;
 	virtual unsigned int GetMemoryFree() ;

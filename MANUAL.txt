@@ -972,9 +972,17 @@ The tracker also keeps an automatic backup. If it was interrupted, it
 offers to recover the unsaved changes the next time you open the
 project.
 
-Set render to Stereo and press START to write mixdown.wav into the
-project folder while the song plays. Set it back to Off when you are
-done, or every play writes a new file.
+Set render to Stereo and press START to write a mixdown into the
+project folder while the song plays. Each take is its own file, named
+after the song and the clock as month, day, year, hour, minute,
+second -- PIXELFALL-09042026-153012.wav -- so renders never overwrite
+one another. When the song ends, or you stop it with START, the file
+stays open while the releases and the delay and reverb ring out, then
+closes on its own, and the screen names the file it wrote.
+Playing a note or starting the song again ends the tail at once. A
+frozen reverb never goes quiet, so a tail is capped at fifteen seconds.
+Set render back to Off when you are done, or every play writes a new
+file.
 
 
 19. LEVELS

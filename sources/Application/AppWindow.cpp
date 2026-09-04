@@ -341,6 +341,27 @@ void AppWindow::uiTick() {
        GetAnalog stays in the system layer for anything that ever
        wants an explicitly-calibrated use. */
 
+    // The render tail closed its own file: say so, with the name.
+    if (renderTailPending_ && !MixerService::GetInstance()->IsRendering()) {
+        renderTailPending_ = false;
+        if (_viewData) _viewData->isRendering_ = false;
+        if (_currentView) {
+            // the name without its .wav, and never past the row's
+            // forty columns
+            char name[64];
+            strncpy(name, MixerService::GetInstance()->GetRenderName(),
+                    sizeof(name) - 1);
+            name[sizeof(name) - 1] = 0;
+            char *dot = strrchr(name, '.');
+            if (dot) *dot = 0;
+            char msg[48];
+            snprintf(msg, sizeof(msg), "wrote %s", name);
+            msg[40] = 0;
+            _currentView->SetNotification(msg);
+            Redraw();
+        }
+    }
+
     Invalidate();
 }
 
@@ -371,6 +392,7 @@ AppWindow::AppWindow(I_GUIWindowImp &imp) : GUIWindow(imp) {
     _fxView = 0;
     navSel_ = VT_SONG;
     navigating_ = false;
+    renderTailPending_ = false;
     _closeProject = 0;
     _loadAfterSaveAsProject = 0;
     _loadAfterResume = 0;
@@ -1932,6 +1954,9 @@ void AppWindow::CloseProject(bool showPicker) {
     CLOSEMARK("begin");
     Player *player = Player::GetInstance();
     player->Stop();
+    // a take's tail cannot outlive its project folder
+    MixerService::GetInstance()->EndRenderTail();
+    renderTailPending_ = false;
     CLOSEMARK("player stopped");
     player->RemoveObserver(*this);
 
@@ -2339,24 +2364,32 @@ void AppWindow::Update(Observable &o, I_ObservableData *d) {
         // so this fires once either way and never notifies twice.
         if (pt->GetType() == PET_STOP && _viewData &&
             _viewData->isRendering_) {
-            _viewData->isRendering_ = false;
-            MixerService::GetInstance()->SetRenderMode(MSRM_PLAYBACK);
-            // The notification belongs to whichever screen is up. It is
-            // drawn by the view, so there has to be one to draw it; the
-            // state above is cleared either way.
+            MixerService *ms = MixerService::GetInstance();
+            ms->SetRenderMode(MSRM_PLAYBACK);
+            // The file is not closed with the transport: the releases
+            // and the delay and reverb lines are still ringing, and
+            // they belong in the take. It closes itself once the mix
+            // is quiet (AudioMixer::Render), and uiTick reports that.
             //
-            // Redraw() is not decoration. A notification is painted into
-            // the char grid by DrawView, and once playback stops the only
-            // thing still repainting is AnimationUpdate, which draws the
-            // side panel and never touches the bottom row. Without a full
-            // redraw the new message is set and never drawn, and the
-            // "rendering to wav..." characters from the START of the take
-            // stay on screen over a finished file.
-            if (_currentView) {
-                _currentView->SetNotification("render complete");
-                Redraw();
+            // Redraw() is not decoration: a notification is painted
+            // into the char grid by DrawView, and once playback stops
+            // nothing else repaints the bottom row, so without it the
+            // message is set and never drawn.
+            if (ms->IsRendering()) {
+                renderTailPending_ = true;
+                if (_currentView) {
+                    _currentView->SetNotification("letting the tail ring...");
+                    Redraw();
+                }
+            } else {
+                _viewData->isRendering_ = false;
+                if (_currentView) {
+                    _currentView->SetNotification("render complete");
+                    Redraw();
+                }
             }
         }
+
 
         // A dialog owns the screen while it is up. OnPlayerUpdate paints
         // straight into the char grid -- play cursors, the note readout,
@@ -2405,6 +2438,7 @@ void AppWindow::Update(Observable &o, I_ObservableData *d) {
 void AppWindow::onQuitApp() {
     Player *player = Player::GetInstance();
     player->Stop();
+    MixerService::GetInstance()->EndRenderTail();
     player->RemoveObserver(*this);
 
     player->Reset();

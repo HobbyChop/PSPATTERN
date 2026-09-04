@@ -178,6 +178,8 @@ void PlayerMixer::SetVelocity(int channel,fixed v) {
 }
 
 void PlayerMixer::StartInstrument(int channel,I_Instrument *instrument,unsigned char note,bool newInstrument)  {
+	// a note played into a render tail is not part of the take
+	MixerService::GetInstance()->EndRenderTail() ;
 	channel_[channel]->StartInstrument(instrument,note,newInstrument) ;
 	lastInstrument_[channel]=instrument ;
 	notes_[channel]=note ;

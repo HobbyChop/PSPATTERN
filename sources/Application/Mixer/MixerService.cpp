@@ -7,10 +7,15 @@
 #include "Services/Audio/AudioDriver.h"
 #include "Services/Midi/MidiService.h"
 #include "System/Console/Trace.h"
+#include "System/System/System.h"
+#include "System/FileSystem/FileSystem.h"
+#include <stdio.h>
+#include <string.h>
 #include <math.h>
 
 MixerService::MixerService() : out_(0), sync_(0), isRendering_(false) {
     mode_ = MSRM_PLAYBACK;
+    renderName_[0] = 0;
 };
 
 MixerService::~MixerService(){};
@@ -80,9 +85,35 @@ void MixerService::initRendering(MixerServiceRenderMode mode) {
     switch(mode) {
     case MSRM_PLAYBACK:
         break;
-    case MSRM_STEREO:
-        out_->SetFileRenderer("project:mixdown.wav");
+    case MSRM_STEREO: {
+        // One file per take: the song's name, then the clock as
+        // MMDDYYYY-HHMMSS, so renders never overwrite one another.
+        // The song's name is its project folder, lgpt_NAME.
+        char song[32];
+        song[0] = 0;
+        {
+            Path here("project:");
+            std::string full = here.GetPath();
+            while (!full.empty() &&
+                   (full[full.size() - 1] == '/' || full[full.size() - 1] == '\\'))
+                full.erase(full.size() - 1);
+            size_t cut = full.find_last_of("/\\:");
+            std::string leaf =
+                (cut == std::string::npos) ? full : full.substr(cut + 1);
+            if (leaf.compare(0, 5, "lgpt_") == 0) leaf.erase(0, 5);
+            strncpy(song, leaf.c_str(), sizeof(song) - 1);
+            song[sizeof(song) - 1] = 0;
+        }
+        char stamp[24];
+        System::GetInstance()->GetDateTime(stamp, sizeof(stamp));
+        snprintf(renderName_, sizeof(renderName_), "%s-%s.wav",
+                 song[0] ? song : "mixdown", stamp);
+        char path[80];
+        snprintf(path, sizeof(path), "project:%s", renderName_);
+        out_->SetFileRenderer(path);
         break;
+    }
+
     }
 }
 
@@ -107,7 +138,7 @@ void MixerService::SetRenderMode(int mode) {
     mode_ = MixerServiceRenderMode(mode);
 }
 
-bool MixerService::IsRendering() { return isRendering_; }
+bool MixerService::IsRendering() { return out_ && out_->IsRendering(); }
 
 bool MixerService::Start() {
     MidiService::GetInstance()->Start();
@@ -122,6 +153,8 @@ void MixerService::Stop() {
 	MidiService::GetInstance()->Stop() ;
      if (out_) {
       out_->Stop() ;
+      // the driver is stopped, so no block is being written
+      out_->CloseRendering() ;
       out_->RemoveObserver(*this) ;
      }
 }
@@ -245,10 +278,13 @@ void MixerService::toggleRendering(bool enable) {
     // the wav was left open, and since the header is only written when
     // the writer closes, every render came out zero bytes.
     if (!enable) {
+        // begins the tail; the file closes itself once the mix is quiet
         out_->EnableRendering(false);
         return;
     }
 
+    // whatever starts now is a new take, not part of the last one's tail
+    out_->CloseTail();
     switch (mode_) {
     case MSRM_PLAYBACK:
         initRendering(MSRM_PLAYBACK);
@@ -269,6 +305,11 @@ void MixerService::OnPlayerStart() {
 
 void MixerService::OnPlayerStop() {
 	toggleRendering(false) ;
+} ;
+
+void MixerService::EndRenderTail() {
+	// a request, not a close: the caller may not hold the mixer lock
+	if (out_) out_->RequestTailEnd() ;
 } ;
 
 void MixerService::SetSendFxParams(int division,int feedback,

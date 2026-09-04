@@ -19,6 +19,8 @@
 #include <sys/time.h>
 #include <malloc.h>
 #include <pspsysmem.h>
+#include <psprtc.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 EventManager *PSPSystem::eventManager_ = NULL ;
@@ -213,6 +215,18 @@ unsigned short PSPSystem::GetPadUpBits() {
 	                   PSP_CTRL_CROSS|PSP_CTRL_SQUARE)))
 		up|=(32|64) ;   // EPBM_B | EPBM_A
 	return up ;
+}
+
+void PSPSystem::GetDateTime(char *buf,int size) {
+	// the RTC in local time, as the XMB clock shows it
+	ScePspDateTime t ;
+	if (sceRtcGetCurrentClockLocalTime(&t)<0) {
+		System::GetDateTime(buf,size) ;
+		return ;
+	}
+	snprintf(buf,size,"%02d%02d%04d-%02d%02d%02d",
+	         (int)t.month,(int)t.day,(int)t.year,
+	         (int)t.hour,(int)t.minute,(int)t.second) ;
 }
 
 int PSPSystem::GetBatteryLevel() {

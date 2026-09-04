@@ -84,6 +84,9 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     bool navReachable(ViewType to);
     ViewType navSel_;
     bool navigating_;
+    // a take's file is open past the stop, waiting for the tail to
+    // ring out; uiTick reports when it closes
+    bool renderTailPending_;
     void CloseProject(bool showPicker = true);
 
     virtual void Clear(bool all = false);

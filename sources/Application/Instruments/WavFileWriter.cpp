@@ -4,6 +4,38 @@
 #include "Services/Audio/Audio.h"
 #include "Services/Audio/AudioStats.h"
 #include "System/Console/Trace.h"
+#include "System/Process/Process.h"
+#ifdef SDL2
+#include <SDL2/SDL.h>
+#else
+#include <SDL/SDL.h>
+#endif
+
+#ifdef PLATFORM_PSP
+#include <pspthreadman.h>
+extern int g_pspMainThreadPriority ;
+#endif
+
+// 256 KB: a second and a half of 16-bit stereo at 44.1k
+#define WAV_RING_SHORTS (128 * 1024)
+
+class WavWriteThread : public SysThread {
+public:
+    WavWriteThread(WavFileWriter *w) : w_(w) {}
+    virtual bool Execute() {
+#ifdef PLATFORM_PSP
+        // The UI's priority: below the DAC feed, round-robin with the
+        // render and the screen, starved by neither. See the same
+        // move in SDLAudioDriverThread.
+        sceKernelChangeThreadPriority(sceKernelGetThreadId(),
+                                      g_pspMainThreadPriority);
+#endif
+        w_->threadMain();
+        return true;
+    }
+private:
+    WavFileWriter *w_;
+};
 
 #ifdef PLATFORM_PSP
 #include <pspkernel.h>
@@ -22,17 +54,24 @@ static unsigned int writeMicros() {
 
 WavFileWriter::WavFileWriter(const char *path)
     : file_(0), buffer_(0), bufferSize_(0), dataBytes_(0), channels_(2),
-      pending_(0), pendingUsed_(0) {
+      pending_(0), pendingUsed_(0), ring_(0), ringSize_(0), ringRead_(0),
+      ringWrite_(0), wake_(0), thread_(0), finishing_(false), done_(false) {
     open(path, 2, Audio::GetInstance()->GetSampleRate());
+    // no thread (no memory for the ring) is the old in-thread path:
+    // still correct, just back to stalling the render on the card
+    if (file_) startThread();
 };
 
 WavFileWriter::WavFileWriter(const char *path, int channels, int rate)
     : file_(0), buffer_(0), bufferSize_(0), dataBytes_(0),
-      channels_(channels), pending_(0), pendingUsed_(0) {
+      channels_(channels), pending_(0), pendingUsed_(0), ring_(0),
+      ringSize_(0), ringRead_(0), ringWrite_(0), wake_(0), thread_(0),
+      finishing_(false), done_(false) {
     open(path, channels, rate);
 };
 
 WavFileWriter::~WavFileWriter() { Close(); }
+
 
 void WavFileWriter::open(const char *path, int channels, int rate) {
     pending_ = (short *)malloc(WAV_PENDING_SHORTS * sizeof(short));
@@ -149,6 +188,10 @@ void WavFileWriter::AddShorts(const short *frames, int frameCount) {
 // the buffer could not be allocated, which is the old behaviour and
 // still correct, just slower.
 void WavFileWriter::queue(const short *src, int n) {
+    if (thread_) {
+        ringPut(src, n);
+        return;
+    }
     if (!pending_) {
         file_->Write(src, 2, n);
         return;
@@ -186,7 +229,9 @@ void WavFileWriter::flush() {
     pendingUsed_ = 0;
 };
 
-void WavFileWriter::Close() {
+// The header's two lengths, then the file. Whichever thread finishes
+// the file does this; nothing touches file_ afterwards.
+void WavFileWriter::finalize() {
 
     if (!file_)
         return;
@@ -209,6 +254,116 @@ void WavFileWriter::Close() {
 
     file_->Close();
     SAFE_DELETE(file_);
+};
+
+void WavFileWriter::Close() {
+
+    if (thread_) {
+        if (!done_) {
+            Finish();
+            while (!done_) SDL_Delay(1);
+        }
+        while (!thread_->IsFinished()) SDL_Delay(1);
+        SAFE_DELETE(thread_);
+        SAFE_DELETE(wake_);
+        SAFE_FREE(ring_);
+        ringSize_ = 0;
+    } else {
+        finalize();
+        done_ = true;
+    }
     SAFE_FREE(buffer_);
     SAFE_FREE(pending_);
 };
+
+void WavFileWriter::Finish() {
+    if (!thread_) {
+        finalize();
+        done_ = true;
+        return;
+    }
+    if (finishing_) return;
+    finishing_ = true;
+    wake_->Post();
+};
+
+bool WavFileWriter::startThread() {
+    ring_ = (short *)malloc(WAV_RING_SHORTS * sizeof(short));
+    if (!ring_) return false;
+    ringSize_ = WAV_RING_SHORTS;
+    ringRead_ = ringWrite_ = 0;
+    wake_ = SysSemaphore::Create(0, 256);
+    if (!wake_) {
+        SAFE_FREE(ring_);
+        ringSize_ = 0;
+        return false;
+    }
+    thread_ = new WavWriteThread(this);
+    thread_->Start();
+    return true;
+};
+
+// The render's side of the ring. Copies in, and wakes the thread
+// once a card-sized lump is waiting.
+void WavFileWriter::ringPut(const short *src, int n) {
+    while (n > 0) {
+        int used = ringWrite_ - ringRead_;
+        if (used < 0) used += ringSize_;
+        int room = ringSize_ - 1 - used;
+        if (room <= 0) {
+            // The card has fallen a second and a half behind. Waiting
+            // is the old behaviour -- the render stalls -- and keeps
+            // the file whole, which is what a render is for.
+            wake_->Post();
+            SDL_Delay(1);
+            continue;
+        }
+        int take = (n < room) ? n : room;
+        int w = ringWrite_;
+        int first = ringSize_ - w;
+        if (first > take) first = take;
+        memcpy(ring_ + w, src, first * sizeof(short));
+        if (take > first)
+            memcpy(ring_, src + first, (take - first) * sizeof(short));
+        w += take;
+        if (w >= ringSize_) w -= ringSize_;
+        ringWrite_ = w;
+        src += take;
+        n -= take;
+        used += take;
+        if (used >= WAV_PENDING_SHORTS) wake_->Post();
+    }
+};
+
+// The thread's side: to the card in lumps while a lump is there, or
+// down to nothing when the file is finishing.
+void WavFileWriter::drain(bool all) {
+    for (;;) {
+        int used = ringWrite_ - ringRead_;
+        if (used < 0) used += ringSize_;
+        if (used <= 0) return;
+        if (used < WAV_PENDING_SHORTS && !all) return;
+        int take = (used < WAV_PENDING_SHORTS) ? used : WAV_PENDING_SHORTS;
+        int r = ringRead_;
+        int first = ringSize_ - r;
+        if (first > take) first = take;
+        file_->Write(ring_ + r, 2, first);
+        r += first;
+        if (r >= ringSize_) r -= ringSize_;
+        ringRead_ = r;
+    }
+};
+
+void WavFileWriter::threadMain() {
+    for (;;) {
+        wake_->Wait();
+        drain(finishing_);
+        if (finishing_) {
+            drain(true);
+            finalize();
+            done_ = true;
+            return;
+        }
+    }
+};
+

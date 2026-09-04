@@ -72,7 +72,13 @@ public:
     void SetMasterVolume(int);
     void SetEqBand(int band,int value);
     void SetRenderMode(int);
+    // true while a take's file is open -- through the tail that
+    // follows the stop as well as the take itself
     bool IsRendering();
+    // end a tail that is still being written, at once
+    void EndRenderTail();
+    // the file name of the current or last take, for the screen
+    const char *GetRenderName() { return renderName_; }
     int GetPlayedBufferPercentage() ;
 	
 	virtual void Execute(FourCC id,float value) ;
@@ -93,6 +99,7 @@ private:
   // BEFORE the master fader and the clipper
   SendFx::Return sendReturn_;
   MixerServiceRenderMode mode_;
+  char renderName_[64];
   SDL_mutex *sync_;
   bool isRendering_;
 } ;

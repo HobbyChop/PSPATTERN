@@ -13,6 +13,11 @@ AudioMixer::AudioMixer(const char *name):
 	T_SimpleList<AudioModule>(false),
 	enableRendering_(0),
 	writer_(0),
+	tailing_(false),
+	tailSamples_(0),
+	tailCut_(false),
+	tailQuiet_(0),
+	finishing_(0),
 	name_(name)
 {
 	volume_=(i2fp(1)) ;
@@ -54,6 +59,7 @@ AudioMixer::AudioMixer(const char *name):
 } ;
 
 AudioMixer::~AudioMixer() {
+	CloseRendering() ;
 	SAFE_FREE(mixBuffer_) ;
 }
 
@@ -61,22 +67,80 @@ void AudioMixer::SetFileRenderer(const char *path) {
 	renderPath_=path ;
 } ;
 
+// fifteen seconds at the PSP's rate: the cap on a tail that never
+// goes quiet on its own
+#define RENDER_TAIL_MAX (44100*15)
+
+// the output all but silent: under 16 of 32767, about -66 dBFS, on
+// both sides, for a second and a half -- longer than any delay's
+// spacing, so a repeat still on its way is waited for
+#define TAIL_QUIET 16
+#define TAIL_QUIET_SAMPLES (44100*3/2)
+
 void AudioMixer::EnableRendering(bool enable) {
 
-	if (enable==enableRendering_) {
+	if (enable) {
+		reapWriter() ;
+		// a tail still open belongs to the last take
+		if (tailing_) finishWriter() ;
+		if (writer_) return ;
+		writer_=new WavFileWriter(renderPath_.c_str()) ;
+		enableRendering_=true ;
 		return ;
 	}
+	if (!writer_||tailing_) return ;
+	// keep writing: Render finishes the file once the mix is quiet
+	tailing_=true ;
+	tailSamples_=0 ;
+	tailQuiet_=0 ;
+} ;
 
-	if (enable) {
-		writer_=new WavFileWriter(renderPath_.c_str()) ;
-	} 
+// Hand the open file to its own thread to drain and close. Never
+// blocks, so the audio thread can call it at the end of a tail.
+void AudioMixer::finishWriter() {
+	if (!writer_) return ;
+	// two takes inside the last one's drain: rare, and the wait is
+	// the price of not keeping a list
+	if (finishing_) {
+		finishing_->Close() ;
+		SAFE_DELETE(finishing_) ;
+	}
+	writer_->Finish() ;
+	finishing_=writer_ ;
+	writer_=0 ;
+	enableRendering_=false ;
+	tailing_=false ;
+	tailCut_=false ;
+} ;
 
-	enableRendering_=enable ;
-	if (!enable) {
+void AudioMixer::reapWriter() {
+	if (finishing_&&finishing_->Done()) {
+		SAFE_DELETE(finishing_) ;
+	}
+} ;
+
+
+void AudioMixer::CloseTail() {
+	if (tailing_) finishWriter() ;
+} ;
+
+// Everything closed here and now, waits included. For when the driver
+// is stopped: the quit, and the destructor.
+void AudioMixer::CloseRendering() {
+	if (writer_) {
 		writer_->Close() ;
 		SAFE_DELETE(writer_) ;
 	}
+	if (finishing_) {
+		finishing_->Close() ;
+		SAFE_DELETE(finishing_) ;
+	}
+	enableRendering_=false ;
+	tailing_=false ;
+	tailCut_=false ;
 } ;
+
+
 
 bool AudioMixer::Render(fixed *buffer,int samplecount) {
     clipped_ = false;
@@ -265,13 +329,32 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
          peakMixerLevel_ = 0;
          outputPeakLevel_ = 0;
      }
+    // a file the thread is still finishing: let it go once it is done
+    if (finishing_) reapWriter() ;
     if (enableRendering_&&writer_) {
 		if (!gotData) {
 			memset(buffer,0,samplecount*2*sizeof(fixed)) ;
 		} ;
 		writer_->AddBuffer(buffer,samplecount) ;
+		if (tailing_) {
+			// The take is over when the mix has been all but silent
+			// for a while: a delay's last repeats fall under hearing
+			// long before its line has technically run dry, and the
+			// file used to wait for the dry line. An empty block --
+			// every release out, both effect lines idle -- ends it at
+			// once, and the cap is for what never goes quiet.
+			tailSamples_+=samplecount ;
+			unsigned int pk=outputPeakLevel_ ;
+			bool quiet=((pk>>16)<TAIL_QUIET)&&((pk&0xFFFF)<TAIL_QUIET) ;
+			tailQuiet_=quiet?tailQuiet_+samplecount:0 ;
+			if (!gotData||tailCut_||tailQuiet_>=TAIL_QUIET_SAMPLES
+			    ||tailSamples_>=RENDER_TAIL_MAX) {
+				finishWriter() ;
+			}
+		}
 	}
      return gotData ;
+
 } ;
 
 void AudioMixer::SetVolume(fixed volume) { volume_ = volume; }

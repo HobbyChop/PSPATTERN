@@ -4,6 +4,8 @@
 #include "Foundation/T_Factory.h"
 #include "typedefs.h"
 #include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
 
 
 // How often the free-memory probe actually runs, how far up it looks,
@@ -31,6 +33,16 @@ public: // Override in implementation
 	   platform cannot answer. The stuck-mask cure asks it. */
 	virtual unsigned short GetPadUpBits() { return 0 ; }
 	virtual int GetBatteryLevel()=0 ;
+	/* The wall clock as a file-name stamp, MMDDYYYY-HHMMSS: render
+	   files are named from it. The default asks the C library; a
+	   platform with a real-time clock of its own overrides. */
+	virtual void GetDateTime(char *buf,int size) {
+		time_t t=time(0) ;
+		struct tm *lt=localtime(&t) ;
+		if (!lt||!strftime(buf,size,"%m%d%Y-%H%M%S",lt)) {
+			snprintf(buf,size,"00000000-000000") ;
+		}
+	}
 	virtual void *Malloc(unsigned size)=0 ;
 	virtual void Free(void *)=0 ;
   virtual void Memset(void *addr,char value,int size)=0 ;

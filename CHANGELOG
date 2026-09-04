@@ -1,3 +1,26 @@
+PSPATTERN 0.32.0a
+
+    A render no longer ends on the last note. The file stays open
+        while the releases and the delay and reverb ring out, and
+        closes on its own once the mix has been all but silent for a
+        second and a half, or at fifteen seconds for a frozen reverb.
+        A new note or a new take ends it at once. The screen says
+        "letting the tail ring..." and then names the file it wrote.
+
+    The card write has left the audio thread. A render used to hand
+        each 32 KB lump to the Memory Stick from inside the render
+        and wait for it; a card stalling on its own housekeeping was
+        an underrun with a hiccup in it. The render now fills a ring
+        and a thread of its own drains it to the card.
+
+    Every take is its own file, named after the song and the clock:
+        PIXELFALL-09042026-111433.wav, month, day, year, hour, minute,
+        second. Renders never overwrite one another.
+
+    START on the project screen renders. It read a stale copy of the
+        render switch and never carried it to the mixer, so a render
+        could only be started from the song screen.
+
 PSPATTERN 0.31.1a
 
     The spectrum's first four bars moved as one because they were the

@@ -283,13 +283,15 @@ void ProjectView::ProcessButtonMask(unsigned short mask,bool pressed) {
         if (mask&EPBM_START) {
             Player *player = Player::GetInstance();
 
-            int renderMode = viewData_->renderMode_;
+            // Same as SongView::onStart: the render switch is a project
+            // variable, and only the start carries it to the mixer.
+            // Stopping is handled where the stop event lands (AppWindow).
+            int renderMode = project_->GetRenderMode();
+            viewData_->renderMode_ = renderMode;
 			if (renderMode > 0 && !player->IsRunning()) {
+				MixerService::GetInstance()->SetRenderMode(renderMode);
 				viewData_->isRendering_ = true;
-				View::SetNotification("Rendering started!");
-			} else if (viewData_->isRendering_ && player->IsRunning()) {
-				viewData_->isRendering_ = false;
-				View::SetNotification("Rendering done!");
+				View::SetNotification("rendering to wav...");
 			}
 
 			player->OnStartButton(PM_SONG,viewData_->songX_,false,viewData_->songX_) ;

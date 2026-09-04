@@ -530,11 +530,10 @@ void SongView::onStart() {
         MixerService::GetInstance()->SetRenderMode(renderMode);
         viewData_->isRendering_ = true;
         View::SetNotification("rendering to wav...");
-    } else if (viewData_->isRendering_ && player->IsRunning()) {
-        viewData_->isRendering_ = false;
-        MixerService::GetInstance()->SetRenderMode(MSRM_PLAYBACK);
-        View::SetNotification("render complete");
     }
+    // Stopping a take is handled where the player's stop event lands
+    // (AppWindow): the file stays open for the tail, and the screen is
+    // told when it closes.
     player->OnSongStartButton(from, to, false, false);
 };
 

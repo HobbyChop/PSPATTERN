@@ -20,7 +20,31 @@ public:
 	virtual ~AudioMixer() ;
 	virtual bool Render(fixed *buffer,int samplecount) ;
 	void SetFileRenderer(const char *path) ;
+	/* Rendering to file.
+
+	   EnableRendering(true) opens a new file at the render path,
+	   first closing any tail still being written from the last take.
+	   EnableRendering(false) does NOT close the file: when the
+	   transport stops, the release stages and the delay and reverb
+	   lines are still ringing, and they belong in the take. The file
+	   waits for them -- Render closes it on the first block the master
+	   sum reports as empty, which is exact silence and free to detect,
+	   or at RENDER_TAIL_MAX samples for the lines that never go quiet
+	   (a frozen reverb, a delay fed back to unity).
+
+	   CloseTail ends a waiting tail at once, for anything that would
+	   otherwise be recorded into it: a new note, the next take, a
+	   project change. CloseRendering closes whatever is open. */
 	void EnableRendering(bool enable) ;
+	void CloseTail() ;
+	void CloseRendering() ;
+	/* Same as CloseTail, but honoured by Render on its next block
+	   instead of here: for callers that may not hold the mixer lock
+	   (a note played from the keys or over MIDI), so the writer is
+	   never deleted under the audio thread. */
+	void RequestTailEnd() { if (tailing_) tailCut_=true ; }
+	// true while a take's file is open, the thread's finishing included
+	bool IsRendering() const { return writer_!=0||finishing_!=0 ; }
 	void SetVolume(fixed volume) ;
 	/* Gain applied to every source as it is summed, not after.
 
@@ -118,6 +142,16 @@ private:
   bool enableRendering_;
   std::string renderPath_;
   WavFileWriter *writer_;
+  bool tailing_;      // stopped, file open, waiting for silence
+  int tailSamples_;
+  bool tailCut_;      // RequestTailEnd asked; Render closes
+  int tailQuiet_;     // samples the output has been all but silent
+  // A file the writer thread is still draining and closing. Handed
+  // over by finishWriter, which never blocks, and let go by
+  // reapWriter once the thread says it is done.
+  WavFileWriter *finishing_;
+  void finishWriter();
+  void reapWriter();
   fixed volume_;
   std::string name_;
   SoftClipData softClipData_[4];
