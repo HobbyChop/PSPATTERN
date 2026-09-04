@@ -354,8 +354,8 @@ SINGLE STEPS
                 repeat the last instrument
   O twice       on the instrument column, a new instrument: a copy of
                 the one there, in the next empty slot
-  X then O      clear the step, taking the instrument with the note and
-                the parameter with the command
+  X then O      clear the step, taking the instrument and velocity
+                with the note and the parameter with the command
   X then L      mute the channel
   O then L      solo the channel
 

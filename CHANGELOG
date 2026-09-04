@@ -1,3 +1,13 @@
+PSPATTERN 0.36.1a
+
+    Cut on the phrase screen takes the right things again. It used to
+        extend one column to the right on every even column, a rule
+        from before the velocity column existed: a cut on a parameter
+        took the NEXT command with it, and a cut on a command left its
+        own parameter behind. A note now takes its instrument and its
+        velocity, a command takes its parameter, and anything else
+        takes only itself.
+
 PSPATTERN 0.36.0a
 
     The song screen pages along with the playhead. When the furthest

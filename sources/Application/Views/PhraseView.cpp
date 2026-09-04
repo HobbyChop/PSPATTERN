@@ -484,9 +484,19 @@ void PhraseView::cutPosition() {
     saveRow_ = row_;
     saveCol_ = col_;
 
-    if (col_ % 2 == 0)
-        col_ += 1; // This way, A+B on note cuts
-                   // the instruments too and parameters get cut with commands
+    /* A cut takes what belongs together: the note with its instrument
+       and velocity, a command with its parameter. Written as pairs by
+       column, not by parity: the old rule extended every even column
+       one to the right, which was right before the velocity column
+       arrived at 2 and wrong after -- a cut on a parameter took the
+       NEXT command with it, and a cut on a command left its parameter
+       behind. */
+    switch (col_) {
+    case 0: col_ = 2; break;      // note, instrument, velocity
+    case 3: col_ = 4; break;      // command 1 with its parameter
+    case 5: col_ = 6; break;      // command 2 with its parameter
+    default: break;               // instrument, velocity, a parameter: itself
+    }
     cutSelection();
 };
 
