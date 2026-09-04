@@ -8,6 +8,8 @@ class SongView;
 
 class SongView : public View {
   public:
+    // the delete dialog's callback is a free function and lands here
+    void doDeleteRow();
     SongView(GUIWindow &w, ViewData *viewData, const char *song);
     ~SongView();
 
@@ -47,6 +49,13 @@ class SongView : public View {
     void copySelection();
     void pasteClipboard();
     void cutSelection();
+    // the song's rows as a list, on TRIANGLE: insert a blank row above
+    // or below (all eight columns move together), or delete one after
+    // a yes. See insertRow.
+    void insertRow(bool below);
+    void deleteRow();
+    void gotoRow(int row);
+    int pendingDeleteRow_;
 
     void unMuteAll();
     void toggleMute();

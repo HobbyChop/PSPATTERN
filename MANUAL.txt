@@ -48,7 +48,8 @@ The manual refers to the PSP buttons by the names printed on them.
   L and R    The shoulder triggers.
   START      Start and stop playback.
   SELECT     Marking on the grids, audition on the instrument screen.
-  TRIANGLE   Import, on the import screen. Nothing else, anywhere.
+  TRIANGLE   Import, on the import screen. On the song screen, held
+             with up or down it inserts a row, with X it deletes one.
   D-pad      Move the cursor.
   Nub        Unused. Stick drift on aging units made anything mapped
              to it a lottery, so nothing listens to it.
@@ -119,6 +120,17 @@ the right. Both clear when the song stops.
 Under the live box, type is a pill for each kind of instrument -- sm
 sample, mi midi, tn tone, pd pdx, va vax, fm, vo vox, hv hive -- lit
 in its own colour while something of that kind sounds on any channel.
+
+The song's rows can be treated as a list, once, on TRIANGLE. Hold it
+and press up to insert a blank row above the cursor, or down to insert
+one below: all eight columns from that row move down together, and
+bookmarks move with their rows. With a selection, the new row goes
+above its top or below its bottom. Hold TRIANGLE and press X to delete
+the cursor row; a box asks first, because everything below moves up.
+Both are refused while the song plays, an insert is refused when row
+FF holds anything since that row would fall off the end, and both are
+undone by R+L. Cut and paste stay where they are: these two are the
+only edits on the screen that move rows.
 
 L and X mutes the channel under the cursor.
 

@@ -10,11 +10,14 @@ extern "C" int PSPME_LoadPercent(void);   // the ME's own busy share
 #include "Services/Audio/AudioStats.h"
 #include "Application/Model/ProjectDatas.h"
 #include "Application/Player/Player.h"
+#include "Application/Views/ModalDialogs/MessageBox.h"
 #include "Application/Utils/char.h"
 #include "Application/Model/Config.h"
 #include "System/Console/Trace.h"
 #include "System/System/System.h"
 #include "UIController.h"
+#include <string.h>
+#include <stdio.h>
 #include "VuMeterUtil.h"
 #include <iostream>
 #include <sstream>
@@ -57,6 +60,7 @@ SongView::SongView(GUIWindow &w, ViewData *viewData, const char *song)
     battWarn_ = false;
     canDeepClone_ = false;
     jumpLength_ = 0x10; // B-jump 16 rows like LSDJ
+    pendingDeleteRow_ = 0;
 }
 
 /****************
@@ -429,6 +433,110 @@ void SongView::cutSelection() {
 }
 
 /******************************************************
+ insertRow / deleteRow:
+        the song's rows as a list. Insert pushes every column
+        from the row down by one and blanks the row; delete
+        pulls everything up. Bookmarks are per row and move
+        with their rows. Refused while the song plays, because
+        the player holds a row per channel that would go stale.
+ ******************************************************/
+
+void SongView::gotoRow(int row) {
+    if (row < 0) row = 0;
+    if (row > SONG_ROW_COUNT - 1) row = SONG_ROW_COUNT - 1;
+    int off = viewData_->songOffset_;
+    if ((row < off) || (row >= off + 16)) {
+        off = row - 8;
+        if (off < 0) off = 0;
+        if (off > SONG_ROW_COUNT - 16) off = SONG_ROW_COUNT - 16;
+        viewData_->songOffset_ = off;
+    }
+    viewData_->songY_ = row - off;
+}
+
+void SongView::insertRow(bool below) {
+    if (Player::GetInstance()->IsRunning()) {
+        View::SetNotification("stop playback to insert a row");
+        return;
+    }
+    int row = viewData_->songY_ + viewData_->songOffset_;
+    if (clipboard_.active_) {
+        GUIRect r = getSelectionRect();
+        row = below ? r.Bottom() : r.Top();
+    }
+    if (below) row++;
+    if (row > SONG_ROW_COUNT - 1) {
+        View::SetNotification("nothing below the last row");
+        return;
+    }
+    Song *song = viewData_->song_;
+    // the last row falls off the end, so it has to be empty
+    unsigned char *last = song->data_ + (SONG_ROW_COUNT - 1) * SONG_CHANNEL_COUNT;
+    for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
+        if (last[i] != 0xFF) {
+            View::SetNotification("row FF is not empty: no room");
+            return;
+        }
+    }
+    int rows = SONG_ROW_COUNT - 1 - row;
+    if (rows > 0) {
+        memmove(song->data_ + (row + 1) * SONG_CHANNEL_COUNT,
+                song->data_ + row * SONG_CHANNEL_COUNT,
+                rows * SONG_CHANNEL_COUNT);
+        memmove(song->bookmark_ + row + 1, song->bookmark_ + row, rows);
+    }
+    memset(song->data_ + row * SONG_CHANNEL_COUNT, 0xFF, SONG_CHANNEL_COUNT);
+    song->bookmark_[row] = 0;
+    clipboard_.active_ = false;
+    viewMode_ = VM_NORMAL;
+    gotoRow(row);
+    char msg[40];
+    sprintf(msg, "row %02X inserted", row);
+    View::SetNotification(msg);
+    isDirty_ = true;
+}
+
+static void DeleteRowCallback(View &v, ModalView &dialog) {
+    if (dialog.GetReturnCode() == MBL_YES) {
+        ((SongView &)v).doDeleteRow();
+    }
+}
+
+void SongView::deleteRow() {
+    if (Player::GetInstance()->IsRunning()) {
+        View::SetNotification("stop playback to delete a row");
+        return;
+    }
+    int row = viewData_->songY_ + viewData_->songOffset_;
+    pendingDeleteRow_ = row;
+    char msg[48];
+    sprintf(msg, "delete row %02X? rows below move up", row);
+    MessageBox *mb = new MessageBox(*this, msg, MBBF_YES | MBBF_CANCEL);
+    DoModal(mb, DeleteRowCallback);
+}
+
+void SongView::doDeleteRow() {
+    int row = pendingDeleteRow_;
+    if ((row < 0) || (row > SONG_ROW_COUNT - 1)) return;
+    Song *song = viewData_->song_;
+    int rows = SONG_ROW_COUNT - 1 - row;
+    if (rows > 0) {
+        memmove(song->data_ + row * SONG_CHANNEL_COUNT,
+                song->data_ + (row + 1) * SONG_CHANNEL_COUNT,
+                rows * SONG_CHANNEL_COUNT);
+        memmove(song->bookmark_ + row, song->bookmark_ + row + 1, rows);
+    }
+    memset(song->data_ + (SONG_ROW_COUNT - 1) * SONG_CHANNEL_COUNT, 0xFF, SONG_CHANNEL_COUNT);
+    song->bookmark_[SONG_ROW_COUNT - 1] = 0;
+    clipboard_.active_ = false;
+    viewMode_ = VM_NORMAL;
+    char msg[40];
+    sprintf(msg, "row %02X deleted", row);
+    View::SetNotification(msg);
+    isDirty_ = true;
+}
+
+/******************************************************
  pasteSelection:
         paste clipboard content to song
  ******************************************************/
@@ -676,6 +784,22 @@ void SongView::ProcessButtonMask(unsigned short mask, bool pressed) {
         };
         return;
     };
+
+    /* TRIANGLE: the song's rows as a list, for once. Held with UP or
+       DOWN it inserts a blank row above or below the cursor (or the
+       selection's edges) and every column below moves down together;
+       with X it deletes the cursor row and pulls everything up, after
+       a yes. Nothing else lives on TRIANGLE here, so a stray tap does
+       nothing but name the gestures. Cut and paste stay in place --
+       this is the one deliberate list edit the screen has, and it is
+       undoable. */
+    if (mask & EPBM_TRIANGLE) {
+        if (mask & EPBM_UP) insertRow(false);
+        else if (mask & EPBM_DOWN) insertRow(true);
+        else if (mask & EPBM_B) deleteRow();
+        else View::SetNotification("tri+up/dn insert row  tri+X delete");
+        return;
+    }
 
     if (viewMode_ == VM_CLONE) {
         if ((mask & EPBM_A) && (mask & EPBM_R)) {

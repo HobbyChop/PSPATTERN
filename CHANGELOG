@@ -1,3 +1,15 @@
+PSPATTERN 0.34.0a
+
+    The song's rows can be inserted and deleted, on TRIANGLE. Held
+        with up or down it inserts a blank row above or below the
+        cursor, or above or below a selection, and every column from
+        that row moves down together, bookmarks with them. Held with
+        X it deletes the cursor row after a yes, and everything below
+        moves up. Both are refused while the song plays, an insert is
+        refused when row FF holds anything, and both undo with R+L.
+        Cut and paste stay in place: these are the only edits on the
+        screen that move rows.
+
 PSPATTERN 0.33.0a
 
     A sixth synth engine: hive, the chord engine. Up to five wavetable
