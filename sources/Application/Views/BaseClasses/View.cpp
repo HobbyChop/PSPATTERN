@@ -189,7 +189,9 @@ void View::SetColor(ColorDefinition cd) {
 void View::DrawTitleStrip(const char *name, const char *right) {
     AppWindow &app = (AppWindow &)w_;
     app.OpRect(0, 0, 0, 320, 11, AppWindow::OC_STRIP);
-    app.OpRect(0, 0, 11, 320, 1, CD_HILITE1);
+    // on the top layer: painted whole and last whenever anything on
+    // its row changes, so a partial repair can never leave it broken
+    app.OpRect(1, 0, 11, 320, 1, CD_HILITE1);
     GUITextProperties props;
     SetColor(CD_NORMAL);
     DrawString(1, 0, name, props);

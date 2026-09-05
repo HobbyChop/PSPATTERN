@@ -63,7 +63,7 @@ SampleInstrument::SampleInstrument() {
 	 Insert(sustain_) ;
 	 Insert(release_) ;
 
-	 interpolation_=new Variable("interpol",SIP_INTERPOLATION,interpolationTypes,2,0) ;
+	 interpolation_=new Variable("interpol",SIP_INTERPOLATION,interpolationTypes,3,0) ;
 	 Insert(interpolation_) ;
 	 
 	 crush_=new Variable("crush",SIP_CRUSH,16) ;
@@ -980,6 +980,14 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
         }
 
         short *i2=i1+channelCount ;
+        /* The four-point curve reads one frame before and one after
+           the pair. Clamped to the sample's own frames: the first frame
+           stands in for the one before it, the last for the one after,
+           so a loop end or a one-shot's tail never reads past the
+           buffer. A clamp is a one-sample kink at a loop point, which
+           is what the straight line always had there too. */
+        short *i0=(i1>(short *)wavbuf)?(i1-channelCount):i1 ;
+        short *i3=(i2<lastSample)?(i2+channelCount):i2 ;
 
 				if (filtering) 
         {
@@ -996,7 +1004,33 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 
 					switch(interpol) {
 
-						case 0: // Linear interpolation
+						case 0: { // Hermite: Catmull-Rom through four frames
+							/* In integers on the raw shorts, with the fraction
+							   as a 16-bit weight, so the coefficients never
+							   leave the range an int holds: the doubled
+							   coefficients reach a few hundred thousand, and
+							   the fraction products are taken in 64 bits. The
+							   curve can overshoot a sharp edge by a tenth, so
+							   the result is clamped before it widens. */
+							int p0=*i0++ ;
+							int p1=fp2i(s1) ;
+							int p2=fp2i(s2) ;
+							int p3=*i3++ ;
+							int c1=p2-p0 ;                          // 2*c1
+							int c2=2*p0-5*p1+4*p2-p3 ;              // 2*c2
+							int c3=(p3-p0)+3*(p1-p2) ;              // 2*c3
+							long long t=(long long)fpPos ;          // 0..65535
+							long long h=((long long)c3*t)>>16 ;
+							h=((h+c2)*t)>>16 ;
+							h=((h+c1)*t)>>16 ;
+							int out=p1+(int)(h>>1) ;
+							if (out>32767) out=32767 ;
+							if (out<-32767) out=-32767 ;
+							s1=i2fp(out) ;
+							break ;
+						}
+
+						case 1: // Linear interpolation
 						
 							eta=fpPos ;
 							inveta=fp_sub(FP_ONE,eta) ;
@@ -1011,7 +1045,7 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
     					s1+=s2 ;
 							break ;
 							
-						case 1: // Nearest neighbor
+						case 2: // Nearest neighbor
 						
 							if (fpPos>zerofive) {
 								s1=s2 ;

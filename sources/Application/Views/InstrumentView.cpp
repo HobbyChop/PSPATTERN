@@ -1,4 +1,5 @@
 #include "InstrumentView.h"
+#include "Application/Model/Table.h"
 #include "Application/AppWindow.h"
 #include "Application/Instruments/MidiInstrument.h"
 #include "Application/Instruments/SampleInstrument.h"
@@ -215,7 +216,7 @@ void InstrumentView::fillSampleParameters() {
 
 	pos=GUIPoint(2,11) ;
 	v=instrument->FindVariable(SIP_INTERPOLATION) ;
-	UIPillField *pf=new UIPillField(pos,*v,"intp   ",2) ;
+	UIPillField *pf=new UIPillField(pos,*v,"intp   ",3) ;
 	T_SimpleList<UIField>::Insert(pf) ;
 
 	// ---- left column: LOOP (content rows 14-18) ----
@@ -553,21 +554,27 @@ void InstrumentView::fillSynthParameters() {
 	UISliderField *sl=new UISliderField(pos,*v,"volume ",0,0xFF,1,0x10,7,SD_AUTO,19) ;
 	T_SimpleList<UIField>::Insert(sl) ;
 
-	pos=GUIPoint(11,17) ;
+	/* The envelope digits sit one column nearer the slider than they
+	   used to. Down looks in the same column first, and "same" means
+	   within eight columns; at eleven they were nine from the volume
+	   slider, so down from volume skipped the envelope and landed on
+	   the table row -- reaching the attack took right, down and left.
+	   At ten they are eight away and down goes straight there. */
+	pos=GUIPoint(10,17) ;
 	v=instrument->FindVariable(SYP_ATTACK) ;
 	UIIntVarField *f1=new UIIntVarField(pos,*v,"a %2.2X",0,0xFF,1,0x10) ;
 	T_SimpleList<UIField>::Insert(f1) ;
-	pos=GUIPoint(11,18) ;
+	pos=GUIPoint(10,18) ;
 	v=instrument->FindVariable(SYP_DECAY) ;
 	f1=new UIIntVarField(pos,*v,"d %2.2X",0,0xFF,1,0x10) ;
 	T_SimpleList<UIField>::Insert(f1) ;
-	pos=GUIPoint(11,19) ;
+	pos=GUIPoint(10,19) ;
 	v=instrument->FindVariable(SYP_SUSTAIN) ;
 	f1=new UIIntVarField(pos,*v,"s %2.2X",0,0xFF,1,0x10) ;
 	T_SimpleList<UIField>::Insert(f1) ;
 	// release sits beside sustain: the panel has no spare row, and
 	// these two are read together anyway
-	pos=GUIPoint(16,19) ;
+	pos=GUIPoint(15,19) ;
 	v=instrument->FindVariable(SYP_RELEASE) ;
 	f1=new UIIntVarField(pos,*v,"r %2.2X",0,0xFF,1,0x10) ;
 	T_SimpleList<UIField>::Insert(f1) ;
@@ -960,10 +967,28 @@ bool InstrumentView::OnNavTo(ViewType to) {
 		    ->GetInstrument(viewData_->currentInstrument_) ;
 		int t=instr?instr->GetTable():-1 ;
 		if (t<0) {
-			// nothing to follow, so the jump is refused and says
-			// why -- the same rule as the empty chain row
-			View::SetNotification("no table set - set one first") ;
-			return false ;
+			/* Going in is the request. An instrument with no table
+			   gets the next free one, set on its tbl row, and the jump
+			   goes through -- the way an empty song slot makes its
+			   chain and an empty chain row its phrase. It used to
+			   refuse with a notice, which read as the map being
+			   broken to anyone who had not set a table yet. */
+			if (!instr) return false ;
+			TableHolder *th=TableHolder::GetInstance() ;
+			int next=th->GetNext() ;
+			if ((next<0)||(next>=TABLE_COUNT)) {
+				View::SetNotification("no free tables left") ;
+				return false ;
+			}
+			Variable *tv=instr->FindVariable("table") ;
+			if (!tv) return false ;
+			th->SetUsed(next) ;
+			tv->SetInt(next) ;
+			char msg[40] ;
+			sprintf(msg,"table %02X made for this instrument",next) ;
+			View::SetNotification(msg) ;
+			t=next ;
+			isDirty_=true ;
 		}
 		viewData_->currentTable_=t ;
 	}
@@ -1524,11 +1549,13 @@ void InstrumentView::drawSampleChrome() {
 		instrument->FindVariable(SIP_SUSTAIN)->GetInt()) ;
 	DrawPanel(1,21,38,2,"TABLE") ;
 
-	/* What the slot is working with. The whole name -- the file row
-	   cuts it at seventeen cells -- and the shape of the sound, frames
-	   in hex because start, loop and end count in hex frames. Rows
-	   24-28 are free on every page; the hint bar owns 29. */
-	DrawPanel(1,24,38,2,"FILE") ;
+	/* What the slot is working with, on one line: the name, cut at
+	   twelve cells (the file row above shows more of it), then the
+	   shape of the sound -- channels, rate in kHz, length, frames in
+	   hex because start, loop and end count in hex frames, and the
+	   memory it takes. One row, because the corner map owns rows 26
+	   to 28 on every screen; the hint bar owns 29. */
+	DrawPanel(1,24,38,1,"FILE") ;
 	{
 		SampleInstrument *si=(SampleInstrument *)instrument ;
 		SamplePool *pool=SamplePool::GetInstance() ;
@@ -1541,10 +1568,21 @@ void InstrumentView::drawSampleChrome() {
 			DrawString(2,25,"no sample",props) ;
 		} else {
 			const char *name=(index<pool->GetNameListSize())?pool->GetNameList()[index]:0 ;
-			snprintf(line,37,"%s%s",name?name:"",src->IsBaked()?"  (generated kit)":"") ;
+			char info[28] ;
+			if (src->IsMulti()) {
+				snprintf(info,sizeof(info),"soundfont, sample per note") ;
+			} else {
+				int ch=src->GetChannelCount(-1) ;
+				int rate=src->GetSampleRate(-1) ;
+				long frames=src->GetSize(-1) ;
+				char secs[12],ram[8] ;
+				SampleInfo::FormatSeconds(rate,frames,secs,sizeof(secs)) ;
+				SampleInfo::FormatBytes((unsigned long)frames*(unsigned long)ch*2UL,ram,sizeof(ram)) ;
+				snprintf(info,sizeof(info),"%s %dk %s %lXf %s",(ch==1)?"mo":"st",
+				         (rate+500)/1000,secs,(unsigned long)frames,ram) ;
+			}
+			snprintf(line,38,"%-12.12s %s%s",name?name:"",src->IsBaked()?"kit ":"",info) ;
 			DrawString(2,25,line,props) ;
-			SampleInfo::DescribeSource(src,line,37) ;
-			DrawString(2,26,line,props) ;
 		}
 	}
 } ;

@@ -6,7 +6,12 @@ char *loopTypes[SILM_LAST] = {"none", "loop", "ping", "osc",
                               //	"oscillator fine",
                               "sync"};
 
+// hermite first, and the default: a four-point curve through the
+// samples keeps the top end a straight line loses. lin is the old
+// piggy sound, none the crunch. Saved by name, so an older project
+// keeps whichever it chose.
 char *interpolationTypes[] = {
+	"herm",
 	"lin",
 	"none"
 } ;

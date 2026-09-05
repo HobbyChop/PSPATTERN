@@ -1,3 +1,34 @@
+PSPATTERN 0.39.0a
+
+    A map of the screens sits in the bottom right corner of every
+        screen, in a tiny pixel font, the screen you are on on a
+        filled block. Hold R and the arrows walk a second highlight
+        over it; release to jump. The overlay that R used to raise is
+        gone, so no chord that starts with R flashes anything any more.
+
+    The song screen's side panel makes room for it: the spectrum
+        alone at the top, the info box without the tempo and project
+        rows (the title strip and the project screen carry both), and
+        live and type moved up.
+
+    Samples read between their points with a four-point curve now,
+        herm on the intp row, which keeps the top end a straight line
+        loses when a sample plays below its root. lin is the old piggy
+        sound and none the crunch; a saved project keeps what it
+        chose. New projects start with the mixer's high pass at 20Hz
+        on every channel, so subsonics never stack on the bus.
+
+    Jumping to an instrument's table cell on the map when the
+        instrument has no table makes the next free one and sets it
+        on the instrument, the way an empty song slot makes its chain.
+
+    The instrument's own LFO rate is speed the whole way up: 100 per
+        cent is 16Hz, not a sixteen-bar cycle. The tempo divisions
+        belong to the LFO_ command alone. Down from volume in the amp
+        box now lands on attack. The sample page's FILE box is one
+        line. The rule under the title strip no longer breaks while
+        switching instruments.
+
 PSPATTERN 0.38.0a
 
     The instrument screen's two zones meet at their edges. Up from

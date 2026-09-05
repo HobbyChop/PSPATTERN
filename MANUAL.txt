@@ -58,8 +58,10 @@ Most editing is a modifier held with a direction. Holding O and pressing
 left or right changes a value by one. Holding O and pressing up or down
 changes it by sixteen, or by ten on the velocity column.
 
-Hold R and the screen map appears; directions walk it, and releasing
-R jumps. R is always the map and never anything else, which is why
+A map of the screens sits in the bottom right corner of every screen,
+the one you are on highlighted. Hold R and the directions walk a
+second highlight over it; releasing R jumps there. R is always the
+map and never anything else, which is why
 muting and soloing are held with L instead. The bottom line of every
 screen lists the moves available from where you are. It does not list
 all of them. Copying, cloning, soloing and the rest are in section 8.
@@ -111,8 +113,9 @@ bottom edge; follow NO on the config screen holds the window still. A
 channel with a blank cell at row zero never starts, so start every
 channel you want to hear at row zero.
 
-The info panel on the right carries the tempo, the project name, the
-MIDI adapter, the battery, and the machine's health: dsp is the render
+The spectrum of the mix sits at the top of the right-hand column. The
+info panel under it carries the MIDI adapter, the battery, and the
+machine's health: dsp is the render
 load (it turns into the worst recent figure with an exclamation mark
 only when a block actually misses its deadline), me is how busy the
 second processor is with the send effects, vfpu is the share of the
@@ -400,8 +403,9 @@ read separately, or as aaaa when all four are one number.
   LFOR  LFO rate
   LFO_  a free-running LFO on the channel: aa rate, bb depth, 0000 stops
 
-LFO rates -- the instrument's, LFOR's and LFO_'s -- are a curve from
-0.05Hz at 00 to 16Hz at EF. F0 to FF are tempo divisions instead:
+The instrument's own LFO rate, and LFOR, are a curve from 0.05Hz at
+00 to 16Hz at FF, slow to fast the whole way up. LFO_'s rate is the
+same curve up to EF, and F0 to FF are tempo divisions instead:
 
   F0 8 bars   F1 4 bars   F2 2 bars   F3 1 bar    F4 1/2     F5 1/4
   F6 1/8      F7 1/16     F8 1/32     F9 dotted 1/2   FA dotted 1/4
@@ -452,7 +456,10 @@ pitch instead of cancelling it. A row of -- is no transpose, so leaving
 the column alone changes nothing.
 
 Start a table from a phrase step with the TABL command, or set an
-instrument to run one automatically from its table field.
+instrument to run one automatically from its table field. Jumping to
+the instrument's table cell on the corner map when the instrument has
+no table yet makes the next free one and sets it on the table field
+as you go in, the way an empty song slot makes its chain.
 
 Tables run at tick rate, which is faster than the phrase steps.
 
@@ -467,6 +474,13 @@ a soundfont. Section 14 covers where those files go. It has volume,
 pan, root note, fine tune, interpolation, loop mode and points, slice
 count, a drive and bit crush stage, a filter with cutoff, resonance and
 type, a feedback stage, an attenuator and an amplitude envelope.
+
+Interpolation is how the sampler reads between its points when a
+sample plays away from its root. herm, the default, draws a curve
+through four points and keeps the top end that a straight line loses,
+so a sample pitched down stays bright. lin is the straight line, the
+old piggy sound. none reads the nearest point and is the crunch. A
+project saved before herm existed keeps what it chose.
 
 MIDI sends notes out of the PSP-MIDI adapter. It has a channel, volume,
 note length, pitch bend range and four CC slots.
@@ -498,11 +512,12 @@ preset steps and you are browsing the bank by ear.
 
 THE FILE PANEL
 
-The bottom of the sample page describes the sample the slot is on:
-its whole name (the file row shows seventeen characters of it), then
-channels, rate, length in seconds, length in frames -- in hex,
-because start, loop and end count in hex frames -- and what it costs
-in memory. A generated kit drum says so beside its name. A SoundFont
+The bottom of the sample page describes the sample the slot is on, in
+one line: the name, cut at twelve characters (the file row above
+shows seventeen), then mo or st for the channels, the rate in kHz,
+the length in seconds, the length in frames -- in hex, because
+start, loop and end count in hex frames -- and what it costs in
+memory. A generated kit drum says kit beside its name. A SoundFont
 preset carries a sample per note, so it is described as such rather
 than measured.
 
@@ -819,7 +834,11 @@ Each drum has a soft and a hard variant.
 
 Each channel has a level, a high pass, a low pass, and a send to the
 delay and to the reverb. The two send effects are shared by all
-channels.
+channels. A new project starts with the high pass at 20Hz on every
+channel: nothing musical lives below it, and eight channels of
+subsonics stacking on the bus is where a mix turns muddy before a
+fader has been touched. The 90Hz setting is the one to reach for on
+anything that is not the kick or the bass.
 
 Up and down move through the rows of a strip. The four settings of the
 send effects themselves sit on one line below the strips, and left and

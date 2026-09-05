@@ -16,7 +16,11 @@ void Mixer::Clear() {
 	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
 		channelBus_[i]=i ;
         channelVolume_[i] = 0xFF;
-        channelHPF_[i] = 0; // 0=OFF, 1=20Hz, 2=90Hz
+        // 20Hz by default: nothing musical lives below it, and eight
+        // channels of subsonics stacking on the bus is where a mix goes
+        // muddy before anyone has touched a fader. A saved project
+        // keeps its own setting; this is the start for a new one.
+        channelHPF_[i] = 1; // 0=OFF, 1=20Hz, 2=90Hz
         channelLPF_[i] = 0; // 0=OFF, else frequency in Hz (20-20000)
         channelDelaySend_[i] = 0;
         channelReverbSend_[i] = 0;

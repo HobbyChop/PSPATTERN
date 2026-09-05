@@ -1207,8 +1207,8 @@ void SongView::DrawSidePanel() {
     bool running = player->IsRunning();
     char buf[48];
 
-    // --- scope: live master-mix waveform ---------------------------
-    DrawPanel(PANEL_X, 2, 12, 6, "scope");
+    // --- spectrum of the mix (the scope where there is no ME) ------
+    DrawPanel(PANEL_X, 2, 12, 3, "spectrum");
     static short scopeTick = 0;
     if (running) scopeTick++;
     /* One trace per channel, left above right, same size as each
@@ -1217,56 +1217,33 @@ void SongView::DrawSidePanel() {
        panned part or a ping-pong delay looked exactly like a mono
        mix. Both still span the full width, so neither loses any of
        the time window. */
-    app.OpScope(PANEL_X * 8 + 5, 24, 92, 21, running ? scopeTick : 0, 0);
+    /* The scope went to make room for the corner map: the spectrum
+       says more about a mix than a waveform does, and the panel that
+       held both had the whole column to itself. Builds without the
+       second core, which has no spectrum, keep the scope here. */
 #if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
-    // the second trace was the right channel -- near-identical to the
-    // left on most mixes. The ME's spectrum earns the space better.
-    app.OpSpectrum(PANEL_X * 8 + 5, 47, 92, 21, running ? scopeTick : 0);
+    app.OpSpectrum(PANEL_X * 8 + 5, 24, 92, 21, running ? scopeTick : 0);
 #else
-    app.OpScope(PANEL_X * 8 + 5, 47, 92, 21, running ? scopeTick : 0, 1);
+    app.OpScope(PANEL_X * 8 + 5, 24, 92, 21, running ? scopeTick : 0, 0);
 #endif
 
-    // --- mix: memory, tempo, project, midi, battery ----------------
-    DrawPanel(PANEL_X, 10, 12, 9, "info");
+    // --- info: midi, battery, load, memory, underruns --------------
+    // tempo and project name left: the title strip and the project
+    // screen carry both, and the corner map needed the rows
+    DrawPanel(PANEL_X, 7, 12, 7, "info");
 
     // dsp and memory moved to the status bar every screen carries --
     // this panel keeps what only the song screen can say
     System *sys = System::GetInstance();
 
-    int bpm = viewData_->project_->GetTempo();
-    SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 11, "bpm", props);
-    sprintf(buf, "%3d", bpm);
-    /* Following an external clock, the tempo is not ours to set and
-       the useful question is whether we have caught it yet. Play
-       colour once the loop is holding, mute colour while it is still
-       chasing -- so a tempo that will not settle is visible instead of
-       being something you have to hear. */
-    if (Player::GetSyncMode() == Player::SYNC_FOLLOW && running) {
-        SetColor(player->IsClockLocked() ? CD_PLAY : CD_MUTE);
-    } else {
-        SetColor(CD_HILITE2);
-    }
-    DrawString(36, 11, buf, props);
-
-    SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 12, "prj", props);
-    char name[8];
-    strncpy(name, songname_.substr(0, 5) == "lgpt_"
-                      ? songname_.c_str() + 5
-                      : songname_.c_str(),
-            7);
-    name[7] = 0;
-    SetColor(CD_NORMAL);
-    sprintf(buf, "%7s", name);
-    DrawString(32, 12, buf, props);
+    int bpm = viewData_->project_->GetTempo();   // the title strip still shows it
 
     /* What the adapter is doing, not what the config file was told.
        This row printed the configured device name, which read PSPMIDI
        with nothing plugged in -- so the one place on screen that looked
        like it answered "is my adapter working" always said yes. */
     SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 13, "mid", props);
+    DrawString(PANEL_TXT, 8, "mid", props);
     MidiService *midi = MidiService::GetInstance();
     MidiLinkState mls = midi ? midi->GetLinkState() : MLS_NODRIVER;
     const char *midTxt;
@@ -1294,13 +1271,13 @@ void SongView::DrawSidePanel() {
     }
     sprintf(buf, "%8s", midTxt);
     SetColor(midCol);
-    DrawString(31, 13, buf, props);
+    DrawString(31, 8, buf, props);
 
     int batt = sys->GetBatteryLevel();
     if (batt >= 0) {
         if (batt > 999) batt = 999;
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 14, "bat", props);
+        DrawString(PANEL_TXT, 9, "bat", props);
         // The low battery warning blinks on the wall clock, not once
         // per draw. This panel is one of the animated ones, so it
         // repaints every UI frame -- inverting on each repaint made a
@@ -1320,7 +1297,7 @@ void SongView::DrawSidePanel() {
         props.invert_ = invertBatt_;
         sprintf(buf, "%3d%%", batt);
         SetColor(battWarn_ ? CD_HILITE2 : CD_NORMAL);
-        DrawString(35, 14, buf, props);
+        DrawString(35, 9, buf, props);
         props.invert_ = false;
     }
 
@@ -1335,7 +1312,7 @@ void SongView::DrawSidePanel() {
         if (dsp > 999) dsp = 999;
         if (pk > 999) pk = 999;
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 15, "dsp", props);
+        DrawString(PANEL_TXT, 10, "dsp", props);
         char vbuf[12];
         // the average, until a block actually blows its deadline --
         // then the worst recent block with a "!", in the warning
@@ -1350,14 +1327,14 @@ void SongView::DrawSidePanel() {
             snprintf(vbuf, sizeof(vbuf), "%3d%%", dsp);
             SetColor(CD_HILITE2);
         }
-        DrawString(35, 15, vbuf, props);
+        DrawString(35, 10, vbuf, props);
 
         int me = -1;
 #ifdef PSP_ME_OFFLOAD
         me = PSPME_LoadPercent();
 #endif
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 16, "me", props);
+        DrawString(PANEL_TXT, 11, "me", props);
         if (me >= 0) {
             if (me > 999) me = 999;
             snprintf(vbuf, sizeof(vbuf), "%3d%%", me);
@@ -1366,7 +1343,7 @@ void SongView::DrawSidePanel() {
             snprintf(vbuf, sizeof(vbuf), "  --");
             SetColor(CD_ROW);
         }
-        DrawString(35, 16, vbuf, props);
+        DrawString(35, 11, vbuf, props);
 
         /* USED, not free.
 
@@ -1385,34 +1362,34 @@ void SongView::DrawSidePanel() {
         unsigned int memUsed = sys->GetMemoryUsage();
         int tenths = (int)((unsigned long long)memUsed * 10 / (1024 * 1024));
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 18, "used", props);
+        DrawString(PANEL_TXT, 13, "used", props);
         snprintf(vbuf, sizeof(vbuf), "%2d.%dM", tenths / 10, tenths % 10);
         SetColor(CD_NORMAL);
-        DrawString(34, 18, vbuf, props);
+        DrawString(34, 13, vbuf, props);
 
         int vf = running ? AudioStats::GetVfpuPercent() : 0;
         if (vf < 0) vf = 0;
         if (vf > 99) vf = 99;
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 17, "vfpu", props);
+        DrawString(PANEL_TXT, 12, "vfpu", props);
         snprintf(vbuf, sizeof(vbuf), "%3d%%", vf);
         SetColor(CD_HILITE2);
-        DrawString(35, 17, vbuf, props);
+        DrawString(35, 12, vbuf, props);
 
         int und = AudioStats::GetUnderruns();
         if (und < 0) und = 0;
         if (und > 9999) und = 9999;
         SetColor(CD_ROW2);
-        DrawString(PANEL_TXT, 19, "und", props);
+        DrawString(PANEL_TXT, 14, "und", props);
         snprintf(vbuf, sizeof(vbuf), "%4d", und);
         SetColor(und ? CD_MUTE : CD_NORMAL);
-        DrawString(35, 19, vbuf, props);
+        DrawString(35, 14, vbuf, props);
     }
 
-    DrawPanel(PANEL_X, 21, 12, 2, "live");
+    DrawPanel(PANEL_X, 16, 12, 2, "live");
     SetColor(CD_ROW2);
-    DrawString(PANEL_TXT, 22, "cue", props);
-    DrawString(PANEL_TXT, 23, "mut", props);
+    DrawString(PANEL_TXT, 17, "cue", props);
+    DrawString(PANEL_TXT, 18, "mut", props);
     bool liveMode = (player->GetSequencerMode() == SM_LIVE);
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         char c[2] = {'-', 0};
@@ -1442,7 +1419,7 @@ void SongView::DrawSidePanel() {
         } else {
             SetColor(CD_ROW);
         }
-        DrawString(31 + i, 22, c, props);
+        DrawString(31 + i, 17, c, props);
         if (player->IsChannelMuted(i)) {
             c[0] = 'm';
             SetColor(CD_MUTE);
@@ -1450,14 +1427,14 @@ void SongView::DrawSidePanel() {
             c[0] = '-';
             SetColor(CD_ROW);
         }
-        DrawString(31 + i, 23, c, props);
+        DrawString(31 + i, 18, c, props);
     }
 
     // --- type: one pill per kind of instrument -- sample, midi, and
     // each synth engine -- lit in its own colour while something of
     // that kind sounds on any channel. What the song is made of, at
     // a glance, rather than which slot. ------------------------------
-    DrawPanel(PANEL_X, 25, 12, 2, "type");
+    DrawPanel(PANEL_X, 20, 12, 2, "type");
     {
         enum { K_SMP, K_MID, K_TONE, K_PDX, K_VAX, K_FM, K_VOX, K_HIVE, K_LAST };
         static const char *kindName[K_LAST] =
@@ -1484,7 +1461,7 @@ void SongView::DrawSidePanel() {
         for (int k = 0; k < K_LAST; k++) {
             props.invert_ = on[k];
             SetColor(on[k] ? kindColor[k] : CD_ROW);
-            DrawString(PANEL_TXT + (k % 4) * 3, 26 + k / 4, kindName[k], props);
+            DrawString(PANEL_TXT + (k % 4) * 3, 21 + k / 4, kindName[k], props);
         }
         props.invert_ = false;
         SetColor(CD_NORMAL);

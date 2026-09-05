@@ -613,12 +613,9 @@ bool AppWindow::navReachable(ViewType to) {
         return true;
     }
     if (from == VT_INSTRUMENT) {
-        if (to == VT_TABLE || to == VT_TABLE2) {
-            I_Instrument *instr =
-                _viewData->project_->GetInstrumentBank()->GetInstrument(
-                    _viewData->currentInstrument_);
-            return instr && instr->GetTable() >= 0;
-        }
+        // an instrument's table cell is always open: an instrument
+        // without a table gets one made on the way in (InstrumentView::
+        // OnNavTo), so the map never dims it
         return true;
     }
 
@@ -643,71 +640,31 @@ bool AppWindow::navReachable(ViewType to) {
     return true;
 }
 
-void AppWindow::drawNavMap() {
+/* The screens, in the corner of every screen. Three rows of two-letter
+   names laid out as the map has always been laid out, the current
+   screen inverted. Hold R and the arrows walk a second highlight in
+   the value colour; releasing R jumps. A destination the drill would
+   refuse -- an empty chain row, no table to follow -- draws dimmed.
 
-    const MapCell *cells = navCells_;
-    const int cellCount = navCellCount_;
+   This replaces the overlay that R used to raise over the whole
+   screen. That flashed on every chord that started with R -- clone,
+   widen, undo, mute -- because it went up the instant R went down,
+   before the second button could say the press was not a walk. A map
+   that is simply always there has nothing to flash. */
+void AppWindow::drawMiniMap() {
 
-    // the highlight is the menu selection while navigating, else the
-    // screen we are on
-    ViewType current = navigating_ ? navSel_ : currentViewType();
-
-    // panel: 4 columns of 7 cells, 3 rows of 2, centred.
-    // Coordinates here are CHARACTER CELLS for DrawString and PIXELS
-    // for the overlay ops (8px per cell).
-    // full width: a floating box always leaves fragments of the view
-    // showing along its edges, so the map takes the whole band
-    const int PX = 0, PY = 8, PW = 40, PH = 11;
-    const int CX = 4;    // first column of content
-    const int COLW = 8;  // column pitch
-
-    GUITextProperties props;
-    GUIPoint pos;
-
-    // blank what is underneath: this floats over the view, so the
-    // cells have to be cleared or the view's text shows through the
-    // panel fill (layer 0 draws under text by design)
-    SetColor(CD_BACKGROUND);
-    char blank[41];
-    memset(blank, ' ', PW);
-    blank[PW] = 0;
-    for (int r = 0; r < PH; r++) {
-        pos._x = PX;
-        pos._y = PY + r;
-        DrawString(blank, pos, props);
+    // the corner map: one overlay op, painted from a pixel font at
+    // flush -- see OOP_MAP. Five character columns by three rows in
+    // the bottom right, clear of the hint bar.
+    ViewType current = currentViewType();
+    int cur = -1, aim = -1, reach = 0;
+    for (int i = 0; i < navCellCount_; i++) {
+        const MapCell &c = navCells_[i];
+        if (c.type == current) cur = i;
+        if (navigating_ && c.type == navSel_ && c.type != current) aim = i;
+        if (navReachable(c.type)) reach |= (1 << i);
     }
-
-    OpRect(0, PX * 8, PY * 8, PW * 8, PH * 8, OC_PANEL2);
-    OpFrame(PX * 8, PY * 8, PW * 8, PH * 8, OC_WHITE);
-
-    SetColor(CD_HILITE1);
-    pos._x = CX;
-    pos._y = PY + 1;
-    DrawString("SCREENS", pos, props);
-
-    for (int i = 0; i < cellCount; i++) {
-        const MapCell &c = cells[i];
-        bool here = (c.type == current);
-        /* a destination the drill would refuse -- an empty chain row,
-           no table to follow -- draws dimmed, so the map says what is
-           reachable before you try. The refusal itself still stands
-           if you commit anyway: the grey is the warning, the refusal
-           is the law. */
-        bool ok = navReachable(c.type);
-        props.invert_ = here;
-        SetColor(here ? CD_HILITE1 : (ok ? CD_ROW2 : CD_ROW));
-        pos._x = CX + c.col * COLW;
-        pos._y = PY + 3 + c.row * 2;
-        DrawString(c.name, pos, props);
-        props.invert_ = false;
-    }
-
-    SetColor(CD_ROW2);
-    pos._x = CX;
-    pos._y = PY + PH - 2;
-    // the map is the one place with room to advertise the chord
-    DrawString("hold: direction moves, L undoes", pos, props);
-    SetColor(CD_NORMAL);
+    OpMap(280, 209, cur, aim, reach);
 }
 
 void AppWindow::InvalidateScreen() {
@@ -787,11 +744,9 @@ void AppWindow::Flush() {
     {
     SysMutexLocker locker(drawMutex_);
 
-    if (navMapVisible_ && _currentView && !_currentView->HasModal()) {
-        // the map owns the screen while it is up: drop the view's
-        // panels and frames so none of them paint across the band
-        overlayOpCount_ = 0;
-        drawNavMap();
+    // the corner map is part of every screen; a dialog paints over it
+    if (_currentView && _viewData && !_currentView->HasModal()) {
+        drawMiniMap();
     }
 
     Lock();
@@ -955,6 +910,12 @@ void AppWindow::OpRect(int layer, int x, int y, int w, int h, int col) {
     setOp(op);
 }
 
+void AppWindow::OpMap(int x, int y, int cur, int aim, int reach) {
+    OverlayOp op = {OOP_MAP, 1, 0, 0, (short)x, (short)y, 39, 23,
+                    (short)cur, (short)aim, (short)reach, 0};
+    setOp(op);
+}
+
 void AppWindow::OpRing(int x, int y, int w, int h, int col) {
     OverlayOp op = {OOP_FRAME, 1, (unsigned char)col, 0,
                     (short)x, (short)y, (short)w, (short)h,
@@ -1085,8 +1046,16 @@ void AppWindow::flushOverlayOps() {
         // the panel's bottom rule. Bars now honour their height like
         // every other op, and OpBar sizes itself to stay inside one row.
         int h = p.h_;
-        int cx0 = (p.x_ - 1) / 8, cy0 = (p.y_ - 1) / 8;
-        int cx1 = (p.x_ + p.w_) / 8, cy1 = (p.y_ + h) / 8;
+        /* The cells the op actually covered, and no more. This used
+           to start one pixel early, which for an op that begins on a
+           cell boundary -- a pill's ring at row*8 -- pulled in the
+           row above and wiped it opaquely. The row above the selector
+           pills is the one the title strip's rule runs through, so a
+           switch that moved a pill left the rule with a bite out of
+           it. Plain division already covers ops that start a few
+           pixels into the previous cell. */
+        int cx0 = p.x_ / 8, cy0 = p.y_ / 8;
+        int cx1 = (p.x_ + p.w_ - 1) / 8, cy1 = (p.y_ + h - 1) / 8;
         for (int cy = cy0; cy <= cy1 && cy < 30; cy++)
             for (int cx = cx0; cx <= cx1 && cx < 40; cx++)
                 if (cx >= 0 && cy >= 0) {
@@ -1570,6 +1539,80 @@ void AppWindow::flushOverlayOps() {
             }
             break;
         }
+        case OOP_MAP: {
+            /* The screens in a three-by-five pixel font, two letters a
+               cell, four columns by three rows in the map's own
+               order. The current screen sits on a filled block in the
+               highlight colour, the R-walk target in a frame in the
+               value colour, a screen the drill would refuse in the
+               row colour. Column pitch ten pixels, row pitch eight. */
+            static const unsigned char glyph[14][5] = {
+                {7, 5, 7, 4, 4},   // P
+                {6, 5, 6, 5, 5},   // R
+                {7, 4, 4, 4, 7},   // C
+                {7, 4, 7, 4, 4},   // F
+                {7, 4, 5, 5, 7},   // G
+                {7, 4, 7, 1, 7},   // S
+                {7, 5, 5, 5, 7},   // O
+                {5, 5, 7, 5, 5},   // H
+                {7, 2, 2, 2, 7},   // I
+                {6, 5, 5, 5, 5},   // N
+                {5, 5, 2, 5, 5},   // X
+                {5, 7, 7, 5, 5},   // M
+                {7, 2, 2, 2, 2},   // T
+                {6, 5, 6, 5, 6},   // B
+            };
+            static const char letters[] = "PRCFGSOHINXMTB";
+            static const char *names[11] = {"PR", "CF", "GR", "SO", "CH", "PH",
+                                            "IN", "FX", "MX", "TB", "TB"};
+            static const unsigned char cellCol[11] = {0, 1, 2, 0, 1, 2, 3, 0, 1, 2, 3};
+            static const unsigned char cellRow[11] = {0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2};
+            for (int i = 0; i < 11; i++) {
+                int cx = o.x_ + 1 + cellCol[i] * 10;
+                int cy = o.y_ + 1 + cellRow[i] * 8;
+                bool here = (o.p1_ == i);
+                bool aim = (o.p2_ == i);
+                bool ok = ((o.p3_ >> i) & 1) != 0;
+                GUIColor ink = backgroundColor_;
+                if (here) {
+                    GUIColor hc = colorForProp(CD_HILITE1);
+                    GUIWindow::SetColor(hc);
+                    GUIRect bg(cx - 1, cy - 1, cx + 8, cy + 6);
+                    GUIWindow::DrawRect(bg);
+                    ink = backgroundColor_;
+                } else if (aim) {
+                    GUIColor fc = colorForProp(CD_HILITE2);
+                    GUIWindow::SetColor(fc);
+                    GUIRect t(cx - 1, cy - 1, cx + 8, cy);
+                    GUIWindow::DrawRect(t);
+                    GUIRect b(cx - 1, cy + 5, cx + 8, cy + 6);
+                    GUIWindow::DrawRect(b);
+                    GUIRect l(cx - 1, cy - 1, cx, cy + 6);
+                    GUIWindow::DrawRect(l);
+                    GUIRect r(cx + 7, cy - 1, cx + 8, cy + 6);
+                    GUIWindow::DrawRect(r);
+                    ink = fc;
+                } else {
+                    ink = colorForProp(ok ? CD_ROW2 : CD_ROW);
+                }
+                GUIWindow::SetColor(ink);
+                for (int g = 0; g < 2; g++) {
+                    const char *lp = strchr(letters, names[i][g]);
+                    if (!lp) continue;
+                    const unsigned char *rows = glyph[lp - letters];
+                    int gx = cx + g * 4;
+                    for (int r = 0; r < 5; r++) {
+                        for (int bit = 0; bit < 3; bit++) {
+                            if (rows[r] & (4 >> bit)) {
+                                GUIRect px(gx + bit, cy + r, gx + bit + 1, cy + r + 1);
+                                GUIWindow::DrawRect(px);
+                            }
+                        }
+                    }
+                }
+            }
+            break;
+        }
         default:
             break;
         }
@@ -2038,10 +2081,10 @@ bool AppWindow::onEvent(GUIEvent &event) {
         _lastInputAt = System::GetInstance()->GetClock();
 
         _mask |= v;
-        // Holding the nav modifier brings up the screen map, so the arrows
-        // have something to aim at. But R is also the mute/solo modifier, so
-        // the map must not appear when R is part of a chord -- it used to
-        // cover the mixer's channel strips for the whole gesture.
+        // Holding the nav modifier alone starts a walk of the corner map:
+        // the arrows move its highlight and the release jumps. R is also
+        // the mute/solo modifier, so a chord that starts with R cancels
+        // the walk (below) and nothing on screen changes for it.
         if ((v & EPBM_R) && !navMapVisible_ && !(_mask & ~EPBM_R)) {
             navMapVisible_ = true;
             // the map is a menu: the highlight starts on this screen

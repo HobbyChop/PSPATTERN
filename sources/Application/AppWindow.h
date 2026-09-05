@@ -99,7 +99,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     // the central screen switch (also the nav menu's jump)
     void switchToView(ViewType vt);
     // the screen map shown while the nav modifier is held
-    void drawNavMap();
+    void drawMiniMap();
     // What is on screen while a project opens. See LoadProject.
     void DrawBootProgress(const char *phase, const char *what,
                           int done, int total);
@@ -161,6 +161,12 @@ class AppWindow : public GUIWindow, I_Observer, Status {
        Intensity 0 paints the background, which is how a fade ends
        without needing the op removed. */
     void OpGlow(int x, int y, int w, int h, int intensity);
+    /* The corner map of the screens, in a three-by-five pixel font.
+       One op: drawn per pixel it would need more than the whole
+       overlay budget, so the compositor paints it from its own font.
+       cur and aim are cell indices in the map's order (-1 for no
+       aim); reach is a bit per cell, set where the drill would go. */
+    void OpMap(int x, int y, int cur, int aim, int reach);
 
 
     /* The wordmark, built from inverted spaces -- a filled cell is
@@ -234,7 +240,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     unsigned char _charScreen[1200];
     unsigned char _charScreenProp[1200];
 
-    enum OverlayOpType { OOP_RECT, OOP_FRAME, OOP_BAR, OOP_ADSR, OOP_WAVE, OOP_VBAR, OOP_SCOPE, OOP_GLOW, OOP_SPECT };
+    enum OverlayOpType { OOP_RECT, OOP_FRAME, OOP_BAR, OOP_ADSR, OOP_WAVE, OOP_VBAR, OOP_SCOPE, OOP_GLOW, OOP_SPECT, OOP_MAP };
     struct OverlayOp {
         unsigned char type_, layer_, colA_, focused_;
         short x_, y_, w_, h_;
@@ -250,7 +256,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     OverlayOp prevOps_[96];
     int prevOpCount_;
     bool cellDirty_[1200];
-    bool navMapVisible_;   // nav modifier held: show the screen map
+    bool navMapVisible_;   // nav modifier held alone: a walk of the corner map
     void setOp(const OverlayOp &op);
     void flushOverlayOps();
     void drawClipped(int x0,int y0,int x1,int y1,

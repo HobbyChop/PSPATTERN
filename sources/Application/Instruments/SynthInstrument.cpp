@@ -1067,7 +1067,14 @@ void SynthInstrument::lfoBlockStart(SynthVoice &v,int &lfoDest,unsigned int &lfo
 		}
 		v.lfoPhase_=(unsigned int)ph ;
 	} else {
-		lfoIncV=lfoIncFor(v.lfoRate_,perTick) ;
+		/* The instrument's own rate is speed, slow to fast, the whole
+		   way up. It used to go through the command's table, where F0
+		   to FF are tempo divisions -- so the top sixteen values of
+		   the slider, 94 to 100 per cent, were grid cycles, and 100
+		   per cent was the slowest of all: sixteen bars, which read as
+		   the LFO switched off. The divisions belong to LFO_, where
+		   they are documented. */
+		lfoIncV=SynthInstrument::LfoInc(v.lfoRate_&0xFF) ;
 		lfoDepth=v.lfoDepth_<<7 ;
 	}
 }
