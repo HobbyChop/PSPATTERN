@@ -83,6 +83,26 @@ static volatile unsigned int g_lastSwitchUs = 0;
 extern "C" int pspQuasiWakeRequested(void) { return g_quasiToggleReq; }
 extern "C" void pspQuasiClearWake(void)    { g_quasiToggleReq = 0; }
 
+/* IDLE REST. The app asks for rest itself after a quiet spell (the
+   config screen's rest row): the same path as the switch, minus the
+   countdown, since nobody is there to read it. */
+static volatile int g_quasiIdle = 0;
+extern "C" void pspRequestIdleRest(void) {
+	g_quasiIdle = 1;
+	g_quasiToggleReq = 1;
+	SDL_Event event;
+	event.type = SDL_VIDEOEXPOSE;   // wake the event loop
+	SDL_PushEvent(&event);
+}
+
+/* KEEP AWAKE. The firmware's own backlight auto-off is never allowed
+   to engage while the app runs: its wake handling swallowed every
+   button until the power state changed -- the freeze after the screen
+   went off on its own, charging or not. Ticked once a second from the
+   UI tick; the idle rest above is the screen-off the machine gets
+   instead. */
+extern "C" void pspKeepAwake(void) { scePowerTick(PSP_POWER_TICK_ALL); }
+
 int powerCallback(int unknown, int pwrflags, void *common) {
 
 	if (pwrflags & (PSP_POWER_CB_SUSPENDING | PSP_POWER_CB_STANDBY)) {
@@ -191,6 +211,8 @@ void PSPHandleQuasiStandby(void) {
 	int savedBright = meGetBrightness();
 	if (savedBright <= 0) savedBright = 84;   // restore to something visible
 	int savedBl = sceImposeGetBacklightOffTime();
+	int idle = g_quasiIdle;
+	g_quasiIdle = 0;
 	g_quasiBtnArmed = 0;
 	pspQuasiClearWake();
 
@@ -202,7 +224,8 @@ void PSPHandleQuasiStandby(void) {
 	//    blackout is just the countdown. Minimum clock; a slide OR any
 	//    button wakes at once.
 	scePowerSetClockFrequency(33, 33, 16);
-	const int SECS = 15;
+	// an idle rest skips the countdown: there is nobody to warn
+	const int SECS = idle ? 0 : 15;
 	for (int sLeft = SECS; sLeft > 0 && !quasiWakeNow(); sLeft--) {
 		w->DrawQuasiMessage(pct, estMin, sLeft);
 		for (int q = 0; q < 4 && !quasiWakeNow(); q++)

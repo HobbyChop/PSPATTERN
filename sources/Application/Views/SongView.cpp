@@ -1729,12 +1729,19 @@ void SongView::OnPlayerUpdate(PlayerEventType eventType, unsigned int tick) {
                 viewData_->UpdateSongOffset(page - off);
                 if (viewData_->songOffset_ != off) {
                     // a moved window is a full repaint, not a marker
-                    // update; the old marker rows mean nothing now
+                    // update; the old marker rows mean nothing now.
+                    // This runs on the audio thread, where nothing
+                    // reads the view's own flag: the WINDOW's flag is
+                    // what the main loop repaints on. Without it the
+                    // grid stayed put and the markers, drawn against
+                    // the new offset, landed at the top of the old
+                    // page.
                     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
                         lastPlayedPosition_[i] = -1;
                         lastQueuedPosition_[i] = -1;
                     }
                     isDirty_ = true;
+                    ((AppWindow &)w_).SetDirty();
                     return;
                 }
             }

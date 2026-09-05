@@ -59,19 +59,20 @@ left or right changes a value by one. Holding O and pressing up or down
 changes it by sixteen, or by ten on the velocity column.
 
 A map of the screens sits in the bottom right corner of every screen,
-the one you are on highlighted. Hold R and the directions walk a
-second highlight over it; releasing R jumps there. R is always the
-map and never anything else, which is why
-muting and soloing are held with L instead. The bottom line of every
+the one you are on highlighted. Hold R and each direction steps to
+the neighbouring screen on the map, at once; let go of R when you are
+where you want to be. R is always the map and never anything else,
+which is why muting and soloing are held with L instead. The bottom line of every
 screen lists the moves available from where you are. It does not list
 all of them. Copying, cloning, soloing and the rest are in section 8.
 
 
 4. SCREENS
 
-Hold R and a map of the screens appears with your current one
-highlighted. Directions walk the highlight; release R to jump. The
-map is laid out the way the screens relate:
+The map in the corner shows the screens with your current one
+highlighted. Hold R and each direction steps to the next screen on
+the map as you press it. The map is laid out the way the screens
+relate:
 
   project  config  groove
   song     chain   phrase  instr
@@ -1040,6 +1041,20 @@ The cursor keeps its row on the screen and comes along. It holds still
 while a block is being selected. Set follow to NO on the config screen
 (or SONGFOLLOW NO in config.xml) for the old fixed view, which some
 people use as a map while a song plays.
+
+
+REST
+
+Left alone, the machine rests on its own. After the minutes set on
+the config screen's rest row (or IDLEREST in config.xml; OFF never)
+without a button, the screen goes dark and the clock drops: the same
+low-power rest the power switch gives, with the project auto-saved on
+the way down, and any button wakes it. It never rests while a song
+plays, while a render is open or while a dialog is up; those restart
+the count. The system's own screen timeout is held off for as long as
+the tracker runs, because its wake handling could leave every button
+dead until the power state changed, so this rest is the only
+screen-off an idle machine gets.
 
 
 18. SAVING AND RENDERING

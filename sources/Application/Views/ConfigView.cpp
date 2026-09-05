@@ -21,6 +21,8 @@ static const char *YES_NO[]     = {"YES","NO"} ;   // default-on toggles
 // matching how every other toggle on this screen reads.
 static const char *SYNC_OPTS[]  = {"OFF","FOLLOW","LEADER"} ;
 static const char *NO_YES[]     = {"NO","YES"} ;   // default-off toggles
+// minutes without a button before the machine rests on its own
+static const char *REST_OPTS[]  = {"OFF","1","2","5","10","15","30"} ;
 
 static int optIndex(const char *val,const char *const *opts,int n,int def) {
 	if (val)
@@ -56,9 +58,9 @@ ConfigView::ConfigView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	// sends later, 0 = aligned with what this machine is heard
 	// playing). Follow itself is armed on the PROJECT screen's sync
 	// field, next to the tempo it affects.
-	addList(21,"mode   ", "MIDISYNCMODE",    SYNC_OPTS,3, 2, false, false) ;
-	addInt (22,"synco  ", "MIDISYNCOFFSET", -50,100, 50, false) ;
-	addInt (23,"sendo  ", "MIDISENDOFFSET", -100,100, 0, false) ;
+	addList(22,"mode   ", "MIDISYNCMODE",    SYNC_OPTS,3, 2, false, false) ;
+	addInt (23,"synco  ", "MIDISYNCOFFSET", -50,100, 50, false) ;
+	addInt (24,"sendo  ", "MIDISENDOFFSET", -100,100, 0, false) ;
 
 	// BEHAVIOUR
 	// autosave: YES by default; NO for a live set, where a Memory
@@ -69,6 +71,12 @@ ConfigView::ConfigView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	// the window still for anyone who uses the screen as a map.
 	// Applies immediately -- the player update reads it every pass.
 	addList(18,"follow ", "SONGFOLLOW",       YES_NO,2, 0, false, false) ;
+	// rest: minutes without a button before the machine rests on its
+	// own (the power switch's low-power rest, any button wakes). The
+	// firmware's own screen timeout is held off while the app runs --
+	// its wake handling left the buttons dead -- so this is the only
+	// screen-off an idle machine gets. OFF never rests.
+	addList(19,"rest   ", "IDLEREST",         REST_OPTS,7, 4, false, false) ;
 
 	themeApplied_=settings_[0].ui->GetInt() ;   // the theme row is first
 }
@@ -213,20 +221,20 @@ void ConfigView::DrawView() {
 
 	DrawPanel(1,5,20,4,"DISPLAY") ;    // theme, font, alt-rows
 	DrawPanel(1,10,20,4,"AUDIO") ;     // buffer, prebuffer, me offload
-	DrawPanel(1,15,20,4,"ENGINES, BEHAVIOUR") ;   // fm, asave, follow
-	// ENGINES' bottom rule owns row 19, and every panel needs the row
-	// under its rule free -- row 20 starts the next frame safely
-	DrawPanel(1,20,20,3,"SYNC") ;      // clock out, synco, sendo
+	DrawPanel(1,15,20,5,"ENGINES, BEHAVIOUR") ;   // fm, asave, follow, rest
+	// ENGINES' bottom rule owns row 20, and every panel needs the row
+	// under its rule free -- row 21 starts the next frame safely
+	DrawPanel(1,21,20,3,"SYNC") ;      // clock out, synco, sendo
 
 	FieldView::Redraw() ;
 
 	GUITextProperties props ;
 	SetColor(CD_ROW2) ;
-	// below the SYNC panel (its frame ends at row 24)
-	DrawString(2,25,"* takes effect after a reboot",props) ;
+	// below the SYNC panel (its frame ends at row 25)
+	DrawString(2,26,"* takes effect after a reboot",props) ;
 	if (rebootPending_) {
 		SetColor(CD_HILITE2) ;
-		DrawString(2,26,"reboot pending",props) ;
+		DrawString(2,27,"reboot pending",props) ;
 	}
 	SetColor(CD_NORMAL) ;
 

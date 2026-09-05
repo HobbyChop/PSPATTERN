@@ -26,7 +26,7 @@ public:
 	virtual void LooseFocus() ;
 
 private:
-	static const int MAX_SETTINGS=12 ;
+	static const int MAX_SETTINGS=13 ;
 	struct Setting {
 		Variable *ui ;        // the typed field-backing variable we own
 		const char *key ;     // the config.xml key it maps to

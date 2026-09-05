@@ -1,3 +1,31 @@
+PSPATTERN 0.39.2a
+
+    Left alone, the machine rests on its own. After the minutes on the
+        config screen's new rest row without a button -- ten by
+        default, OFF never -- the screen goes dark and the clock drops,
+        the same rest the power switch gives, the project auto-saved
+        on the way down; any button wakes it. Not while a song plays,
+        a render is open or a dialog is up.
+
+    The system's own screen timeout is held off while the tracker
+        runs. Its wake handling left every button dead until the power
+        state changed, which was the freeze after the screen went off
+        on its own.
+
+    Holding R, each direction switches to the neighbouring screen on
+        the corner map as you press it. The release no longer jumps.
+
+    The map paints its own ground, so a walk no longer leaves a trail
+        of cursor-coloured cells behind it.
+
+    Song follow turns the page properly now: the page turn asked for
+        its repaint on the audio thread, where nothing was listening,
+        so the markers landed on the old page until the next key.
+
+    The autosave waits for an open render to close. It used to write
+        on the tail of a song that had been dirty for two minutes, and
+        the dropout went into the WAV.
+
 PSPATTERN 0.39.1a
 
     The corner map's walk target is a filled block in the cursor

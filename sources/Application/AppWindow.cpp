@@ -1,6 +1,8 @@
 #include "AppWindow.h"
 #ifdef PLATFORM_PSP
 extern "C" void pspDiag(const char *fmt, ...);
+extern "C" void pspKeepAwake(void);
+extern "C" void pspRequestIdleRest(void);
 #endif
 #if defined(PLATFORM_PSP) && defined(PSP_ME_OFFLOAD)
 extern "C" void PSPME_Relaunch(void);
@@ -406,6 +408,7 @@ AppWindow::AppWindow(I_GUIWindowImp &imp) : GUIWindow(imp) {
     _lastSeenChecksum = 0;
     _lastChangeAt = 0;
     _lastInputAt = 0;
+    _idleRef = 0;
     _dirtySince = 0;
     _lastA = 0;
     _lastB = 0;
@@ -711,6 +714,11 @@ void AppWindow::ClearRect(GUIRect &r) {
 //
 
 void AppWindow::Redraw() {
+
+    // cleared BEFORE the paint, not after: a request that lands from
+    // the audio thread while the paint runs must survive to the next
+    // tick, and one that landed before it is served by this paint
+    _isDirty = false;
 
     // deferred work that needs the mixer lock (preset loads, type
     // swaps, file writes) runs HERE, before drawMutex_ is taken --
@@ -1543,9 +1551,9 @@ void AppWindow::flushOverlayOps() {
             /* The screens in a three-by-five pixel font, two letters a
                cell, four columns by three rows in the map's own
                order. The current screen sits on a filled block in the
-               highlight colour, the R-walk target in a frame in the
-               value colour, a screen the drill would refuse in the
-               row colour. Column pitch ten pixels, row pitch eight. */
+               highlight colour, the R-walk target on one in the cursor
+               colour, a screen the drill would refuse in the row
+               colour. Column pitch ten pixels, row pitch eight. */
             static const unsigned char glyph[14][5] = {
                 {7, 5, 7, 4, 4},   // P
                 {6, 5, 6, 5, 5},   // R
@@ -1567,6 +1575,20 @@ void AppWindow::flushOverlayOps() {
                                             "IN", "FX", "MX", "TB", "TB"};
             static const unsigned char cellCol[11] = {0, 1, 2, 0, 1, 2, 3, 0, 1, 2, 3};
             static const unsigned char cellRow[11] = {0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2};
+            /* The map paints its own ground first. The compositor
+               never erases under an op whose rectangle survives from
+               the last flush -- this one always does -- and the map
+               used to paint only its blocks and letters, so a cell
+               that stopped being the walk's target kept the block's
+               pixels under the letters that replaced it: a trail of
+               cursor-coloured cells with grey names behind every
+               walk, and one left behind on release. */
+            {
+                GUIColor ground = backgroundColor_;
+                GUIWindow::SetColor(ground);
+                GUIRect all(o.x_, o.y_, o.x_ + o.w_, o.y_ + o.h_);
+                GUIWindow::DrawRect(all);
+            }
             for (int i = 0; i < 11; i++) {
                 int cx = o.x_ + 1 + cellCol[i] * 10;
                 int cy = o.y_ + 1 + cellRow[i] * 8;
@@ -1751,6 +1773,10 @@ void AppWindow::QuasiBlank() {
    static grid stale until the cursor moved (only the always-animating
    scope/info box repainted); Redraw repaints the whole current view. */
 void AppWindow::QuasiWake() {
+    // the wake is activity: the idle count and the autosave's idle
+    // debounce both restart here
+    _lastInputAt = System::GetInstance()->GetClock();
+    _idleRef = _lastInputAt;
     navMapVisible_ = false;   // or Flush re-draws it over us
     InvalidateScreen();
     Redraw();
@@ -2079,14 +2105,14 @@ bool AppWindow::onEvent(GUIEvent &event) {
         _lastInputAt = System::GetInstance()->GetClock();
 
         _mask |= v;
-        // Holding the nav modifier alone starts a walk of the corner map:
-        // the arrows move its highlight and the release jumps. R is also
-        // the mute/solo modifier, so a chord that starts with R cancels
-        // the walk (below) and nothing on screen changes for it.
+        // Holding the nav modifier alone arms the corner map: each
+        // arrow then steps to the neighbouring screen at once, the way
+        // the original tracker's nav key did. R is also the mute/solo
+        // modifier, so a chord that starts with R disarms it (below)
+        // and nothing on screen changes for it.
         if ((v & EPBM_R) && !navMapVisible_ && !(_mask & ~EPBM_R)) {
             navMapVisible_ = true;
-            // the map is a menu: the highlight starts on this screen
-            // and the arrows below walk it while R stays down
+            // the map's own cursor is the screen we are on
             navSel_ = currentViewType();
             navigating_ = true;
             _isDirty = true;
@@ -2094,17 +2120,30 @@ bool AppWindow::onEvent(GUIEvent &event) {
         if (navMapVisible_ && (_mask & ~(EPBM_R | EPBM_LEFT | EPBM_RIGHT |
                                          EPBM_UP | EPBM_DOWN))) {
             navMapVisible_ = false;   // a chord started: get out of the way
-            navigating_ = false;      // and the release will not jump
+            navigating_ = false;      // and the arrows are the view's again
             _isDirty = true;
         }
-        // While the menu is up, the arrows move its highlight and go no
-        // further -- the views' own R+arrow chords are retired in favour
-        // of one consistent walk of the drawn grid.
+        // While R is down the arrows step the map and go no further --
+        // the views' own R+arrow chords are retired in favour of one
+        // consistent walk of the drawn grid. The step IS the jump: it
+        // used to move a second highlight and the release made the
+        // jump, but a screen switch that waits for a release reads as
+        // a switch that did not happen. A refused step -- an empty
+        // chain row, no table to follow -- says why in the notice
+        // line and leaves the block where it was.
         if (navMapVisible_ && navigating_ && (_mask & EPBM_R) &&
             (v & (EPBM_LEFT | EPBM_RIGHT | EPBM_UP | EPBM_DOWN))) {
             int dx = (v & EPBM_RIGHT) ? 1 : ((v & EPBM_LEFT) ? -1 : 0);
             int dy = (v & EPBM_DOWN) ? 1 : ((v & EPBM_UP) ? -1 : 0);
-            if (navMove(dx, dy)) _isDirty = true;
+            if (navMove(dx, dy)) {
+                ViewType here = currentViewType();
+                if (navSel_ != here && _currentView) {
+                    ViewType dest = navPrep(here, navSel_);
+                    if (dest != here) switchToView(dest);
+                }
+                navSel_ = currentViewType();
+                _isDirty = true;
+            }
             break;
         }
         // Undo is R+L: hold the nav modifier, then press L. Order
@@ -2130,21 +2169,11 @@ bool AppWindow::onEvent(GUIEvent &event) {
 
         _mask &= (0xFFFF - v);
         if (navMapVisible_ && !(_mask & EPBM_R)) {
+            // releasing R only disarms the map: every step already
+            // switched the screen as it was pressed
             navMapVisible_ = false;
-            _isDirty = true;   // the view repaints over the map
-            // releasing R commits the menu: the leaving view first gets
-            // to prep the destination's context (a drill keeps
-            // following the cursor), then the jump
-            if (navigating_) {
-                navigating_ = false;
-                if (navSel_ != currentViewType() && _currentView) {
-                    ViewType dest = navPrep(currentViewType(), navSel_);
-                    if (dest != currentViewType()) switchToView(dest);
-                }
-                // a walk that ends where it began still has to repaint
-                // the map, or the target block stays behind on screen
-                _isDirty = true;
-            }
+            navigating_ = false;
+            _isDirty = true;
         }
         if (_currentView)
             _currentView->ProcessButton(_mask, false);
@@ -2212,6 +2241,20 @@ void AppWindow::onUpdate() {
 
     unsigned long now = System::GetInstance()->GetClock();
 
+#ifdef PLATFORM_PSP
+    /* The firmware's screen timeout is held off for as long as the app
+       runs (see pspKeepAwake), and the idle rest below is what the
+       machine does instead when it is left alone. */
+    {
+        static unsigned long lastKeepAwake = 0;
+        if (now - lastKeepAwake >= 1000) {
+            lastKeepAwake = now;
+            pspKeepAwake();
+        }
+    }
+    idleRestTick(now);
+#endif
+
     // measured repaint rate, for the readout on the song screen
     {
         static unsigned int calls = 0;
@@ -2249,7 +2292,36 @@ void AppWindow::onUpdate() {
         }
         autoSaveTick();
     }
+    // A repaint asked for outside a button event -- the song window
+    // paging after the playhead, from the audio thread -- used to wait
+    // for the next key: only onEvent looked at the flag.
+    if (_isDirty) Redraw();
     Flush();
+}
+
+/* Idle rest. After the config screen's rest minutes without a button,
+   the machine drops into the same low-power rest the power switch
+   gives -- screen dark, clock down, the project auto-saved on the way
+   -- and any button wakes it. Not while a song plays, a render is
+   open or a dialog is up: those restart the count, so a song that
+   runs for an hour rests the set minutes after it stops. */
+void AppWindow::idleRestTick(unsigned long now) {
+#ifdef PLATFORM_PSP
+    if (!_idleRef) _idleRef = now;
+    const char *cfg = Config::GetInstance()->GetValue("IDLEREST");
+    int mins = cfg ? atoi(cfg) : 0;
+    if (mins <= 0) return;
+    if (Player::GetInstance()->IsRunning() ||
+        MixerService::GetInstance()->IsRendering() ||
+        (_currentView && _currentView->HasModal())) {
+        _idleRef = now;
+        return;
+    }
+    unsigned long last = (_lastInputAt > _idleRef) ? _lastInputAt : _idleRef;
+    if (now - last < (unsigned long)mins * 60000UL) return;
+    _idleRef = now;   // one request; the wake restarts the count
+    pspRequestIdleRest();
+#endif
 }
 
 void AppWindow::LayoutChildren() {};
@@ -2754,6 +2826,19 @@ void AppWindow::autoSaveTick() {
        minutes. Manual save is still there for anyone who wants it
        sooner. */
     if (Player::GetInstance()->IsRunning()) {
+        return;
+    }
+    /* Nor while a render is open. The player reports stopped at the
+       last row, but the mixer goes on rendering the tail for up to
+       fifteen seconds and the writer thread is streaming it to the
+       card. The quiet check below used to cover that, except for its
+       two-minute escape: a song edited and then played through to
+       the end had been dirty longer than that by the last row, so
+       the write went in on top of the tail and the dropout went
+       into the WAV. A render is the one thing this file must never
+       glitch, so it waits for the writer to close, no matter how
+       long the work has sat unsaved. */
+    if (MixerService::GetInstance()->IsRendering()) {
         return;
     }
     if (AudioStats::QuietMs() < AUTOSAVE_TAIL_MS &&

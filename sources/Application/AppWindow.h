@@ -74,6 +74,11 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     // When a button was last touched. The write blocks input, so it
     // waits until nobody is using the machine.
     unsigned long _lastInputAt;
+    // Idle rest: the moment the idle count last restarted -- boot, a
+    // wake from rest, or a reason not to rest (a song playing). The
+    // later of this and _lastInputAt is when the machine was last busy.
+    unsigned long _idleRef;
+    void idleRestTick(unsigned long now);
     ViewType currentViewType();
     // nav-map menu state: where the highlight sits while R is held
     bool navMove(int dx, int dy);
