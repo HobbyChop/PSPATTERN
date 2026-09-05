@@ -642,8 +642,8 @@ bool AppWindow::navReachable(ViewType to) {
 
 /* The screens, in the corner of every screen. Three rows of two-letter
    names laid out as the map has always been laid out, the current
-   screen inverted. Hold R and the arrows walk a second highlight in
-   the value colour; releasing R jumps. A destination the drill would
+   screen inverted. Hold R and the arrows walk a second block in the
+   cursor colour; releasing R jumps. A destination the drill would
    refuse -- an empty chain row, no table to follow -- draws dimmed.
 
    This replaces the overlay that R used to raise over the whole
@@ -1581,17 +1581,15 @@ void AppWindow::flushOverlayOps() {
                     GUIWindow::DrawRect(bg);
                     ink = backgroundColor_;
                 } else if (aim) {
-                    GUIColor fc = colorForProp(CD_HILITE2);
-                    GUIWindow::SetColor(fc);
-                    GUIRect t(cx - 1, cy - 1, cx + 8, cy);
-                    GUIWindow::DrawRect(t);
-                    GUIRect b(cx - 1, cy + 5, cx + 8, cy + 6);
-                    GUIWindow::DrawRect(b);
-                    GUIRect l(cx - 1, cy - 1, cx, cy + 6);
-                    GUIWindow::DrawRect(l);
-                    GUIRect r(cx + 7, cy - 1, cx + 8, cy + 6);
-                    GUIWindow::DrawRect(r);
-                    ink = fc;
+                    // the walk's target: a filled block in the cursor
+                    // colour with the letters cut out of it, the same
+                    // shape as the current screen's block. A frame of
+                    // yellow letters was too faint to read at this size.
+                    GUIColor ac = colorForProp(CD_CURSOR);
+                    GUIWindow::SetColor(ac);
+                    GUIRect ab(cx - 1, cy - 1, cx + 8, cy + 6);
+                    GUIWindow::DrawRect(ab);
+                    ink = backgroundColor_;
                 } else {
                     ink = colorForProp(ok ? CD_ROW2 : CD_ROW);
                 }
@@ -2143,6 +2141,9 @@ bool AppWindow::onEvent(GUIEvent &event) {
                     ViewType dest = navPrep(currentViewType(), navSel_);
                     if (dest != currentViewType()) switchToView(dest);
                 }
+                // a walk that ends where it began still has to repaint
+                // the map, or the target block stays behind on screen
+                _isDirty = true;
             }
         }
         if (_currentView)

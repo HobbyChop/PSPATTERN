@@ -1,3 +1,11 @@
+PSPATTERN 0.39.1a
+
+    The corner map's walk target is a filled block in the cursor
+        colour with the letters cut out of it, the same shape as the
+        block that marks the screen you are on; the yellow frame was
+        too faint to read. And releasing R after a walk that ended
+        where it began no longer leaves the block behind.
+
 PSPATTERN 0.39.0a
 
     A map of the screens sits in the bottom right corner of every
