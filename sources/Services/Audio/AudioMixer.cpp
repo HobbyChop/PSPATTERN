@@ -17,9 +17,9 @@ AudioMixer::AudioMixer(const char *name):
 	tailSamples_(0),
 	tailCut_(false),
 	tailQuiet_(0),
-	finishing_(0),
 	name_(name)
 {
+	for (int i=0;i<MAX_FINISHING;i++) finishing_[i]=0 ;
 	lastRenderFailed_=false ;
 	volume_=(i2fp(1)) ;
     mixBuffer_ = 0;
@@ -102,14 +102,19 @@ void AudioMixer::EnableRendering(bool enable) {
 // blocks, so the audio thread can call it at the end of a tail.
 void AudioMixer::finishWriter() {
 	if (!writer_) return ;
-	// two takes inside the last one's drain: rare, and the wait is
-	// the price of not keeping a list
-	if (finishing_) {
-		finishing_->Close() ;
-		SAFE_DELETE(finishing_) ;
-	}
 	writer_->Finish() ;
-	finishing_=writer_ ;
+	reapWriter() ;              // free any slot whose file is closed
+	int slot=-1 ;
+	for (int i=0;i<MAX_FINISHING;i++) if (!finishing_[i]) { slot=i ; break ; }
+	if (slot<0) {
+		// four takes still draining: the card is in real trouble, and
+		// this is the one path that can still wait
+		finishing_[0]->Close() ;
+		lastRenderFailed_=finishing_[0]->Failed() ;
+		SAFE_DELETE(finishing_[0]) ;
+		slot=0 ;
+	}
+	finishing_[slot]=writer_ ;
 	writer_=0 ;
 	enableRendering_=false ;
 	tailing_=false ;
@@ -117,9 +122,11 @@ void AudioMixer::finishWriter() {
 } ;
 
 void AudioMixer::reapWriter() {
-	if (finishing_&&finishing_->Done()) {
-		lastRenderFailed_=finishing_->Failed() ;
-		SAFE_DELETE(finishing_) ;
+	for (int i=0;i<MAX_FINISHING;i++) {
+		if (finishing_[i]&&finishing_[i]->Done()) {
+			lastRenderFailed_=finishing_[i]->Failed() ;
+			SAFE_DELETE(finishing_[i]) ;
+		}
 	}
 } ;
 
@@ -136,10 +143,12 @@ void AudioMixer::CloseRendering() {
 		lastRenderFailed_=writer_->Failed() ;
 		SAFE_DELETE(writer_) ;
 	}
-	if (finishing_) {
-		finishing_->Close() ;
-		lastRenderFailed_=finishing_->Failed() ;
-		SAFE_DELETE(finishing_) ;
+	for (int i=0;i<MAX_FINISHING;i++) {
+		if (finishing_[i]) {
+			finishing_[i]->Close() ;
+			lastRenderFailed_=finishing_[i]->Failed() ;
+			SAFE_DELETE(finishing_[i]) ;
+		}
 	}
 	enableRendering_=false ;
 	tailing_=false ;
@@ -335,8 +344,9 @@ bool AudioMixer::Render(fixed *buffer,int samplecount) {
          peakMixerLevel_ = 0;
          outputPeakLevel_ = 0;
      }
-    // a file the thread is still finishing: let it go once it is done
-    if (finishing_) reapWriter() ;
+    // files the writer thread is still finishing: let each go once
+    // it is done (four pointer tests; the list replaced a single slot)
+    reapWriter() ;
     if (enableRendering_&&writer_) {
 		if (!gotData) {
 			memset(buffer,0,samplecount*2*sizeof(fixed)) ;

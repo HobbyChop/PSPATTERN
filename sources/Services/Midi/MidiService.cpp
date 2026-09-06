@@ -288,6 +288,16 @@ void MidiService::stopDevice() {
         // not joined -- it exits within one short wait)
         if (rtThread_) {
             rtThread_->RequestTermination();
+            /* and waited for, then freed. Dropping the pointer left
+               the object and its kernel thread stack behind on every
+               project switch, and leader mode starts a fresh one on
+               the next play. Its loop sleeps 500us, so this is one
+               step; the bound is only there so a wedged thread cannot
+               hold the close. */
+            for (int i = 0; i < 200 && !rtThread_->IsFinished(); i++) {
+                sceKernelDelayThread(1000);
+            }
+            delete rtThread_;
             rtThread_ = 0;
         }
         {

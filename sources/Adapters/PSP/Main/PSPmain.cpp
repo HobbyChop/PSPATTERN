@@ -272,6 +272,20 @@ void PSPHandleQuasiStandby(void) {
 	}
 	pspQuasiClearWake();
 
+	/* Let the waking button go before the app can see it. SDL samples
+	   the pad from the event loop, which has been parked in here, so
+	   whatever is still held when we return arrives as a fresh press
+	   -- the button that woke the machine also did something on
+	   screen. Bounded, so a stuck pad cannot hold us here. */
+	{
+		SceCtrlData pad;
+		for (int i = 0; i < 200; i++) {
+			if (sceCtrlPeekBufferPositive(&pad, 1) <= 0) break;
+			if (pad.Buttons == 0) break;
+			sceKernelDelayThread(5 * 1000);
+		}
+	}
+
 	// 6. wake: backlight back on instantly (kernel), full clock, audio,
 	//    an ascending chirp, and a full repaint
 	sceImposeSetBacklightOffTime(savedBl > 0 ? savedBl : 30);

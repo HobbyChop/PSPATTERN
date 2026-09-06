@@ -30,6 +30,21 @@ int SampleInstrument::lastMidiNote_[PLAYER_CHANNEL_COUNT]= {
 
 #define KRATE_SAMPLE_COUNT 100
 
+/* The playback speed is a Q15 product of the note's base speed and
+   whatever the pitch ramps have done to it. Both can be large -- a
+   root note near zero puts the base 10 octaves up, and a PTCH slide
+   multiplies again -- and the product left a 32 bit fixed, wrapping
+   NEGATIVE. A negative speed walks backwards out of the buffer with
+   nothing in the render loop to stop it. Ten octaves up is already
+   past anything musical, so that is where it stops. */
+#define MAX_PLAY_SPEED i2fp(1024)
+static inline fixed speedProduct(fixed base,fixed offset) {
+	long long p=((long long)base*(long long)offset)>>FIXED_SHIFT ;
+	if (p<0) p=0 ;
+	if (p>(long long)MAX_PLAY_SPEED) p=(long long)MAX_PLAY_SPEED ;
+	return (fixed)p ;
+}
+
 SampleInstrument::SampleInstrument() {
 
 // Initialize instruments settings
@@ -646,7 +661,7 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 				}
 
 				rp->volume_=rp->baseVolume_+rup.volumeOffset_ ;
-				rp->speed_=fp_mul(rp->baseSpeed_,rup.speedOffset_) ;
+				rp->speed_=speedProduct(rp->baseSpeed_,rup.speedOffset_) ;
 				rp->pan_=rp->basePan_+rup.panOffset_ ;
 			}
 
@@ -660,6 +675,17 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 					if (rp->position_<0) {
 						rp->position_=0 ;
 					} ;
+					/* And not past the end. A retrigger offset larger
+					   than its loop, or either of them under reverse
+					   play, pushed the playhead clean out of the
+					   sample; the render then read whatever followed
+					   it in memory. Two frames short of the end keeps
+					   the interpolator's second tap inside too. */
+					{
+						int rtgSize=source_->GetSize(rp->midiNote_) ;
+						float rtgTop=(rtgSize>=2)?float(rtgSize-2):0.0f ;
+						if (rp->position_>rtgTop) rp->position_=rtgTop ;
+					}
 					rp->retrigCount_=rp->retrigLoop_ ;
 				}
 				rp->retrigCount_-- ;
@@ -795,6 +821,17 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
     {
 			lastSample=(short *)(wavbuf+rp->rendLoopEnd_*2*channelCount) ;
 		}
+
+    /* The last frame the BUFFER holds, which is not the same thing as
+       lastSample: that one is a loop bound, and under reverse play it
+       sits at the very end, so the interpolator's forward taps could
+       read a frame past the allocation. Computed once, outside the
+       sample loop. */
+    short* bufLastFrame=(short *)wavbuf ;
+    {
+        int bufFrames=source_->GetSize(rp->midiNote_) ;
+        if (bufFrames>1) bufLastFrame=((short *)wavbuf)+(bufFrames-1)*channelCount ;
+    }
         
     fixed zerofive=fl2fp(0.5f) ;
 
@@ -962,7 +999,7 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 						
 						rp->volume_=rp->baseVolume_+rup.volumeOffset_ ;
 						rp->pan_=rp->basePan_+rup.panOffset_ ;
-						rp->speed_=fp_mul(rp->baseSpeed_,rup.speedOffset_) ;
+						rp->speed_=speedProduct(rp->baseSpeed_,rup.speedOffset_) ;
 						rp->cutoff_=rp->baseFCut_+rup.cutOffset_ ;
 						rp->reso_=rp->baseFRes_+rup.resOffset_ ;
 						rp->fbMix_=rp->baseFbMix_+rup.fbMixOffset_ ;
@@ -1019,12 +1056,21 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 	        }
           else
 	        {
-            unsigned int distance = (unsigned int)(input - dsBasePtr) /channelCount;
-            i1 = dsBasePtr+(distance&dsMask)*channelCount ;
+            if (input<dsBasePtr) {
+              /* Below the anchor the difference is negative, and as an
+                 unsigned it rounded to a pointer outside the sample --
+                 which is where a loop that starts before START goes on
+                 every wrap. Nothing to quantise against down here. */
+              i1 = input ;
+            } else {
+              unsigned int distance = (unsigned int)(input - dsBasePtr) /channelCount;
+              i1 = dsBasePtr+(distance&dsMask)*channelCount ;
+            }
           }
         }
 
         short *i2=i1+channelCount ;
+        if (i2>bufLastFrame) i2=bufLastFrame ;
         /* The four-point curve reads one frame before and one after
            the pair. Clamped to the sample's own frames: the first frame
            stands in for the one before it, the last for the one after,
@@ -1033,6 +1079,7 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
            is what the straight line always had there too. */
         short *i0=(i1>(short *)wavbuf)?(i1-channelCount):i1 ;
         short *i3=(i2<lastSample)?(i2+channelCount):i2 ;
+        if (i3>bufLastFrame) i3=bufLastFrame ;
 
 				if (filtering) 
         {
@@ -1423,8 +1470,17 @@ void SampleInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
         if (value > 0x8000) {
             // Backward shift (two's complement): 0xFFFF = -1, 0x8001 = -32767
             int shift = (int)(0x10000 - value);
-            if (shift > rp->rendLoopStart_) { // Don't push start below sample 0
-                shift = rp->rendLoopStart_;
+            /* Nothing the window covers may go below sample 0. It used
+               to clamp against the loop START alone, which is the
+               lower bound only while the loop runs forwards: with a
+               backwards loop the END is lower, and with the playhead
+               dragging along it can be lower still. */
+            int lo = (rp->rendLoopStart_ < rp->rendLoopEnd_) ? rp->rendLoopStart_
+                                                             : rp->rendLoopEnd_;
+            if (dragPlayhead && (int)rp->position_ < lo) lo = (int)rp->position_;
+            if (lo < 0) lo = 0;
+            if (shift > lo) {
+                shift = lo;
             }
             rp->rendLoopEnd_ -= shift;
             rp->rendLoopStart_ -= shift;
@@ -1437,8 +1493,16 @@ void SampleInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
             // Clamp so rendLoopEnd_ doesn't escape the sample. When the window
             // hits the end, further forward LPOFs become no-ops — the loop is
             // parked at the boundary until something resets it.
-            if (rp->rendLoopEnd_ + shift >= sampleSize) {
-                shift = sampleSize - rp->rendLoopEnd_;
+            /* And the mirror of the backward case: the upper bound is
+               whichever of the two loop points is higher, plus the
+               playhead when it is being dragged. Clamping against the
+               END alone let a backwards loop's start walk out of the
+               sample. */
+            int hi = (rp->rendLoopStart_ > rp->rendLoopEnd_) ? rp->rendLoopStart_
+                                                             : rp->rendLoopEnd_;
+            if (dragPlayhead && (int)rp->position_ > hi) hi = (int)rp->position_;
+            if (hi + shift >= sampleSize) {
+                shift = sampleSize - 1 - hi;
             }
             if (shift > 0) {
                 rp->rendLoopEnd_ += shift;

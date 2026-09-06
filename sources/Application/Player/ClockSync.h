@@ -63,7 +63,12 @@ public:
 			if (!acqT0_) { acqT0_ = nowMs ; acqTick0_ = leaderTicks_ ; }
 			else if (leaderTicks_ - acqTick0_ >= 24) {
 				unsigned long el = nowMs - acqT0_ ;
-				if (el > 100) {
+				/* One beat is a few hundred milliseconds and never
+				   ten seconds. A larger figure means the kernel's
+				   microsecond stamp wrapped its 32 bits between the
+				   two reads -- once every 71 minutes of uptime -- and
+				   the tempo it implied was the 30 BPM floor. */
+				if (el > 100 && el < 10000) {
 					float m = 2500.0f * float(leaderTicks_ - acqTick0_)
 					          / float(el) ;
 					if (m < 30.0f) m = 30.0f ;

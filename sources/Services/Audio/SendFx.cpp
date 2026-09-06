@@ -258,7 +258,7 @@ void Init(int sampleRate) {
 	BK.dlyL_ = alloc(SENDFX_MAX_DELAY) ;
 	BK.dlyR_ = alloc(SENDFX_MAX_DELAY) ;
 #ifdef PSP_FDN_REVERB
-	fdn_.Init() ; fdn_.SetSize(revSize_) ; fdn_.SetDamp(revDamp_) ;
+	bool fdnOk=fdn_.Init() ; fdn_.SetSize(revSize_) ; fdn_.SetDamp(revDamp_) ;
 #endif
 
 	// lengths first, so the block can be sized before anything is
@@ -307,7 +307,9 @@ void Init(int sampleRate) {
 		}
 	}
 
-	ready_ = (BK.dlyL_ && BK.dlyR_ && revBlock_) ;
+	// a reverb that could not allocate takes the sends down with it:
+	// out of memory here means the machine has nothing left anyway
+	ready_ = (BK.dlyL_ && BK.dlyR_ && revBlock_ && fdnOk) ;
 #ifdef PSP_ME_OFFLOAD
 	// the second core drives the delay lines directly; give it their
 	// addresses (it aliases them uncached and uses them itself)

@@ -1,3 +1,34 @@
+PSPATTERN 0.40.3a
+
+    The last of the stability pass, and the deepest of it: the sampler.
+
+    A sample plays from a buffer, and four places could step outside
+        it. A low root note with a long pitch slide overflowed the
+        playback speed, which went negative and walked backwards out
+        of the sample. A retrigger offset larger than its loop pushed
+        the playhead past the end. A loop that runs backwards let the
+        loop offset command carry either of its bounds out of the
+        sample. And the downsample control, on a loop that starts
+        before the sample's start point, rounded its read pointer to
+        somewhere before the buffer. All four are bounded now, and the
+        interpolator's forward taps stop at the last real frame.
+
+    The MIDI keyboard takes the mixer lock. Playing one while the
+        song was stopped started and stopped voices from the USB
+        thread while the sound thread was using the same channel.
+
+    A render whose file is still being written no longer makes the
+        next one wait: takes finish on a list rather than one at a
+        time. A damaged or foreign save cannot run its decompressor
+        past the end of its buffer. The button that wakes the machine
+        from rest no longer also presses something. Undo on the song
+        screen carries the bookmarks. Double tap makes a table on the
+        synth screen, as it always did on the sampler. A reverb that
+        cannot find memory keeps quiet instead of playing through
+        nothing, and a SoundFont with an impossible sample size is
+        refused. Leader mode stops leaking a thread per project.
+        Project names are made of characters a memory stick accepts.
+
 PSPATTERN 0.40.2a
 
     The second half of the stability pass.

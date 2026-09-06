@@ -2,6 +2,7 @@
 #include "Player.h"
 #include "Services/Midi/MidiService.h"
 #include "Services/Midi/MidiMessage.h"
+#include "Application/Mixer/MixerService.h"
 #include "Application/Model/Project.h"
 #include "System/System/System.h"
 
@@ -106,6 +107,15 @@ void MidiNoteInput::Update(Observable &o,I_ObservableData *d) {
 	int status=msg->status_&0xF0 ;
 	Player *player=Player::GetInstance() ;
 
+	/* This runs on the MIDI pump thread. Everything below starts or
+	   stops a voice, which is the render thread's state: without the
+	   lock the two walked the same channel at once, and on a machine
+	   with no memory protection that corrupts quietly rather than
+	   faulting. The lock goes HERE and not inside Player::MidiNoteOn,
+	   because the instrument screen's audition calls that from the
+	   input path, which already holds it. */
+	MixerService *sm=MixerService::GetInstance() ;
+	sm->Lock() ;
 	switch (status) {
 		case 0x90:   // note on, velocity 0 means off
 			player->MidiNoteOn(msg->data1_,msg->data2_) ;
@@ -124,4 +134,5 @@ void MidiNoteInput::Update(Observable &o,I_ObservableData *d) {
 		default:
 			break ;
 	}
+	sm->Unlock() ;
 } ;

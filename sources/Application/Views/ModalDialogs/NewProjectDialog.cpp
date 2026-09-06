@@ -8,6 +8,24 @@ static char *buttonText[BUTTONS_LENGTH] = {(char *)"Random", (char *)"Ok",
 
 #define DIALOG_WIDTH 20
 
+/* The name field used to step a raw char, which walks through '/',
+   ':', '*', '?' and on into the control bytes -- all of which reach
+   MakeDir, and a trailing '/' makes a project whose name reads as
+   empty everywhere afterwards. Stepping moves through this set and
+   wraps at its ends instead. */
+static const char NAME_CHARS[] =
+    " -0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz" ;
+static char stepNameChar(char c,int dir) {
+	int n=(int)(sizeof(NAME_CHARS)-1) ;
+	int i=0 ;
+	while ((i<n)&&(NAME_CHARS[i]!=c)) i++ ;
+	if (i>=n) i=0 ;              // anything else starts from the top
+	i+=dir ;
+	if (i<0) i=n-1 ;
+	if (i>=n) i=0 ;
+	return NAME_CHARS[i] ;
+}
+
 NewProjectDialog::NewProjectDialog(View &view, Path currentPath)
     : ModalView(view), currentPath_(currentPath) {}
 
@@ -229,12 +247,12 @@ void NewProjectDialog::ProcessButtonMask(unsigned short mask, bool pressed) {
             }
         }
         if (mask & EPBM_UP) {
-            name_[currentChar_]+=1;
+            name_[currentChar_]=stepNameChar(name_[currentChar_],1);
 			lastChar_=name_[currentChar_] ;
 			isDirty_=true ;
         }
         if (mask&EPBM_DOWN) {
-			name_[currentChar_]-=1;
+			name_[currentChar_]=stepNameChar(name_[currentChar_],-1);
 			lastChar_=name_[currentChar_] ;
 			isDirty_=true ;
         }

@@ -46,6 +46,12 @@ int LZ_Compress(unsigned char *in, unsigned char *out,
                  unsigned int insize );
 int LZ_CompressFast( unsigned char *in, unsigned char *out,
                      unsigned int insize, unsigned int *work );
+/* As LZ_Uncompress, but it stops at outsize and refuses a back
+   reference that points before the start of the output. The plain
+   form trusts the stream, which is a corrupt file's way in. */
+void LZ_UncompressBounded( unsigned char *in, unsigned char *out,
+    unsigned int insize, unsigned int outsize );
+
 void LZ_Uncompress( unsigned char *in, unsigned char *out,
                     unsigned int insize );
 

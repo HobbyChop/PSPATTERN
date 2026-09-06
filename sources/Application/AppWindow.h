@@ -40,7 +40,7 @@ class AppWindow : public GUIWindow, I_Observer, Status {
        edits is the 2KB song grid -- so a handful of them costs less
        than a sample. */
 #define UNDO_SLOTS 12
-#define UNDO_MAX_BYTES 2048
+#define UNDO_MAX_BYTES 2304   // the song grid (2048) plus its bookmarks (256)
     struct UndoEntry {
         View *view ;
         int   context ;

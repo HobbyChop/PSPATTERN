@@ -1510,13 +1510,20 @@ void SongView::AnimationUpdate() {
 /* The whole song grid. Clone and deep clone also allocate new chains
    and phrases, but restoring the grid entry is what makes the edit go
    away -- the orphaned chain is simply unused again. */
-int SongView::UndoSize() { return SONG_ROW_COUNT*SONG_CHANNEL_COUNT ; }
+/* The bookmarks travel with the grid: a row insert or delete moves
+   them, so undoing one without them left every bookmark below the
+   edit pointing at the wrong row. */
+int SongView::UndoSize() { return SONG_ROW_COUNT*SONG_CHANNEL_COUNT+SONG_ROW_COUNT ; }
 int SongView::UndoContext() { return 0 ; }
 void SongView::UndoCapture(unsigned char *dst) {
 	memcpy(dst,viewData_->song_->data_,SONG_ROW_COUNT*SONG_CHANNEL_COUNT) ;
+	memcpy(dst+SONG_ROW_COUNT*SONG_CHANNEL_COUNT,
+	       viewData_->song_->bookmark_,SONG_ROW_COUNT) ;
 }
 void SongView::UndoRestore(int context,const unsigned char *src) {
 	memcpy(viewData_->song_->data_,src,SONG_ROW_COUNT*SONG_CHANNEL_COUNT) ;
+	memcpy(viewData_->song_->bookmark_,
+	       src+SONG_ROW_COUNT*SONG_CHANNEL_COUNT,SONG_ROW_COUNT) ;
 }
 
 void SongView::DrawView() {

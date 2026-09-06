@@ -75,7 +75,13 @@ sfBankID SoundFontManager::LoadBank(const char *path) {
 		
 		int byteSize=to-from ;
 
-		void *buffer=malloc(byteSize) ;
+		/* from and to are read straight out of the file. A negative or
+		   absurd size wrapped the allocation and the read below then
+		   walked the heap; treat it like the out-of-memory case, which
+		   the code under here already handles. */
+		#define SF_MAX_SAMPLE_BYTES (4*1024*1024)
+		void *buffer=((byteSize>0)&&(byteSize<=SF_MAX_SAMPLE_BYTES))
+		             ?malloc(byteSize):0 ;
 
 		if (buffer) {
 			fin->Seek(from,SEEK_SET) ;

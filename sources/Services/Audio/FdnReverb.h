@@ -61,7 +61,9 @@ public:
 #endif
 	static const int NDIFF = FDN_NDIFF ;
 
-	void Init() {
+	// false when a line or a diffuser could not be allocated: the
+	// caller must not run the network, which would write through null
+	bool Init() {
 		// Mutually-prime line lengths, ~35-59ms at 44100: dense enough
 		// modes for a smooth tail, spread enough not to beat together.
 		static const int L[NLINE] = { 1553, 1889, 2251, 2609 } ;
@@ -84,6 +86,9 @@ public:
 			difPos_[i]=0 ;
 		}
 		rebuild() ;
+		for (int i=0;i<NLINE;i++) if (!buf_[i]) return false ;
+		for (int i=0;i<NDIFF;i++) if (!dif_[i]) return false ;
+		return true ;
 	}
 
 	void Close() {

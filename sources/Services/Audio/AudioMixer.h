@@ -1,4 +1,6 @@
 #ifndef _AUDIO_MIXER_H_
+// takes still draining to the card, at once
+#define MAX_FINISHING 4
 #define _AUDIO_MIXER_H_
 
 #include "Application/Instruments/WavFileWriter.h"
@@ -44,7 +46,11 @@ public:
 	   never deleted under the audio thread. */
 	void RequestTailEnd() { if (tailing_) tailCut_=true ; }
 	// true while a take's file is open, the thread's finishing included
-	bool IsRendering() const { return writer_!=0||finishing_!=0 ; }
+	bool IsRendering() const {
+		if (writer_) return true ;
+		for (int i=0;i<MAX_FINISHING;i++) if (finishing_[i]) return true ;
+		return false ;
+	}
 	// the last render's file came up short on the card
 	bool LastRenderFailed() const { return lastRenderFailed_ ; }
 	void SetVolume(fixed volume) ;
@@ -152,7 +158,11 @@ private:
   // A file the writer thread is still draining and closing. Handed
   // over by finishWriter, which never blocks, and let go by
   // reapWriter once the thread says it is done.
-  WavFileWriter *finishing_;
+  /* Takes whose file is still draining to the card. A list, because
+     finishing one is the audio thread's job and waiting for a card
+     there is a dropout: with a single slot, starting a take while the
+     last one drained blocked Render until the write finished. */
+  WavFileWriter *finishing_[MAX_FINISHING];
   void finishWriter();
   void reapWriter();
   fixed volume_;

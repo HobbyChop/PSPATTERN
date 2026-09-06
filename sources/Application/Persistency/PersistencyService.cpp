@@ -126,7 +126,6 @@ bool PersistencyService::Load(const char *name) {
 		// checked it. LZ_Uncompress has no output bound of its own, so a
 		// bogus header writes as far as the stream expands.
 		if ((fullLength<=0)||(fullLength>MAX_UNCOMPRESSED_SAVE)) {
-			SYS_FREE(compBuffer) ;
 			Trace::Error("save header claims %d bytes: refusing",fullLength) ;
 			SYS_FREE(compBuffer) ;
 			return false ;
@@ -134,14 +133,17 @@ bool PersistencyService::Load(const char *name) {
 
 		// Allocate a buffer to decompress data
 		
-		unsigned char *xmlSource=(unsigned char *)SYS_MALLOC(fullLength) ;
+		// +1 for the terminator the parser reads to
+		unsigned char *xmlSource=(unsigned char *)SYS_MALLOC(fullLength+1) ;
 		if (!xmlSource) {
 			Trace::Error("could not allocate space for %d bytes") ;
 			SYS_FREE(compBuffer) ;
 			return false ;
 		}
 
-    LZ_Uncompress(compBuffer+offset,xmlSource,length-offset);
+    LZ_UncompressBounded(compBuffer+offset,xmlSource,length-offset,
+                         (unsigned int)fullLength);
+    xmlSource[fullLength]=0 ;
 
 		// Initialize XML document on decompressed buffer
 		doc.Parse((char *)xmlSource) ;

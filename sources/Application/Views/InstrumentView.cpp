@@ -1069,6 +1069,10 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 			UIIntVarField *field=(UIIntVarField *)GetFocus() ;
 			Variable &v=field->GetVariable() ;
 			switch(v.GetID()) {
+				// the synth's table row has an id of its own, and only
+				// the sampler's answered here, so the same gesture did
+				// nothing on a synth. (MIDI shares the sampler's id.)
+				case SYP_TABLE:
 				case SIP_TABLE:
 				 {
 					int next=TableHolder::GetInstance()->GetNext() ;

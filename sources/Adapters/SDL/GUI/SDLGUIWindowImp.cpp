@@ -890,7 +890,11 @@ void SDLGUIWindowImp::PushEvent(GUIEvent &event)
 	SDL_Event sdlevent ;
 	sdlevent.type=SDL_USEREVENT ;
 	sdlevent.user.data1=&event ;
-	SDL_PushEvent(&sdlevent) ;
+	/* The queue takes ownership: ProcessUserEvent deletes what it
+	   dispatches. A full queue takes nothing, so the event has to go
+	   here or every repeat tick past the queue's depth leaks one --
+	   which is what holding an arrow through a save used to do. */
+	if (SDL_PushEvent(&sdlevent)<0) delete &event ;
 } ;
 
 void SDLGUIWindowImp::ProcessUserEvent(SDL_Event &event)

@@ -1847,8 +1847,11 @@ void AppWindow::LoadProject(const Path &p) {
 
     // Create & observe the player
     Player *player = Player::GetInstance();
-    bool playerOK = player->Init(project, _viewData);
+    /* Observe FIRST. Init ends by starting the audio, and the render
+       thread's first event walks the observer list -- which this line
+       was still adding to, one line later, on this thread. */
     player->AddObserver(*this);
+    bool playerOK = player->Init(project, _viewData);
 
     // let a MIDI keyboard play the instrument on screen
     MidiNoteInput::GetInstance()->Attach();

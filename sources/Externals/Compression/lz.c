@@ -489,6 +489,57 @@ int LZ_CompressFast( unsigned char *in, unsigned char *out,
 *  insize  - Number of input bytes.
 *************************************************************************/
 
+void LZ_UncompressBounded( unsigned char *in, unsigned char *out,
+    unsigned int insize, unsigned int outsize )
+{
+    unsigned char marker, symbol;
+    unsigned int  i, inpos, outpos, length, offset;
+
+    if( insize < 1 || outsize < 1 )
+    {
+        return;
+    }
+
+    marker = in[ 0 ];
+    inpos = 1;
+
+    outpos = 0;
+    do
+    {
+        symbol = in[ inpos ++ ];
+        if( symbol == marker )
+        {
+            if( in[ inpos ] == 0 )
+            {
+                if( outpos >= outsize ) return;
+                out[ outpos ++ ] = marker;
+                ++ inpos;
+            }
+            else
+            {
+                inpos += _LZ_ReadVarSize( &length, &in[ inpos ] );
+                inpos += _LZ_ReadVarSize( &offset, &in[ inpos ] );
+
+                /* a back reference that reaches before the start of
+                   the output is a corrupt stream, not a match */
+                if( offset == 0 || offset > outpos ) return;
+                for( i = 0; i < length; ++ i )
+                {
+                    if( outpos >= outsize ) return;
+                    out[ outpos ] = out[ outpos - offset ];
+                    ++ outpos;
+                }
+            }
+        }
+        else
+        {
+            if( outpos >= outsize ) return;
+            out[ outpos ++ ] = symbol;
+        }
+    }
+    while( inpos < insize );
+}
+
 void LZ_Uncompress( unsigned char *in, unsigned char *out,
     unsigned int insize )
 {
