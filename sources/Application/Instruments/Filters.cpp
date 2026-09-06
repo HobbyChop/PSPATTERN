@@ -23,7 +23,7 @@ fixed fp_inv_255 ;
 void init_filters(void)
 {
 
-	for(int i=0;i<8;i++)
+	for(int i=0;i<PLAYER_CHANNEL_COUNT;i++)
 	{	//set sensible default values
 		//lowpass filter where everything passes with no resonance
 		set_filter(i,FLT_LOWPASS,i2fp(1),i2fp(0),i2fp(0),false);

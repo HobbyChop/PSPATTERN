@@ -27,6 +27,7 @@ EventManager *PSPSystem::eventManager_ = NULL ;
 
 int PSPSystem::MainLoop() 
 {
+	if (!eventManager_) return -1 ;   // SDL never came up
 	eventManager_->InstallMappings() ;
 	return eventManager_->MainLoop() ;
 } ;

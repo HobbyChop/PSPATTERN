@@ -36,8 +36,16 @@ bool PSPUsbMidiLink::Load(const char *argv0) {
 	if (ret) Trace::Log("PSPUSBMIDI","sceUsbStart(bus)=%08X",(unsigned int)ret) ;
 	ret=sceUsbStart(USBMIDI_DRIVER_NAME,0,0) ;
 	if (ret) Trace::Log("PSPUSBMIDI","sceUsbStart(midi)=%08X",(unsigned int)ret) ;
-	ret=sceUsbActivate(USBMIDI_PID) ;
-	if (ret) Trace::Log("PSPUSBMIDI","sceUsbActivate=%08X",(unsigned int)ret) ;
+	int act=ret?ret:sceUsbActivate(USBMIDI_PID) ;
+	if (act) Trace::Log("PSPUSBMIDI","sceUsbActivate=%08X",(unsigned int)act) ;
+	if (ret||act) {
+		// not available: the readout used to blame the cable for a
+		// driver that never came up
+		if (!ret) sceUsbStop(USBMIDI_DRIVER_NAME,0,0) ;
+		sceUsbStop(PSP_USBBUS_DRIVERNAME,0,0) ;
+		available_=false ;
+		return false ;
+	}
 
 	Trace::Log("PSPUSBMIDI","usbmidi.prx loaded, USB active") ;
 	available_=true ;

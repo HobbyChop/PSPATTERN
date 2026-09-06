@@ -360,7 +360,7 @@ void SongView::fillClipboardData() {
 
     // Clear current selection data
 
-    if (!clipboard_.data_)
+    if (clipboard_.data_)   // was inverted: every copy leaked its buffer
         SYS_FREE((void *)clipboard_.data_);
 
     // Prepare selection related information
@@ -1030,7 +1030,7 @@ void SongView::processNormalButtonMask(unsigned int mask) {
     if ((!(mask & EPBM_A)) && updatingChain_) {
         unsigned char *c = viewData_->song_->data_ + updateX_ +
                            8 * (viewData_->songOffset_ + updateY_);
-        viewData_->song_->chain_->SetUsed(*c);
+        if (*c != 0xFF) viewData_->song_->chain_->SetUsed(*c);
         updatingChain_ = false;
     }
 };

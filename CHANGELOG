@@ -1,3 +1,27 @@
+PSPATTERN 0.40.2a
+
+    The second half of the stability pass.
+
+    The screen's ticker thread now only wakes the main loop; the
+        stuck-button cure and the "wrote ..." notice after a render
+        run on the main thread, where the buttons and the screen
+        belong. X+O on the instrument screen's TYPE row asks before
+        purging the instrument. The tempo tap ignores a bounce and
+        stays between 30 and 400. The audio driver's two events no
+        longer share a flag that could drop one of them.
+
+    Twenty-eight small guards from the audit: the second core's
+        memory checked at boot, rest keeps the firmware timer ticking
+        and honours a slide during its autosave, USB MIDI says when
+        its driver did not start, a pan of FF, a missing sample size,
+        a table number past the last, an inverted result on sample
+        reassign, filter tables indexed inside their bounds, the vox
+        formant sum widened, the save loader checking its length and
+        memory, an empty phrase column at start, the automated table
+        restoring all three columns, undo resyncing the parameter
+        editor, the song clipboard freeing its old buffer, and the
+        rest of the list in docs.
+
 PSPATTERN 0.40.1a
 
     A stability pass. Sixteen readers went over the whole source, and

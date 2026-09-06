@@ -77,7 +77,7 @@ void restoreHexBuffer(TiXmlNode *node,unsigned char *destination,unsigned dstSiz
 		int value ;
 		const char* s=current->Attribute("VALUE",&value) ;
 		if (s) {
-			int length ;
+			int length=0 ;   // absent LENGTH left it uninitialised
 			current->Attribute("LENGTH",&length) ;
 			// LENGTH is file data: it can be absent (0), negative, or
 			// larger than everything we own

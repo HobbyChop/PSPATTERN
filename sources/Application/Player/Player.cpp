@@ -227,7 +227,8 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
         for (int i = 0; i < SONG_CHANNEL_COUNT; i++) songPlayed_[i] = false;
         stopAtEnd_ = false;
 
-        startTime_ = mixer_->GetAudioOut()->GetStreamTime();
+        AudioOut *out = mixer_->GetAudioOut();
+        startTime_ = out ? out->GetStreamTime() : 0;   // audio init can have failed
 
         SetChanged();
         PlayerEvent pe(PET_START);
@@ -1059,6 +1060,9 @@ void Player::updatePhrasePos(int pos, int channel) {
     timeToStart_[channel] = 1;
 
     uchar phrase = viewData_->currentPlayPhrase_[channel];
+    // an empty column has no phrase: 0xFF indexed sixteen entries past
+    // the phrase arrays on every start
+    if (phrase == 0xFF) return;
 
     // Check both param colum 1 & 2
 
@@ -1534,7 +1538,7 @@ void Player::moveToNextChain(int channel, int hop) {
 
 double Player::GetPlayTime() {
     AudioOut *out = mixer_->GetAudioOut();
-    double currentTime = out->GetStreamTime();
+    double currentTime = out ? out->GetStreamTime() : 0;
     if (isRunning_) {
         currentTime_ = currentTime - startTime_;
     }

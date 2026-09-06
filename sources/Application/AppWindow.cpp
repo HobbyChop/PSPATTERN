@@ -293,80 +293,11 @@ int AppWindow::uiFrameMs_ = 16;   // 62.5Hz; the PSP LCD does ~60
    main thread like any keypress. Direct polling rather than SDL axis
    events: the PSP port's delivery of those proved unreliable. */
 void AppWindow::uiTick() {
-
-
-    /* THE STUCK-MASK CURE, done narrowly this time.
-
-       Every gesture reads _mask, the buttons the EVENT STREAM says
-       are held. Lose one release -- a full SDL queue is enough --
-       and that button is held forever as far as the program knows.
-       A phantom SELECT sends every arrow into the bookmark branch, a
-       phantom R into the nav map: the d-pad goes dead while the
-       screen and the song play on, which is exactly the reported
-       shape. Pressing the stuck button again cures it, which is why
-       it always "came back later".
-
-       The first attempt cleared the whole mask the moment the pad
-       read empty and synthesised a release; the pad reads empty for
-       a moment during ordinary chords, so it broke L and was backed
-       out. This one clears ONE BIT at a time, only for the buttons
-       whose phantoms eat input (d-pad, L, R, START, SELECT), only
-       after the hardware has said "up" for 12 consecutive ticks
-       (~190ms -- longer than any bounce, shorter than a player's
-       patience), and synthesises nothing: the dispatcher's own mask
-       is corrected too, so phantom repeats stop with it. */
-    {
-        static unsigned short upTicks[10];
-        unsigned short hwUp = System::GetInstance()->GetPadUpBits();
-        unsigned short suspect = _mask & hwUp;
-        for (int b = 0; b < 10; b++) {
-            unsigned short bit = (unsigned short)(1 << b);
-            if (suspect & bit) {
-                if (++upTicks[b] >= 12) {
-                    Trace::Log("INPUT", "clearing stuck bit %03x", bit);
-                    _mask &= ~bit;
-                    EventDispatcher::GetInstance()->ClearMaskBits(bit);
-                    upTicks[b] = 0;
-                }
-            } else {
-                upTicks[b] = 0;
-            }
-        }
-    }
-
-    /* The thumbstick no longer moves anything. It only ever spoke on
-       the instrument screen, and stick drift -- near-universal on
-       aging PSPs -- made that screen a lottery for affected units:
-       values edited and focus walked by a stick nobody touched. The
-       d-pad grammar covers everything the nub did (zones, ladder,
-       O+arrows editing), so the analog is simply not read any more.
-       GetAnalog stays in the system layer for anything that ever
-       wants an explicitly-calibrated use. */
-
-    // The render tail closed its own file: say so, with the name.
-    if (renderTailPending_ && !MixerService::GetInstance()->IsRendering()) {
-        renderTailPending_ = false;
-        if (_viewData) _viewData->isRendering_ = false;
-        if (_currentView) {
-            // the name without its .wav, and never past the row's
-            // forty columns
-            char name[64];
-            strncpy(name, MixerService::GetInstance()->GetRenderName(),
-                    sizeof(name) - 1);
-            name[sizeof(name) - 1] = 0;
-            char *dot = strrchr(name, '.');
-            if (dot) *dot = 0;
-            char msg[48];
-            if (MixerService::GetInstance()->LastRenderFailed())
-                snprintf(msg, sizeof(msg), "render FAILED, card full? %s", name);
-            else
-                snprintf(msg, sizeof(msg), "wrote %s", name);
-            msg[40] = 0;
-            _currentView->SetNotification(msg);
-            Redraw();
-        }
-    }
-
+    /* Runs on the ticker THREAD. All it does is ask the main loop for
+       a frame: Invalidate posts an expose event, and the main loop's
+       onUpdate does the work. The stuck-button cure and the render
+       notice used to run here, touching the button mask, the view's
+       notification string and a full redraw from a second thread. */
     Invalidate();
 }
 
@@ -497,7 +428,7 @@ void AppWindow::DrawString(const char *string, GUIPoint &pos,
 
     char buffer[41];
     int len = strlen(string);
-    int offset = (pos._x < 0) ? -pos._x / 8 : 0;
+    int offset = (pos._x < 0) ? -pos._x : 0;   // pos._x is a column, not pixels
     len -= offset;
     int available = 40 - ((pos._x < 0) ? 0 : pos._x);
     len = MIN(len, available);
@@ -507,7 +438,7 @@ void AppWindow::DrawString(const char *string, GUIPoint &pos,
     memcpy(buffer, string + offset, len);
     buffer[len] = 0;
 
-    int index = pos._x + 40 * pos._y;
+    int index = ((pos._x < 0) ? 0 : pos._x) + 40 * pos._y;
     memcpy(_charScreen + index, buffer, len);
     unsigned char prop = colorIndex_ + (props.invert_ ? PROP_INVERT : 0);
     memset(_charScreenProp + index, prop, len);
@@ -2106,7 +2037,9 @@ bool AppWindow::onEvent(GUIEvent &event) {
 
     _shouldQuit = false;
 
-    _isDirty = false;
+    // _isDirty is NOT cleared here: a repaint asked for by the audio
+    // thread between two events was thrown away with it. Redraw clears
+    // it when the paint happens.
 
     unsigned short v = 1 << event.GetValue();
 
@@ -2260,6 +2193,74 @@ void AppWindow::onUpdate() {
     }
 
     unsigned long now = System::GetInstance()->GetClock();
+
+    /* THE STUCK-MASK CURE, done narrowly this time.
+
+       Every gesture reads _mask, the buttons the EVENT STREAM says
+       are held. Lose one release -- a full SDL queue is enough --
+       and that button is held forever as far as the program knows.
+       A phantom SELECT sends every arrow into the bookmark branch, a
+       phantom R into the nav map: the d-pad goes dead while the
+       screen and the song play on, which is exactly the reported
+       shape. Pressing the stuck button again cures it, which is why
+       it always "came back later".
+
+       The first attempt cleared the whole mask the moment the pad
+       read empty and synthesised a release; the pad reads empty for
+       a moment during ordinary chords, so it broke L and was backed
+       out. This one clears ONE BIT at a time, only for the buttons
+       whose phantoms eat input (d-pad, L, R, START, SELECT), only
+       after the hardware has said "up" for 12 consecutive ticks
+       (~190ms -- longer than any bounce, shorter than a player's
+       patience), and synthesises nothing: the dispatcher's own mask
+       is corrected too, so phantom repeats stop with it. */
+    {
+        // on the main thread now, so the mask is only ever touched by
+        // the thread that reads it; 190ms of the pad saying "up", by
+        // the clock, since this runs on every expose and not per tick
+        static unsigned long upSince[10];
+        unsigned short hwUp = System::GetInstance()->GetPadUpBits();
+        unsigned short suspect = _mask & hwUp;
+        for (int b = 0; b < 10; b++) {
+            unsigned short bit = (unsigned short)(1 << b);
+            if (suspect & bit) {
+                if (upSince[b] == 0) upSince[b] = now;
+                else if (now - upSince[b] >= 190) {
+                    Trace::Log("INPUT", "clearing stuck bit %03x", bit);
+                    _mask &= ~bit;
+                    EventDispatcher::GetInstance()->ClearMaskBits(bit);
+                    upSince[b] = 0;
+                }
+            } else {
+                upSince[b] = 0;
+            }
+        }
+    }
+
+    // The render tail closed its own file: say so, with the name.
+    if (renderTailPending_ && !MixerService::GetInstance()->IsRendering()) {
+        renderTailPending_ = false;
+        if (_viewData) _viewData->isRendering_ = false;
+        if (_currentView) {
+            // the name without its .wav, and never past the row's
+            // forty columns
+            char name[64];
+            strncpy(name, MixerService::GetInstance()->GetRenderName(),
+                    sizeof(name) - 1);
+            name[sizeof(name) - 1] = 0;
+            char *dot = strrchr(name, '.');
+            if (dot) *dot = 0;
+            char msg[48];
+            if (MixerService::GetInstance()->LastRenderFailed())
+                snprintf(msg, sizeof(msg), "render FAILED, card full? %s", name);
+            else
+                snprintf(msg, sizeof(msg), "wrote %s", name);
+            msg[40] = 0;
+            _currentView->SetNotification(msg);
+            _isDirty = true;
+        }
+    }
+
 
 #ifdef PLATFORM_PSP
     /* The firmware's screen timeout is held off for as long as the app

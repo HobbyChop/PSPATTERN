@@ -1035,6 +1035,21 @@ void InstrumentView::openImportBrowser() {
 	DoModal(isd, ImportSampleDialogCallback);
 } ;
 
+static void PurgeCallback(View &v,ModalView &dialog) {
+	if (dialog.GetReturnCode()==MBL_YES) {
+		((InstrumentView &)v).doPurge() ;
+	}
+}
+
+void InstrumentView::doPurge() {
+	int i=viewData_->currentInstrument_ ;
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	I_Instrument *instr=bank->GetInstrument(i) ;
+	instr->Purge() ;
+	View::SetNotification("instrument purged") ;
+	isDirty_=true ;
+}
+
 void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 
 	if (!pressed) {
@@ -1279,13 +1294,12 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		if (mask&EPBM_A) { // Allow cut instrument
 		   if (getInstrumentType()==IT_SAMPLE) {
                 if (GetFocus()==T_SimpleList<UIField>::GetFirst()) {
-	               int i=viewData_->currentInstrument_ ;
-	               InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
-	               I_Instrument *instr=bank->GetInstrument(i) ;
-					instr->Purge() ;
-//                   Variable *v=instr->FindVariable(SIP_SAMPLE) ;
-//                   v->SetInt(-1) ;
-                   isDirty_=true ;
+                   // the type row is where the screen lands, and X+O is
+                   // the cut chord everywhere else: it wiped the whole
+                   // instrument without a word. Ask first.
+                   MessageBox *mb=new MessageBox(*this,"Purge this instrument?",MBBF_YES|MBBF_CANCEL) ;
+                   DoModal(mb,PurgeCallback) ;
+                   return ;
                 }
            }
 

@@ -1484,6 +1484,7 @@ void PhraseView::UndoRestore(int context,const unsigned char *src) {
 	memcpy(p->cmd2_+base,d,16*sizeof(FourCC)) ;      d+=16*sizeof(FourCC) ;
 	memcpy(p->param2_+base,d,16*sizeof(ushort)) ;    d+=16*sizeof(ushort) ;
 	memcpy(p->velocity_+base,d,16) ;
+	updateCursor(0,0) ;   // the parameter editor reloads from the restored cell
 }
 
 void PhraseView::DrawView() {

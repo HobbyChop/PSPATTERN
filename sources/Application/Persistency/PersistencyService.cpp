@@ -90,11 +90,21 @@ bool PersistencyService::Load(const char *name) {
 	
 	file->Seek(0,SEEK_END) ;
 	int length=file->Tell() ;
+	if ((length<=0)||(length>MAX_UNCOMPRESSED_SAVE)) {
+		file->Close() ;
+		delete file ;
+		return false ;
+	}
 
 	// +1: TinyXML parses to the NUL — an unterminated buffer runs
 	// into heap garbage, the parse "fails", and the LZ fallback
 	// below then shreds memory decompressing plain XML
 	unsigned char *compBuffer=(unsigned char *)SYS_MALLOC(length+1) ;
+	if (!compBuffer) {
+		file->Close() ;
+		delete file ;
+		return false ;
+	}
 
   file->Seek(0,SEEK_SET) ;
 	file->Read(compBuffer,1,length) ;
@@ -116,6 +126,7 @@ bool PersistencyService::Load(const char *name) {
 		// checked it. LZ_Uncompress has no output bound of its own, so a
 		// bogus header writes as far as the stream expands.
 		if ((fullLength<=0)||(fullLength>MAX_UNCOMPRESSED_SAVE)) {
+			SYS_FREE(compBuffer) ;
 			Trace::Error("save header claims %d bytes: refusing",fullLength) ;
 			SYS_FREE(compBuffer) ;
 			return false ;
@@ -126,6 +137,7 @@ bool PersistencyService::Load(const char *name) {
 		unsigned char *xmlSource=(unsigned char *)SYS_MALLOC(fullLength) ;
 		if (!xmlSource) {
 			Trace::Error("could not allocate space for %d bytes") ;
+			SYS_FREE(compBuffer) ;
 			return false ;
 		}
 

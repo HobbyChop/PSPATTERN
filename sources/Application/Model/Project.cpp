@@ -648,6 +648,9 @@ void Project::OnTempoTap() {
   if (tempoTapCount_!=0) {
 		// count last tick tempo and see if in range
 		unsigned millisec=now-lastTap_[tempoTapCount_-1] ;
+		// two taps in the same tick (a bounce, or presses drained
+		// after a stall) divided by zero; nobody taps at 1500 bpm
+		if (millisec<40) return ;
 		int t=int(60000/(float)millisec) ;
 		if (t>30) {
 			if (tempoTapCount_==MAX_TAP) {
@@ -658,6 +661,8 @@ void Project::OnTempoTap() {
 				tempoTapCount_++ ;
 			}
 			int tempo=int(60000*(tempoTapCount_-1)/(float)(now-lastTap_[0])) ;
+			if (tempo<30) tempo=30 ;
+			if (tempo>400) tempo=400 ;
 			Variable *v=FindVariable(VAR_TEMPO) ;
 			v->SetInt(tempo) ;
 		} else {

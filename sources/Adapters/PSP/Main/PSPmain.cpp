@@ -204,6 +204,10 @@ void PSPHandleQuasiStandby(void) {
 	// only with a project open: at the picker the project alias
 	// still names the LAST project, and a stub written there was
 	// offered as a recovery of it on the next boot
+	// cleared BEFORE the save: a slide that lands during the write
+	// used to be thrown away with the request that started all this
+	g_quasiBtnArmed = 0;
+	pspQuasiClearWake();
 	if (w->HasProject())
 		PersistencyService::GetInstance()->Save("project:lgptsav.autosav");
 
@@ -217,8 +221,6 @@ void PSPHandleQuasiStandby(void) {
 	int savedBl = sceImposeGetBacklightOffTime();
 	int idle = g_quasiIdle;
 	g_quasiIdle = 0;
-	g_quasiBtnArmed = 0;
-	pspQuasiClearWake();
 
 	// 3. a descending chirp on the way down
 	SDL_PauseAudio(1);
@@ -251,7 +253,13 @@ void PSPHandleQuasiStandby(void) {
 			sceKernelDelayThread(250 * 1000);
 			// the system re-applies the user's brightness after a
 			// moment, so hold it dark by re-asserting ~once a second
-			if (++reassert >= 4) { reassert = 0; meSetBrightness(0); }
+			if (++reassert >= 4) {
+				reassert = 0;
+				meSetBrightness(0);
+				// the firmware's own timeout is capped at an hour above;
+				// a rest longer than that re-armed it
+				scePowerTick(PSP_POWER_TICK_ALL);
+			}
 			int p = scePowerGetBatteryLifePercent();
 			if (p >= 0 && p <= 5) {
 				unsigned int now = sceKernelGetSystemTimeLow();

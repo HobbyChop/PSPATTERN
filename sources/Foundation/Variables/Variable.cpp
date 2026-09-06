@@ -90,7 +90,7 @@ void Variable::SetFloat(float value, bool notify) {
         value_.index_ = int(value);
         break;
     case STRING:
-        sprintf(string_, "%f", value);
+        snprintf(string_, sizeof(string_), "%f", value);
         stringValue_ = string_;
         break;
     }
@@ -217,19 +217,11 @@ void Variable::SetString(const char *input, bool notify) {
     case CHAR_LIST: {
         int match = -1;
         for (int i = 0; i < listSize_; i++) {
-            if (list_.char_[i]) {
-                const char *d = list_.char_[i];
-                const char *s = input;
-                while (*s != 0) {
-                    if (tolower(*s++) != tolower(*d++)) {
-                        break;
-                    }
-                }
-                if (*s == 0 &&
-                    *d == 0) { // Ensure both strings end at the same point
-                    match = i;
-                    break;
-                }
+            // the hand-rolled compare stepped one byte past the entry
+            // and could match on the garbage there
+            if (list_.char_[i] && !strcasecmp(list_.char_[i], input)) {
+                match = i;
+                break;
             }
         }
         if (match >= 0) {
@@ -255,7 +247,7 @@ const char *Variable::GetString() {
     string_[0] = 0;
     switch(type_) {
     case FLOAT:
-        sprintf(string_, "%f", value_.float_);
+        snprintf(string_, sizeof(string_), "%f", value_.float_);
         break;
     case INT:
         sprintf(string_, "%d", value_.int_);

@@ -32,6 +32,9 @@ public:
 	inline void NotifyObservers() { NotifyObservers(0) ; } ;
 
 	void NotifyObservers(I_ObservableData *d) ;
+	// unconditional: for events raised from more than one thread, where
+	// the shared changed flag lost one notification to the other
+	void NotifyObserversNow(I_ObservableData *d) ;
 
 	void SetChanged() ;
 	inline void ClearChanged() { _hasChanged=false ; } ;

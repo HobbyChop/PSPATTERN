@@ -763,6 +763,7 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 		fixed fpattenuate=fp_mul(rp->attenuate_,attnscale) ;
 
 	  int pan=fp2i(rp->pan_) ;
+		if (pan>254) pan=254 ;   // 0xFF from a file indexed past the law
 		fixed fixedpanl=panlaw[pan] ;
 		fixed fixedpanr=panlaw[254-pan] ;
 
@@ -989,6 +990,7 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 						// rendered dead centre. The compiler had been
 						// saying so: "unused variable fixedpanl".
 						pan=fp2i(rp->pan_) ;
+						if (pan>254) pan=254 ;
 						fixedpanl=panlaw[pan] ;
 						fixedpanr=panlaw[254-pan] ;
 
@@ -1313,6 +1315,7 @@ int SampleInstrument::GetVolume() {
 
 int SampleInstrument::GetSampleSize(int channel) {
 	if (source_) {
+		 if (channel<0) return source_->GetSize(-1) ;   // the default -1 indexed before the array
 		 renderParams *rp=renderParams_+channel ;
 		return source_->GetSize(rp->midiNote_) ;
 	} ;
@@ -1825,7 +1828,7 @@ bool SampleInstrument::IsEmpty() {
 
 int SampleInstrument::GetTable() {
 	int result=table_->GetInt() ;
-	if (result>TABLE_COUNT) {
+	if ((result<0)||(result>=TABLE_COUNT)) {   // TABLE_COUNT itself indexed past the tables
 		return VAR_OFF ;
 	}
 	return result ;

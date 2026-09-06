@@ -187,6 +187,10 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
 				while (param) {
 					const char *name=param->Attribute("NAME") ;
 					const char *value=param->Attribute("VALUE") ;
+					if ((!name)||(!value)) {
+						param=param->NextSiblingElement() ;
+						continue ;
+					}
 
           // Convert old filter dist to newer filter mode
 

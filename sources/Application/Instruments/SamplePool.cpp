@@ -488,7 +488,7 @@ int SamplePool::Reassign(std::string name, bool imported) {
     aliasPath += name;
     Path dstPath(aliasPath.c_str());
 
-    if (loadSample(dstPath.GetCanonicalPath().c_str())) {
+    if (loadSample(dstPath.GetCanonicalPath().c_str())==SLOAD_OK) {   // SLOAD_OK is zero: the test was inverted
         SetChanged();
         SamplePoolEvent ev;
         ev.index_ = getIndexOf(name.c_str());;

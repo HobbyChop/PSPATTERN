@@ -1247,7 +1247,7 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 	int fltMode=pv(SYP_FLTMODE)->GetInt() ;
 	int qQ=32768-(resoP<<7) ;
 	if (qQ<1024) qQ=1024 ;
-	int f=cutTable_[cut] ;
+	int f=cutTable_[cut&0xFF] ;
 	int low=v.svfLow_ ;
 	int band=v.svfBand_ ;
 
@@ -1284,7 +1284,7 @@ bool SynthInstrument::renderTone(SynthVoice &v,fixed *buffer,int size) {
 				if (lfoDest==SLD_FILTER) cutEff+=mod>>8 ;
 				if (cutEff>255) cutEff=255 ;
 				if (cutEff<0) cutEff=0 ;
-				f=cutTable_[cutEff] ;
+				f=cutTable_[cutEff&0xFF] ;
 			}
 		}
 		refresh-- ;
@@ -1697,7 +1697,7 @@ bool SynthInstrument::renderFm(SynthVoice &v,fixed *buffer,int size) {
 	int fltMode=pv(SYP_FLTMODE)->GetInt() ;
 	int qQ=32768-(resoP<<7) ;
 	if (qQ<1024) qQ=1024 ;
-	int f=cutTable_[cut] ;
+	int f=cutTable_[cut&0xFF] ;
 	int low=v.svfLow_ ;
 	int band=v.svfBand_ ;
 
@@ -1952,7 +1952,7 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 	unsigned int targetInc=v.phaseInc_ ;
 	unsigned int uinc[VAX_MAX_UNISON] ;
 	unsigned int syncInc=0 ;
-	int f=cutTable_[cut] ;
+	int f=cutTable_[cut&0xFF] ;
 	int low=v.svfLow_ ;
 	int band=v.svfBand_ ;
 	unsigned int rng=v.rng_ ;
@@ -2018,7 +2018,7 @@ bool SynthInstrument::renderVax(SynthVoice &v,fixed *buffer,int size) {
 				if (lfoDest==SLD_FILTER) cutEff+=mod>>8 ;
 				if (cutEff>255) cutEff=255 ;
 				if (cutEff<0) cutEff=0 ;
-				f=cutTable_[cutEff] ;
+				f=cutTable_[cutEff&0xFF] ;
 			}
 		}
 		refresh-- ;
@@ -2319,7 +2319,7 @@ bool SynthInstrument::renderHive(SynthVoice &v,fixed *buffer,int size) {
 	unsigned int inc[HIVE_MAX_VOICES] ;
 	const short *tab[HIVE_MAX_VOICES] ;
 	for (int j=0;j<voices;j++) { inc[j]=curInc ; tab[j]=hiveTab_[wave][0] ; }
-	int f=cutTable_[cut] ;
+	int f=cutTable_[cut&0xFF] ;
 	int low=v.svfLow_,band=v.svfBand_ ;
 	int low2=v.svfLow2_,band2=v.svfBand2_ ;
 	int refresh=0 ;
@@ -2360,7 +2360,7 @@ bool SynthInstrument::renderHive(SynthVoice &v,fixed *buffer,int size) {
 				if (lfoDest==SLD_FILTER) cutEff+=mod>>8 ;
 				if (cutEff>255) cutEff=255 ;
 				if (cutEff<0) cutEff=0 ;
-				f=cutTable_[cutEff] ;
+				f=cutTable_[cutEff&0xFF] ;
 			}
 		}
 		refresh-- ;
@@ -2635,7 +2635,7 @@ bool SynthInstrument::renderVox(SynthVoice &v,fixed *buffer,int size) {
 				if (lo<-SVF_CLAMP) lo=-SVF_CLAMP ;
 			}
 			low[k]=lo ; band[k]=bd ;
-			sum+=(bd*voxAmp_[k])>>15 ;
+			sum+=(int)(((long long)bd*voxAmp_[k])>>15) ;
 		}
 #endif
 		if (sum>32700) sum=32700 ;

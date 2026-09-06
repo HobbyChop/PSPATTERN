@@ -202,9 +202,7 @@ void TableHolder::RestoreContent(TiXmlElement *element) {
 }
 
 void TableHolder::SetUsed(int i) {
-	if (i>=TABLE_COUNT) {
-		NAssert(i<128) ;
-	}
+	if ((i<0)||(i>=TABLE_COUNT)) return ;   // the assert was compiled out
 	allocation_[i]=true ;
 } ;
 

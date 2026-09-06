@@ -771,6 +771,13 @@ extern "C" int PSPME_Init(void) {
 	meLibAllocUncached32(&meDlyInH_, ME_MAXN * 2);
 	meLibAllocUncached32(&meRevInH_, ME_MAXN * 2);
 	meLibAllocUncached32(&meOutH_,   ME_MAXN * 2);
+	if (!meDlyIn || !meRevIn || !meOut) {
+		// out of memory at boot: the sends stay on the main core
+		if (meDlyIn) meLibAllocUncached32(&meDlyInH_, 0);
+		if (meRevIn) meLibAllocUncached32(&meRevInH_, 0);
+		if (meOut)   meLibAllocUncached32(&meOutH_,   0);
+		return -1;
+	}
 	for (int k = 0; k < ME_MAXN * 2; k++) { ((fixed *)meOut)[k] = 0; }
 
 	// reverb lines: allocate + zero on this core, then alias uncached so

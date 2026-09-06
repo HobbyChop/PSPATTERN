@@ -119,17 +119,20 @@ void AudioDriver::ReleaseBuffer(int index) {
   pool_[index].buffer_=0 ;
 }
 
+/* Both of these can fire at once, from the render thread and the SDL
+   callback thread. The changed flag they shared is not atomic: one
+   Notify cleared it under the other and that event was lost -- a
+   render block never asked for, the pipeline stalled. They notify
+   unconditionally now. */
 void AudioDriver::OnNewBufferNeeded() {
-  SetChanged() ;
   Event event(Event::ADET_BUFFERNEEDED);
-  NotifyObservers(&event) ;
+  NotifyObserversNow(&event) ;
 } ;
 
 void AudioDriver::onAudioBufferTick()
 {
-  SetChanged() ;
   Event event(Event::ADET_DRIVERTICK);
-  NotifyObservers(&event) ;
+  NotifyObserversNow(&event) ;
 }
 
 bool AudioDriver::hasData() {

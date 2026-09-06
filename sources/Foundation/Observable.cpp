@@ -32,6 +32,15 @@ void Observable::RemoveAllObservers() {
 	}
 }
 
+void Observable::NotifyObserversNow(I_ObservableData *d) {
+	std::vector<I_Observer *> snapshot=_list ;
+	std::vector<I_Observer *>::iterator it=snapshot.begin() ;
+	while (it!=snapshot.end()) {
+		I_Observer *o=*it++ ;
+		o->Update(*this,d) ;
+	}
+}
+
 void Observable::NotifyObservers(I_ObservableData *d) {
 	if (_hasChanged) {
 		// Walk a SNAPSHOT: an observer's Update may add or remove

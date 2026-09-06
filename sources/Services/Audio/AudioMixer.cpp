@@ -87,6 +87,7 @@ void AudioMixer::EnableRendering(bool enable) {
 		if (writer_) return ;
 		writer_=new WavFileWriter(renderPath_.c_str()) ;
 		enableRendering_=true ;
+		tailCut_=false ;   // a cut request left over from the last take
 		return ;
 	}
 	if (!writer_||tailing_) return ;
@@ -94,6 +95,7 @@ void AudioMixer::EnableRendering(bool enable) {
 	tailing_=true ;
 	tailSamples_=0 ;
 	tailQuiet_=0 ;
+	tailCut_=false ;
 } ;
 
 // Hand the open file to its own thread to drain and close. Never

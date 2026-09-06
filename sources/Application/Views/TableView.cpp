@@ -888,6 +888,7 @@ void TableView::UndoRestore(int context,const unsigned char *src) {
 	memcpy(t.param2_,d,sizeof(t.param2_)) ; d+=sizeof(t.param2_) ;
 	memcpy(t.cmd3_,d,sizeof(t.cmd3_)) ;     d+=sizeof(t.cmd3_) ;
 	memcpy(t.param3_,d,sizeof(t.param3_)) ;
+	updateCursor(0,0) ;   // the parameter editor reloads from the restored cell
 }
 
 void TableView::DrawView() {

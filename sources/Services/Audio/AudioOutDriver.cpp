@@ -25,6 +25,12 @@ AudioOutDriver::~AudioOutDriver() {
 bool AudioOutDriver::Init() {
 	primarySoundBuffer_=(fixed *)SYS_MALLOC(MIX_BUFFER_SIZE*sizeof(fixed)/2) ;
 	mixBuffer_=(short *)SYS_MALLOC(MIX_BUFFER_SIZE) ;
+	if ((!primarySoundBuffer_)||(!mixBuffer_)) {
+		// the next block would have rendered through a null buffer
+		SAFE_FREE(primarySoundBuffer_) ;
+		SAFE_FREE(mixBuffer_) ;
+		return false ;
+	}
     return driver_->Init();
 } ;
 

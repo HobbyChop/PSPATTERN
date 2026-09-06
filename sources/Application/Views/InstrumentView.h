@@ -14,6 +14,7 @@ class SynthInstrument ;
 class InstrumentView: public FieldView, public I_Observer {
 public:
 	void OnSavePreset(const char *name) ;   // modal save-dialog callback
+	void doPurge() ;                        // after the yes
 	virtual void ApplyDeferred() ;
 	InstrumentView(GUIWindow &w,ViewData *data) ;
 	virtual ~InstrumentView() ;

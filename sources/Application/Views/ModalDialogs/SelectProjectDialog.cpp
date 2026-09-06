@@ -142,7 +142,7 @@ void SelectProjectDialog::DrawView() {
 				SetColor(CD_NORMAL) ;
 				props.invert_=false ;
 			}
-			strcpy(buffer,p.c_str()) ;
+			snprintf(buffer,sizeof(buffer),"%s",p.c_str()) ;
 			buffer[LIST_WIDTH-1]=0 ;
 			DrawString(x,y,buffer,props) ;
 			y+=1 ;
