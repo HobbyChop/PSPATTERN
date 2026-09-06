@@ -284,6 +284,11 @@ void Variable::CopyFrom(Variable &other) {
     value_ = other.value_;
     list_ = other.list_;
     listSize_ = other.listSize_;
+    // a sample name that matched nothing on this card travels with
+    // the copy; without it a clone of such an instrument counted as
+    // empty and its name was gone on the next save
+    unmatched_ = other.unmatched_;
+    unmatchedIndex_ = other.unmatchedIndex_;
     onChange();
 }
 
@@ -310,6 +315,7 @@ void Variable::Reset() {
         break;
     case CHAR_LIST:
         value_.index_ = defaultValue_.index_;
+        unmatched_.clear();   // a reset forgets the name that matched nothing
         break;
     case STRING:
         stringValue_ = stringDefaultValue_;

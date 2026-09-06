@@ -28,6 +28,8 @@ public:
 	bool GetAutomation() ;
 
 	static void Reset() ;
+	// drop every playback that runs on this instrument (retype, delete)
+	static void CutInstrument(I_Instrument *instr) ;
 	static TablePlayback &GetTablePlayback(int channel) ;
 private:
 	Table *table_ ;

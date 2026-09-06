@@ -12,6 +12,7 @@
 PSPFile::PSPFile(SceUID file) {
 	file_=file ;
 	writeBufferPos_=0 ;
+	failed_=false ;
 }
 
 PSPFile::~PSPFile() {
@@ -23,23 +24,36 @@ int PSPFile::Read(void *ptr,int size, int nmemb) {
 
 void PSPFile::flush() {
 	if (writeBufferPos_>0) {
-		sceIoWrite(file_,writeBuffer_,writeBufferPos_);
+		int r=sceIoWrite(file_,writeBuffer_,writeBufferPos_);
+		// a full or missing card: remember it, so the next Write can
+		// say so -- the result used to be thrown away
+		if (r<writeBufferPos_) failed_=true ;
 	}
 	writeBufferPos_=0 ;
 }
 
+/* Returns the number of ITEMS written, the fwrite convention the
+   desktop adapters follow; it used to return the byte count whatever
+   the card did, so no caller could tell a short write from a whole
+   one. */
 int PSPFile::Write(const void *ptr,int size, int nmemb) {
 	int len=size*nmemb ;
+	if (size<=0||nmemb<=0) return 0 ;
 	if (writeBufferPos_+len>WRITE_BUFFER_SIZE) {
 		flush() ;
 	}
+	if (failed_) return 0 ;
 	if (len>WRITE_BUFFER_SIZE) {
-		sceIoWrite(file_,ptr,len);
+		int r=sceIoWrite(file_,ptr,len);
+		if (r<len) {
+			failed_=true ;
+			return (r<0)?0:r/size ;
+		}
 	} else {
 		memcpy(writeBuffer_+writeBufferPos_,ptr,len) ;
 		writeBufferPos_+=len ;
 	}
-	return  len ;
+	return nmemb ;
 }
 
 void PSPFile::Printf(const char *fmt, ...) {

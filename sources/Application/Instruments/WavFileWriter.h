@@ -28,6 +28,8 @@ public:
 	// Without a thread (the import shape) it closes here.
 	void Finish() ;
 	bool Done() { return done_ ; }
+	// a card write came up short: the file is not the render
+	bool Failed() { return failed_ ; }
 private:
 	void open(const char *path,int channels,int rate) ;
 	// shorts into the pending buffer, out to the card in lumps
@@ -70,5 +72,6 @@ private:
 	WavWriteThread *thread_ ;
 	volatile bool finishing_ ;
 	volatile bool done_ ;
+	volatile bool failed_ ;
 } ;
 #endif

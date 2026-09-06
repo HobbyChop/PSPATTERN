@@ -180,6 +180,13 @@ void ChainView::clonePosition() {
         *dst++ = *src++;
     };
 
+    // the velocity column is part of the phrase too
+    src = viewData_->song_->phrase_->velocity_ + 16 * current;
+    dst = viewData_->song_->phrase_->velocity_ + 16 * next;
+    for (int i = 0; i < 16; i++) {
+        *dst++ = *src++;
+    };
+
     uint *isrc = viewData_->song_->phrase_->cmd1_ + 16 * current;
     uint *idst = viewData_->song_->phrase_->cmd1_ + 16 * next;
     for (int i = 0; i < 16; i++) {

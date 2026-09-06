@@ -111,6 +111,8 @@ class AppWindow : public GUIWindow, I_Observer, Status {
     void DrawQuasiMessage(int battPct, int estMinutes, int secsLeft);
     void QuasiBlank();
     void QuasiWake();
+    // a project is open (the picker is not up)
+    bool HasProject() { return _viewData != 0; }
     virtual void ClearRect(GUIRect &rect);
     virtual void SetColor(ColorDefinition cd);
     void SetDirty();

@@ -28,6 +28,7 @@ private:
 	SceUID file_ ;
 	unsigned char writeBuffer_[WRITE_BUFFER_SIZE] ;
 	int writeBufferPos_ ;
+	bool failed_ ;   // a card write came up short; later writes report 0
 	
 } ;
 

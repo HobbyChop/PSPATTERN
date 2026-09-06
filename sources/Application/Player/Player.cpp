@@ -75,10 +75,13 @@ bool Player::Init(Project *project,ViewData *viewData) {
 }
 
 void Player::Reset() {
+    // stop the render thread FIRST: it reads project_ and viewData_
+    // on every block, and nulling them while it runs was a window
+    // onto a null dereference on every project close
+	Close();
+    mixer_->RemoveObserver(*this);
     viewData_ = 0;
     project_ = 0;
-    mixer_->RemoveObserver(*this);
-	Close();
 }
 
 void Player::Close() {
@@ -426,6 +429,9 @@ void Player::MidiNoteOff(unsigned char note) {
 // it: those notes' channels no longer play what the map thinks.
 void Player::CutInstrument(I_Instrument *instr) {
 	mixer_->CutInstrument(instr) ;
+	// the table engine held its own pointer to the instrument and
+	// called through it on the next tick after the retype freed it
+	TablePlayback::CutInstrument(instr) ;
 	for (int i=0;i<128;i++) midiHeld_[i]=0 ;
 } ;
 
@@ -1148,7 +1154,13 @@ void Player::playCursorPosition(int channel) {
             }
 
             if (instrument == 0) {
+                // no instrument on the row and none remembered for the
+                // channel: instrument 0 is a NEW instrument here, so it
+                // gets a clean start. Without that the voice kept its
+                // old position and retrigger state, which on a channel
+                // that had never played was whatever the heap held.
                 instrument = bank->GetInstrument(0);
+                newInstrument = true;
             }
 
             if (instrument != 0) {
@@ -1459,8 +1471,14 @@ void Player::moveToNextChain(int channel, int hop) {
 
     if (searchNext) {
         int pos = (viewData_->songPlayPos_[channel]) + 1;
+        // row 256 does not exist: a chain on the last row ends the
+        // song, and reading past it was reading the next heap block
+        bool loopBack=(pos>=SONG_ROW_COUNT);
+        // the pointer stays on row pos even when that row does not
+        // exist: the loop-back walk below steps it down first, and
+        // only a real row is ever read
         unsigned char *data=viewData_->song_->data_+channel+8*pos;
-    	bool loopBack=(*data==0xFF);
+        if (!loopBack) loopBack=(*data==0xFF);
         // Check if first step of chain contains somethin, if not we loop back
         if (!loopBack) {
             unsigned char step = viewData_->song_->chain_->data_[*data * 16];

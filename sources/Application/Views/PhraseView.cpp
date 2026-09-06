@@ -332,7 +332,8 @@ void PhraseView::updateCursorValue(ViewUpdateDirection direction, int xOffset,
         if (col_ + xOffset == 0) {
             // Add/remove from offset to match selected scale
             int scale = viewData_->project_->GetScale();
-            while (!scaleSteps[scale][(*c + offset) % 12]) {
+            // a note stepped below zero gave a negative remainder
+            while (!scaleSteps[scale][(((*c + offset) % 12) + 12) % 12]) {
                 offset > 0 ? offset++ : offset--;
             }
         }
@@ -1070,7 +1071,8 @@ void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
                 InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
                 unsigned char *c =
                     phrase_->instr_ + (16 * viewData_->currentPhrase_ + row_);
-                if (*c != 0xFF) {
+                // a byte past the bank (a foreign file) is not an instrument
+                if (*c < MAX_INSTRUMENT_COUNT) {
                     unsigned short next = bank->Clone(*c);
                     if (next != NO_MORE_INSTRUMENT) {
                         *c = (unsigned char)next;
@@ -1455,7 +1457,7 @@ void PhraseView::setTextProps(GUITextProperties &props, int row, int col,
 };
 
 /* One phrase: notes, instruments and both command/parameter pairs. */
-#define PHRASE_UNDO_BYTES (16*(1+1+sizeof(FourCC)+sizeof(ushort)+sizeof(FourCC)+sizeof(ushort)))
+#define PHRASE_UNDO_BYTES (16*(1+1+sizeof(FourCC)+sizeof(ushort)+sizeof(FourCC)+sizeof(ushort)+1))
 int PhraseView::UndoSize() { return PHRASE_UNDO_BYTES ; }
 int PhraseView::UndoContext() { return viewData_->currentPhrase_ ; }
 void PhraseView::UndoCapture(unsigned char *dst) {
@@ -1467,7 +1469,8 @@ void PhraseView::UndoCapture(unsigned char *dst) {
 	memcpy(d,p->cmd1_+base,16*sizeof(FourCC)) ;      d+=16*sizeof(FourCC) ;
 	memcpy(d,p->param1_+base,16*sizeof(ushort)) ;    d+=16*sizeof(ushort) ;
 	memcpy(d,p->cmd2_+base,16*sizeof(FourCC)) ;      d+=16*sizeof(FourCC) ;
-	memcpy(d,p->param2_+base,16*sizeof(ushort)) ;
+	memcpy(d,p->param2_+base,16*sizeof(ushort)) ;    d+=16*sizeof(ushort) ;
+	memcpy(d,p->velocity_+base,16) ;
 }
 void PhraseView::UndoRestore(int context,const unsigned char *src) {
 	viewData_->currentPhrase_=context ;
@@ -1479,7 +1482,8 @@ void PhraseView::UndoRestore(int context,const unsigned char *src) {
 	memcpy(p->cmd1_+base,d,16*sizeof(FourCC)) ;      d+=16*sizeof(FourCC) ;
 	memcpy(p->param1_+base,d,16*sizeof(ushort)) ;    d+=16*sizeof(ushort) ;
 	memcpy(p->cmd2_+base,d,16*sizeof(FourCC)) ;      d+=16*sizeof(FourCC) ;
-	memcpy(p->param2_+base,d,16*sizeof(ushort)) ;
+	memcpy(p->param2_+base,d,16*sizeof(ushort)) ;    d+=16*sizeof(ushort) ;
+	memcpy(p->velocity_+base,d,16) ;
 }
 
 void PhraseView::DrawView() {

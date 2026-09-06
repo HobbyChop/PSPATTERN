@@ -1,3 +1,52 @@
+PSPATTERN 0.40.1a
+
+    A stability pass. Sixteen readers went over the whole source, and
+        what they found that could crash, hang or lose work is fixed
+        here. The ones anyone could have hit:
+
+    The sample pool sorted the built-in kit in with the project's
+        samples, and closing a project kept the kit's slots by
+        position. A sample whose name sorted before the kit -- a
+        digit, a symbol, a capital A to G -- pushed a drum out of its
+        slot, the close freed the drum, and the next project's first
+        note on the kit played freed memory. The likely cause of the
+        one-off crash on a new song.
+
+    Holding R with an arrow at the project picker jumped to a screen
+        that does not exist; it now needs a project, and a dialog on
+        top blocks the walk. A chain on the last song row no longer
+        reads past the song. A note still ringing at project close no
+        longer follows into the next project. Retyping an instrument
+        while its table runs no longer leaves the table calling freed
+        memory. Waking from rest at the picker no longer plays a freed
+        audio buffer. L+DOWN to a block near the bottom stays inside
+        the song. The mixer's master strip is no longer channel 8.
+        A note with no instrument on a fresh channel starts clean.
+
+    A retriggering synth voice used to drill for ever after its note
+        ended. The end of a render no longer repaints from the audio
+        thread. A stopped song that reached the last row, a bend on a
+        synth with nothing else running, and legato followed by
+        vibrato all behave.
+
+    An instrument whose sample file is missing is no longer treated as
+        empty: the save keeps it and the double tap leaves its slot
+        alone. Importing over a sample on a full card no longer
+        replaces it with a short file, and the card is asked what it
+        holds before the swap. A render that runs out of card says so
+        instead of writing a silent short file. The chain screen's
+        clone and the phrase undo carry the velocity column. The
+        recovery prompt survives a sample error at open. Resting at
+        the picker no longer writes a stub recovery file into the
+        last project.
+
+    Damaged and foreign files are refused rather than read past: a
+        wav with no channels, a chunk larger than its file, a project
+        parameter without a name, an instrument byte past the bank,
+        and a mapping.xml index past its table. A MIDI Start after the
+        project is closed is ignored. The in-app quit resets the
+        second core through the kernel bridge like every other reset.
+
 PSPATTERN 0.40.0a
 
     BEND, the bend LSDJ players know as P: a speed and no target. bb

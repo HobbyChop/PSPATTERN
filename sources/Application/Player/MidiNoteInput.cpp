@@ -88,6 +88,10 @@ void MidiNoteInput::Update(Observable &o,I_ObservableData *d) {
 
 	MidiMessage *msg=(MidiMessage *)d ;
 	if (!msg) return ;
+	// no project: the picker is up and the player has been reset --
+	// a leader's Start byte used to reach it and dereference null
+	// on the USB thread
+	if (!project_) return ;
 
 	// System realtime bytes are whole status bytes, not channel
 	// messages -- they have to be checked before the channel mask.

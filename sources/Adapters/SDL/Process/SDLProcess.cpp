@@ -9,8 +9,9 @@ int _SDLStartThread(void *argp) {
 }
 
 bool SDLProcessFactory::BeginThread(SysThread& thread) {
-	SDL_CreateThread(_SDLStartThread,&thread);
-	return true ;
+	// the result was thrown away, so no caller could tell a thread
+	// that never started from one that did
+	return SDL_CreateThread(_SDLStartThread,&thread)!=0 ;
 }
 
 SysSemaphore *SDLProcessFactory::CreateNewSemaphore(int initialcount, int maxcount) {

@@ -192,6 +192,8 @@ void SDLAudioDriver::CloseDriver() {
         SYS_FREE(unalignedMain_);
         unalignedMain_ = 0;
     };
+    // the callback reads this: null means "closed, give silence"
+    mainBuffer_ = 0;
     /* SDL_CloseAudio() is NOT called here -- see InitDriver. The
        device belongs to the run, not to the project. It is paused by
        the stop above, which is enough: a paused device asks for
@@ -242,6 +244,15 @@ double SDLAudioDriver::GetStreamTime() {
 }
 
 void SDLAudioDriver::OnChunkDone(Uint8 *stream, int len) {
+
+    /* The device stays open across a project close, paused; a wake
+       from rest or a resume at the project picker unpauses it, and
+       this then copied from the freed main buffer. Closed means
+       silence. */
+    if (!mainBuffer_) {
+        memset(stream, 0, len);
+        return;
+    }
 
     // Look if we have enough data in main buffer
 

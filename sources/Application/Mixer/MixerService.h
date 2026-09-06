@@ -75,6 +75,7 @@ public:
     // true while a take's file is open -- through the tail that
     // follows the stop as well as the take itself
     bool IsRendering();
+    bool LastRenderFailed();
     // end a tail that is still being written, at once
     void EndRenderTail();
     // the file name of the current or last take, for the screen

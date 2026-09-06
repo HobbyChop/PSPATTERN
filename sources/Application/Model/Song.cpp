@@ -129,9 +129,8 @@ void Song::RestoreContent(TiXmlElement *element) {
 	unsigned char *data=data_ ;
 	for (int i=0;i<256*SONG_CHANNEL_COUNT;i++) {
 		if (*data!=0xFF) {
-			if (*data<0x80) {
-				chain_->SetUsed(*data) ;
-			}	
+			// every byte but 0xFF names one of the CHAIN_COUNT chains
+			chain_->SetUsed(*data) ;
 		}
 	 	data++ ;
 	}

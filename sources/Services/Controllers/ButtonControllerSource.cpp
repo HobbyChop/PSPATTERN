@@ -10,6 +10,8 @@ ButtonControllerSource::~ButtonControllerSource() {
 
 Channel *ButtonControllerSource::GetChannel(const char *url) {
 	int button=atoi(url) ;
+	// the number comes from mapping.xml
+	if ((button<0)||(button>=MAX_BUTTON)) return 0 ;
 	return channel_+button ;
 }
 

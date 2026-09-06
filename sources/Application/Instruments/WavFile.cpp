@@ -246,6 +246,14 @@ WavFile *WavFile::Open(const char *path) {
 	} ;
 	bitPerSample/=8 ;
 	wav->bytePerSample_=bitPerSample ;   // SOURCE width; RAM is always 16
+	// the channel count comes from the file and divides the data size
+	// below: zero took the machine down at load or import, and more
+	// than two is nothing this player can render
+	if (nChannels<1) {
+		Trace::Error("wav has no channels") ;
+		delete wav ;
+		return 0 ;
+	}
 
 	// some bad files have bigger chunks
 
@@ -266,6 +274,14 @@ WavFile *WavFile::Open(const char *path) {
 		memcpy(&size,wav->readBuffer_,4) ;
 		size = Swap32(size);
 
+		// a chunk that claims more than the file holds (a corrupt
+		// header, or a size with the top bit set that walked the
+		// position backwards and looped for ever)
+		if ((unsigned long)size>(unsigned long)(fileEnd-position)) {
+			Trace::Error("chunk of %u bytes runs past the end of the file",size) ;
+			delete wav ;
+			return 0 ;
+		}
 		// RIFF pads odd chunks to even; a 7-byte LIST without the
 		// pad desynced the walk one byte and 'data' was never found
 		position+=size+(size&1) ;

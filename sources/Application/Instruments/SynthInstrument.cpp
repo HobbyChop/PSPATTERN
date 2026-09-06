@@ -845,6 +845,11 @@ void SynthInstrument::Stop(int channel) {
 
 	// Otherwise both envelopes walk down and the channel keeps
 	// rendering us until IsReleasing goes false.
+	// RTRG restarts the amp envelope on every repeat, so a released
+	// voice that kept its retrigger never reached silence and the
+	// channel never let it go: it drilled until the next note
+	v.rtgTicks_=0 ;
+	v.rtgCount_=0 ;
 	releaseRamp(v.amp_,release) ;
 	releaseRamp(v.mod_,pv(SYP_DCWREL)->GetInt()) ;
 	releaseFmOps(v) ;
@@ -922,7 +927,7 @@ void SynthInstrument::setVoicePitch(SynthVoice &v,int note) {
 // on tick boundaries.
 void SynthInstrument::serviceTicks(SynthVoice &v,int channel,int samples) {
 
-	if (!v.arpOn_ && v.rtgTicks_==0 && v.vibSpeed_==0 && v.volStep_==0) return ;
+	if (!v.arpOn_ && v.rtgTicks_==0 && v.vibSpeed_==0 && v.volStep_==0 && v.bendRate_==0) return ;
 
 	v.tickAcc_+=samples ;
 	while (v.tickAcc_>=v.tickLen_) {
@@ -3018,6 +3023,10 @@ void SynthInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 			lastNote_[channel]=(unsigned char)target ;
 			v.baseNote_=(unsigned char)target ;
 			v.phaseInc_=noteInc_[target] ;
+			// the note VIBR and BEND re-derive the pitch from, minus
+			// the transpose setVoicePitch adds back: without this the
+			// next vibrato or bend tick snapped the slide away
+			v.pitchNote_=(signed short)(target-v.transpose_) ;
 			// LEGA always slides at the instrument's glide rate
 			break ;
 		}

@@ -262,7 +262,6 @@ Channel *MidiInDevice::GetChannel(const char *sourcePath) {
 	MidiChannel **pcChannel=0 ;
 	MidiChannel **catChannel=0 ;
 	MidiChannel **atChannel=0 ;
-	MidiChannel **activityChannel=0 ;
 
 	string firstElem=path.substr (0,pos);
 	string type ="" ;
@@ -380,16 +379,19 @@ Channel *MidiInDevice::GetChannel(const char *sourcePath) {
 		channel=*catChannel ;
 	} ;
 	if (type=="pc") {
-		if (*catChannel==0) {
-			*catChannel=new MidiChannel(sourcePath) ;
+		// allocated the channel-aftertouch slot and returned the
+		// program-change one, which stayed null
+		if (*pcChannel==0) {
+			*pcChannel=new MidiChannel(sourcePath) ;
 		};
 		channel=*pcChannel ;
 	} ;
+	// "activity" was accepted by name with nothing behind it: the
+	// pointer it dereferenced was the literal null it was declared
+	// with, and a mapping.xml line of that type took the machine
+	// down at load. An unknown type is refused like any other.
 	if (type=="activity") {
-		if (*activityChannel==0) {
-			*activityChannel=new MidiChannel(sourcePath) ;
-		};
-		channel=*activityChannel ;
+		return 0 ;
 	} ;
 	return channel ; ;
 } ;

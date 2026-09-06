@@ -20,6 +20,7 @@ AudioMixer::AudioMixer(const char *name):
 	finishing_(0),
 	name_(name)
 {
+	lastRenderFailed_=false ;
 	volume_=(i2fp(1)) ;
     mixBuffer_ = 0;
     mixBufferSamples_ = 0;
@@ -115,6 +116,7 @@ void AudioMixer::finishWriter() {
 
 void AudioMixer::reapWriter() {
 	if (finishing_&&finishing_->Done()) {
+		lastRenderFailed_=finishing_->Failed() ;
 		SAFE_DELETE(finishing_) ;
 	}
 } ;
@@ -129,10 +131,12 @@ void AudioMixer::CloseTail() {
 void AudioMixer::CloseRendering() {
 	if (writer_) {
 		writer_->Close() ;
+		lastRenderFailed_=writer_->Failed() ;
 		SAFE_DELETE(writer_) ;
 	}
 	if (finishing_) {
 		finishing_->Close() ;
+		lastRenderFailed_=finishing_->Failed() ;
 		SAFE_DELETE(finishing_) ;
 	}
 	enableRendering_=false ;

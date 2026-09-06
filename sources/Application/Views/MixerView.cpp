@@ -243,7 +243,8 @@ void MixerView::processNormalButtonMask(unsigned int mask) {
             // only way to get there was the long way round through
             // the phrase. The map is the promise; this keeps it.
             ViewType vt = VT_CHAIN;
-            viewData_->songX_ = viewData_->mixerCol_;
+            // the master strip is column 8; the song has eight columns
+            viewData_->songX_ = (viewData_->mixerCol_ > 7) ? 7 : viewData_->mixerCol_;
             unsigned char *data = viewData_->GetCurrentSongPointer();
             if (*data != 0xFF) {
                 viewData_->currentChain_ = *data;

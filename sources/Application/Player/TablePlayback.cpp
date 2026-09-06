@@ -17,6 +17,16 @@ void TableSaveState::Reset() {
 		};
 } ;
 
+void TablePlayback::CutInstrument(I_Instrument *instr) {
+	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+		if (playback_[i].instrument_==instr) {
+			playback_[i].instrument_=0 ;
+			playback_[i].table_=0 ;
+			playback_[i].automated_=false ;
+		}
+	}
+}
+
 void TablePlayback::Reset() {
 	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
 		playback_[i].Init(i) ;

@@ -9,6 +9,8 @@
 class Variable {
   public:
     void SetUnmatchedIndex(int i) { unmatchedIndex_ = i; }
+    // a list value from the file that matched nothing in the list
+    bool HasUnmatched() const { return !unmatched_.empty(); }
 
 public:
 	enum Type {

@@ -1281,7 +1281,10 @@ extern "C" void PSPME_Shutdown(void) {
 	// held in reset: a halted-but-unreset ME across a suspend is the
 	// guaranteed hang (project rule); held in reset it is inert
 	// whatever the power switch does during shutdown
-	HW_SYS_RESET_ENABLE = SC_HW_RESET;
+	// through the kernel bridge, never a user-mode register write:
+	// the main thread is a user thread and this store was an address
+	// error that hung the in-app quit (the stage-4 lesson, again)
+	if (meEverStarted_) kcall(meParkK, 0);
 	meLibSync();
 	sceKernelDelayThread(30 * 1000);
 	if (meDlyIn) meLibAllocUncached32(&meDlyInH_, 0);

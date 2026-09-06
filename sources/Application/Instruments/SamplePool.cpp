@@ -190,10 +190,20 @@ unsigned int SamplePool::Load() {
 };
 
 void SamplePool::Sort() {
+    /* Only the project's own entries are sorted. The baked kit sits
+       in the slots below the boundary and Reset keeps those slots BY
+       POSITION on every project close, so a project sample whose
+       name sorted before the kit's -- a digit, a symbol, a capital A
+       to G -- used to be swapped into the kit's slots and a drum out
+       of them. The close then freed the drum and kept the sample,
+       and the next project's default instruments played a freed or
+       foreign source on their first note. */
+    int base=drumsBaked_?DRUMKIT_TOTAL:0 ;
+    if (base>count_) base=count_ ;
     int rest=count_;
-	while(rest>0) {
-        int index = 0;
-        for (int i=1;i<rest;i++) {
+	while(rest>base) {
+        int index = base;
+        for (int i=base+1;i<rest;i++) {
 			if (strcmp(names_[i],names_[index])>0) {
                 index = i;
             }
@@ -319,11 +329,18 @@ static int copyFile(Path &src,Path &dst) {
         fs->Delete(dst.GetPath().c_str()) ;
         return SLOAD_ERR_OUTPUT_FILE ;
     }
+    /* Every read and write is checked. A full card made the write
+       fail silently for the tail of the file, the copy reported
+       success, and the REPLACE path then deleted the good sample and
+       renamed the short one over it. */
+    long total=size ;
     while (size>0) {
         int count=(size>chunk)?chunk:size ;
-        fin->Read(buffer,1,count) ;
-        fout->Write(buffer,1,count) ;
-        size-=count ;
+        int got=fin->Read(buffer,1,count) ;
+        if (got<=0) { size=-1 ; break ; }
+        int put=fout->Write(buffer,1,got) ;
+        if (put!=got) { size=-1 ; break ; }
+        size-=got ;
     } ;
     free(buffer) ;
 
@@ -331,6 +348,25 @@ static int copyFile(Path &src,Path &dst) {
     fout->Close() ;
     delete(fin) ;
     delete(fout) ;
+    if (size>=0) {
+        // the write path buffers and its close cannot report, so ask
+        // the card what it holds: a short file is no copy
+        I_File *chk=fs->Open(dst.GetPath().c_str(),"r") ;
+        if (!chk) {
+            size=-1 ;
+        } else {
+            chk->Seek(0,SEEK_END) ;
+            long onCard=chk->Tell() ;
+            chk->Close() ;
+            delete chk ;
+            if (onCard!=total) size=-1 ;
+        }
+    }
+    if (size<0) {
+        // a short copy is no copy: leave the original where it was
+        fs->Delete(dst.GetPath().c_str()) ;
+        return SLOAD_ERR_OUTPUT_FILE ;
+    }
     return SLOAD_OK ;
 }
 

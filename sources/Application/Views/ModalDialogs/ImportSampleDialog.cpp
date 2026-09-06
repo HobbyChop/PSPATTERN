@@ -526,8 +526,11 @@ void ImportSampleDialog::import(Path &element,const SampleImportOptions &opt) {
 				((SampleInstrument *)bank->GetInstrument(i))->AssignSample(sampleID) ;
 			}
 		}
-		I_Instrument *instr=bank->GetInstrument(toInstr_) ;
-		if (instr->GetType()==IT_SAMPLE) {
+		// NO_MORE_INSTRUMENT is not a slot: GetInstrument clamps it to
+		// zero, which rebound instrument 00 on every import once the
+		// bank was full
+		I_Instrument *instr=(toInstr_==NO_MORE_INSTRUMENT)?0:bank->GetInstrument(toInstr_) ;
+		if (instr&&instr->GetType()==IT_SAMPLE) {
 			SampleInstrument *sinstr=(SampleInstrument *)instr ;
 			sinstr->AssignSample(sampleID) ;
 			toInstr_=bank->GetNext() ;

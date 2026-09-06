@@ -201,7 +201,11 @@ void PSPHandleQuasiStandby(void) {
 	if (!w) return;
 
 	// 1. protect the work: rest is not true standby and can drain flat
-	PersistencyService::GetInstance()->Save("project:lgptsav.autosav");
+	// only with a project open: at the picker the project alias
+	// still names the LAST project, and a stub written there was
+	// offered as a recovery of it on the next boot
+	if (w->HasProject())
+		PersistencyService::GetInstance()->Save("project:lgptsav.autosav");
 
 	// 2. rough life estimate from the battery percent (a guess, labelled)
 	int pct = scePowerGetBatteryLifePercent();

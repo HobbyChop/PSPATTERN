@@ -56,6 +56,7 @@ WavFileWriter::WavFileWriter(const char *path)
     : file_(0), buffer_(0), bufferSize_(0), dataBytes_(0), channels_(2),
       pending_(0), pendingUsed_(0), ring_(0), ringSize_(0), ringRead_(0),
       ringWrite_(0), wake_(0), thread_(0), finishing_(false), done_(false) {
+    failed_ = false;
     open(path, 2, Audio::GetInstance()->GetSampleRate());
     // no thread (no memory for the ring) is the old in-thread path:
     // still correct, just back to stalling the render on the card
@@ -67,6 +68,7 @@ WavFileWriter::WavFileWriter(const char *path, int channels, int rate)
       channels_(channels), pending_(0), pendingUsed_(0), ring_(0),
       ringSize_(0), ringRead_(0), ringWrite_(0), wake_(0), thread_(0),
       finishing_(false), done_(false) {
+    failed_ = false;
     open(path, channels, rate);
 };
 
@@ -223,9 +225,11 @@ void WavFileWriter::queue(const short *src, int n) {
 void WavFileWriter::flush() {
     if (!file_ || !pending_ || pendingUsed_ == 0)
         return;
+    if (failed_) { pendingUsed_ = 0; return; }
     unsigned int t0 = writeMicros();
-    file_->Write(pending_, 2, pendingUsed_);
+    int put = file_->Write(pending_, 2, pendingUsed_);
     AudioStats::ExcludeMicros(writeMicros() - t0);
+    if (put != pendingUsed_) failed_ = true;   // the card is full, or gone
     pendingUsed_ = 0;
 };
 
@@ -299,7 +303,14 @@ bool WavFileWriter::startThread() {
         return false;
     }
     thread_ = new WavWriteThread(this);
-    thread_->Start();
+    if (!thread_->Start()) {
+        // no thread: Close would have waited on it for ever. Fall
+        // back to writing on the render's own thread, as before.
+        SAFE_DELETE(thread_);
+        SAFE_DELETE(wake_);
+        SAFE_FREE(ring_);
+        ringSize_ = 0;
+    }
     return true;
 };
 
@@ -338,6 +349,12 @@ void WavFileWriter::ringPut(const short *src, int n) {
 // The thread's side: to the card in lumps while a lump is there, or
 // down to nothing when the file is finishing.
 void WavFileWriter::drain(bool all) {
+    if (failed_) {
+        // nothing more goes to the card; the ring is emptied so the
+        // render never spins waiting for room
+        ringRead_ = ringWrite_;
+        return;
+    }
     for (;;) {
         int used = ringWrite_ - ringRead_;
         if (used < 0) used += ringSize_;
@@ -347,7 +364,8 @@ void WavFileWriter::drain(bool all) {
         int r = ringRead_;
         int first = ringSize_ - r;
         if (first > take) first = take;
-        file_->Write(ring_ + r, 2, first);
+        int put = file_->Write(ring_ + r, 2, first);
+        if (put != first) { failed_ = true; ringRead_ = ringWrite_; return; }
         r += first;
         if (r >= ringSize_) r -= ringSize_;
         ringRead_ = r;

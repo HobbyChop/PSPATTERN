@@ -140,6 +140,10 @@ void MixerService::SetRenderMode(int mode) {
 
 bool MixerService::IsRendering() { return out_ && out_->IsRendering(); }
 
+bool MixerService::LastRenderFailed() {
+    return out_?out_->LastRenderFailed():false ;
+}
+
 bool MixerService::Start() {
     MidiService::GetInstance()->Start();
     if (out_) {

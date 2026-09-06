@@ -357,7 +357,10 @@ void AppWindow::uiTick() {
             char *dot = strrchr(name, '.');
             if (dot) *dot = 0;
             char msg[48];
-            snprintf(msg, sizeof(msg), "wrote %s", name);
+            if (MixerService::GetInstance()->LastRenderFailed())
+                snprintf(msg, sizeof(msg), "render FAILED, card full? %s", name);
+            else
+                snprintf(msg, sizeof(msg), "wrote %s", name);
             msg[40] = 0;
             _currentView->SetNotification(msg);
             Redraw();
@@ -1973,9 +1976,11 @@ void AppWindow::LoadProject(const Path &p) {
 
     // An autosave still sitting here means the last session ended
     // without a clean save -- battery, crash, or the power switch.
+    bool recoveryPending = false;
     {
         Path autoPath(AUTOSAVE_PATH);
         if (autoPath.Exists()) {
+            recoveryPending = true;
             MessageBox *mb = new MessageBox(
                 *_songView, "Recover unsaved changes?", MBBF_YES | MBBF_NO);
             _songView->DoModal(mb, RecoverCallback);
@@ -1997,9 +2002,16 @@ void AppWindow::LoadProject(const Path &p) {
 	: (load_result & SLOAD_ERR_INPUT_FILE) ? "Some samples could not be read"
 	: "Unknown error loading sample pool";
       Trace::Error(err_str) ;
-      MessageBox *mb =
-            new MessageBox(*_currentView, err_str);	  
-    _currentView->DoModal(mb);
+      if (recoveryPending) {
+          // a second modal would replace the recovery prompt and the
+          // autosave would never be offered; the error goes to the
+          // notice line instead
+          _currentView->SetNotification(err_str);
+      } else {
+          MessageBox *mb =
+                new MessageBox(*_currentView, err_str);
+          _currentView->DoModal(mb);
+      }
     }
     
     Redraw();
@@ -2027,6 +2039,8 @@ void AppWindow::CloseProject(bool showPicker) {
     CLOSEMARK("player stopped");
     player->RemoveObserver(*this);
 
+    // the MIDI input must forget the project before the player does
+    MidiNoteInput::GetInstance()->SetProject(0);
     player->Reset();
     CLOSEMARK("audio closed");
 
@@ -2110,7 +2124,13 @@ bool AppWindow::onEvent(GUIEvent &event) {
         // the original tracker's nav key did. R is also the mute/solo
         // modifier, so a chord that starts with R disarms it (below)
         // and nothing on screen changes for it.
-        if ((v & EPBM_R) && !navMapVisible_ && !(_mask & ~EPBM_R)) {
+        // Not without a project (the picker sits on the null view and a
+        // jump lands on a view that does not exist) and not under a
+        // dialog (the view would switch beneath it, and the autosave
+        // could overwrite the recovery file before its question was
+        // answered).
+        if ((v & EPBM_R) && !navMapVisible_ && !(_mask & ~EPBM_R) &&
+            _viewData && _currentView && !_currentView->HasModal()) {
             navMapVisible_ = true;
             // the map's own cursor is the screen we are on
             navSel_ = currentViewType();
@@ -2495,13 +2515,17 @@ void AppWindow::Update(Observable &o, I_ObservableData *d) {
                 renderTailPending_ = true;
                 if (_currentView) {
                     _currentView->SetNotification("letting the tail ring...");
-                    Redraw();
+                    // a flag, not a Redraw: this runs on the render
+                    // thread under the mixer lock, and Redraw does the
+                    // deferred preset loads, the config's card write
+                    // and a full view draw -- the UI tick repaints
+                    _isDirty = true;
                 }
             } else {
                 _viewData->isRendering_ = false;
                 if (_currentView) {
                     _currentView->SetNotification("render complete");
-                    Redraw();
+                    _isDirty = true;
                 }
             }
         }

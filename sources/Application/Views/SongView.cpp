@@ -774,6 +774,10 @@ void SongView::jumpToNextSection(int direction) {
         if (viewData_->songOffset_ < 0) {
             viewData_->songOffset_ = 0;
         }
+        // the same clamp every other move goes through: a block near
+        // the bottom used to leave the window past the end of the song
+        // data, which the draw then read and a cut wrote
+        viewData_->UpdateSongOffset(0);
     }
     viewData_->songY_ = current - viewData_->songOffset_;
     isDirty_ = true;
@@ -1269,7 +1273,7 @@ void SongView::DrawSidePanel() {
         midCol = CD_MUTE;
         break;
     }
-    sprintf(buf, "%8s", midTxt);
+    snprintf(buf, sizeof(buf), "%8.8s", midTxt);
     SetColor(midCol);
     DrawString(31, 8, buf, props);
 

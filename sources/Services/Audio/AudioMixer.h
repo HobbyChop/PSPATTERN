@@ -45,6 +45,8 @@ public:
 	void RequestTailEnd() { if (tailing_) tailCut_=true ; }
 	// true while a take's file is open, the thread's finishing included
 	bool IsRendering() const { return writer_!=0||finishing_!=0 ; }
+	// the last render's file came up short on the card
+	bool LastRenderFailed() const { return lastRenderFailed_ ; }
 	void SetVolume(fixed volume) ;
 	/* Gain applied to every source as it is summed, not after.
 
@@ -142,6 +144,7 @@ private:
   bool enableRendering_;
   std::string renderPath_;
   WavFileWriter *writer_;
+  bool lastRenderFailed_;
   bool tailing_;      // stopped, file open, waiting for silence
   int tailSamples_;
   bool tailCut_;      // RequestTailEnd asked; Render closes

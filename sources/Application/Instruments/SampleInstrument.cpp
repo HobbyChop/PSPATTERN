@@ -143,6 +143,48 @@ SampleInstrument::SampleInstrument() {
 
      for (int i = 0; i < PLAYER_CHANNEL_COUNT; i++) {
          renderParams *rp = renderParams_ + i;
+         /* The plain fields of a voice that has never started. Start
+            seeds most of them, but not on a continued start (no
+            instrument on the row) and not the retrigger state, and
+            the struct came from the heap with whatever was there. */
+         rp->sampleBuffer_ = 0;
+         rp->channelCount_ = 1;
+         rp->krateCount_ = 0;
+         rp->position_ = 0.0f;
+         rp->rendFirst_ = 0;
+         rp->rendLoopStart_ = 0;
+         rp->rendLoopEnd_ = 0;
+         rp->baseSpeed_ = 0;
+         rp->speed_ = 0;
+         rp->baseVolume_ = 0;
+         rp->volume_ = 0;
+         rp->reverse_ = false;
+         rp->retrig_ = false;
+         rp->retrigLoop_ = 0;
+         rp->retrigCount_ = 0;
+         rp->retrigOffset_ = 0;
+         rp->printFx_ = 0;
+         rp->finished_ = true;
+         rp->envActive_ = false;
+         rp->envReleasing_ = false;
+         rp->envAutoOff_ = false;
+         rp->envLevel_ = 0;
+         rp->envTarget_ = 0;
+         rp->envStep_ = 0;
+         rp->envSustain_ = 0;
+         rp->envDecay_ = 0;
+         rp->feedbackIn_ = 0;
+         rp->feedbackOut_ = 0;
+         rp->crush_ = 16;
+         rp->drive_ = 0xFF;
+         rp->downsample_ = 0;
+         rp->lastOutL_ = 0;
+         rp->lastOutR_ = 0;
+         rp->clickL_ = 0;
+         rp->clickR_ = 0;
+         rp->declickPending_ = false;
+         rp->couldClick_ = false;
+         rp->midiNote_ = 60;
          rp->updaters_.push_back(&rp->volumeRamp_);
          rp->updaters_.push_back(&rp->panner_);
          rp->updaters_.push_back(&rp->cutRamp_);
@@ -1773,7 +1815,12 @@ void SampleInstrument::Purge() {
 
 bool SampleInstrument::IsEmpty() {
     Variable *v=FindVariable(SIP_SAMPLE) ;
-	return (v->GetInt()==-1) ;
+	// a sample name that did not resolve (the file is missing from
+	// this card) is still an instrument: the save must keep it and
+	// the double tap must not hand its slot out as free
+	// "none" is the name of no sample, not of a missing one
+	return (v->GetInt()==-1)&&
+	       (!v->HasUnmatched()||!strcasecmp(v->GetString(),"none")) ;
 } ;
 
 int SampleInstrument::GetTable() {

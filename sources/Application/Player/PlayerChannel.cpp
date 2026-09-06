@@ -502,6 +502,11 @@ void PlayerChannel::Reset() {
     if (mixBus_) {
         mixBus_->Remove(*this) ;
     }
+    // a note still in its release at project close kept its
+    // instrument here, and the next project rendered through the
+    // deleted object
+    instr_=0 ;
+    releasing_=false ;
     muted_=false ;
   busIndex_=-1 ;
   hpfPrevInput_[0]=hpfPrevInput_[1]=i2fp(0);

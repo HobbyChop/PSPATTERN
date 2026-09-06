@@ -368,9 +368,8 @@ void Project::PurgeInstruments(bool removeFromDisk) {
 
 	for (int i=0;i<PHRASE_COUNT;i++) {
 		for (int j=0;j<16;j++) {
-			if (*data!=0xFF) {
-				NAssert(*data<MAX_INSTRUMENT_COUNT) ;
-				used[*data]=true ;
+			if ((*data!=0xFF)&&(*data<MAX_INSTRUMENT_COUNT)) {
+				used[*data]=true ;   // a byte past the bank is not an instrument
 			}
 			data++ ;
 		}
@@ -457,6 +456,12 @@ void Project::RestoreContent(TiXmlElement *element) {
 	while (current) {
 		const char *name=current->Attribute("NAME") ;
 		const char *value=current->Attribute("VALUE") ;
+		// a hand-edited or damaged file can drop either; both were
+		// handed straight to strcmp
+		if ((!name)||(!value)) {
+			current=current->NextSiblingElement() ;
+			continue ;
+		}
 
 		// CHAR_LIST variables are saved by their displayed name, so
 		// anything renamed for layout has to be mapped back or the
