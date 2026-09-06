@@ -225,6 +225,11 @@ struct SynthVoice {
 	unsigned char vibDepth_ ;
 	unsigned short vibPhase_ ;
 	unsigned int vibMul_ ;    // Q16, 65536 is no bend
+	// BEND: a continuous bend at a speed, LSDJ's P. bendRate_ is
+	// signed sixteenths of a semitone per tick, bendQ4_ the offset
+	// it has built up; both cleared by the next note.
+	int bendRate_ ;
+	int bendQ4_ ;
 	signed short pitchNote_ ; // last note asked for, before transpose
 	unsigned int lfoPhase_ ;
 	unsigned int rng_ ;

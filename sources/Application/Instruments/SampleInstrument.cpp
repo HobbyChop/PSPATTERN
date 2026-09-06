@@ -154,6 +154,7 @@ SampleInstrument::SampleInstrument() {
          rp->updaters_.push_back(&rp->speedRamp_);
          rp->updaters_.push_back(&rp->legato_);
          rp->updaters_.push_back(&rp->pfin_);
+         rp->updaters_.push_back(&rp->bend_);
 	} ;
 
  // Reset table state
@@ -1574,6 +1575,35 @@ void SampleInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 				if (!rp->speedRamp_.Enabled()) {
 					rp->speedRamp_.Enable() ;
 					rp->activeUpdaters_.push_back(&rp->speedRamp_) ;
+				}
+			} ;
+			break ;
+
+		case I_CMD_BEND:
+			{
+				// LSDJ's P on a sample: a speed and no target. Its own
+				// LOG ramp -- PTCH's is linear in playback speed, which
+				// in pitch is slow then fast, the wrong shape for a kick
+				// -- multiplies the speed by a constant every control
+				// block, a straight line in semitones. Aimed four
+				// octaves away it runs until the next note or a BEND 00,
+				// which holds the pitch where it got to.
+				int rate=(char)(value&0xFF) ;
+				float cur=rp->bend_.Enabled()?rp->bend_.GetCurrent():1.0f ;
+				if (rate==0) {
+					rp->bend_.SetData(cur,0.0f,cur) ;
+				} else {
+					int tick=(int)SyncMaster::GetInstance()->GetTickSampleCount() ;
+					if (tick<KRATE_SAMPLE_COUNT) tick=KRATE_SAMPLE_COUNT ;
+					double blocksPerTick=double(tick)/double(KRATE_SAMPLE_COUNT) ;
+					double semisPerTick=((rate<0)?-rate:rate)/16.0 ;
+					float perBlock=float(pow(2.0,semisPerTick/12.0/blocksPerTick)) ;
+					float target=float(pow(2.0,(rate>0)?4.0:-4.0)) ;
+					rp->bend_.SetData(target,perBlock,cur) ;
+				}
+				if (!rp->bend_.Enabled()) {
+					rp->bend_.Enable() ;
+					rp->activeUpdaters_.push_back(&rp->bend_) ;
 				}
 			} ;
 			break ;

@@ -91,6 +91,7 @@ struct renderParams {
 	LinSpeedRamp speedRamp_ ;
 	LogSpeedRamp legato_ ;
 	LogSpeedRamp pfin_ ;
+	LogSpeedRamp bend_ ;      // BEND: its own log ramp, a straight line in semitones
 	Arp arp_ ;
 	Vibrato vibrato_ ;
 	/* Measured declick, per voice, stereo -- the same thing

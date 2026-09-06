@@ -1,3 +1,18 @@
+PSPATTERN 0.40.0a
+
+    BEND, the bend LSDJ players know as P: a speed and no target. bb
+        is signed sixteenths of a semitone per tick, 01-7F up and
+        81-FF down, and the bend runs until the next note; BEND 00
+        holds the pitch where it got to. A kick is a note with BEND
+        E0 under it. On synths it is a straight line in semitones,
+        on samples it runs on its own ramp so the line stays straight
+        there too, and on MIDI it walks the device's bend range.
+
+    In a table the transpose column is drawn on the left, and the
+        cursor now treats it that way: LEFT from the first command
+        lands on it, RIGHT from it comes back. It used to be reached
+        only by going right past the third parameter.
+
 PSPATTERN 0.39.2a
 
     Left alone, the machine rests on its own. After the minutes on the

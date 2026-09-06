@@ -338,6 +338,28 @@ void MidiInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 			}
 			break ;
 
+		case I_CMD_BEND:
+			{
+				// LSDJ's P on MIDI: aimed at the edge of the device's
+				// bend range, the walk's rate set from the speed. The
+				// one-pole walk slows as it arrives, which is as near a
+				// straight line as a bend message gets.
+				int rate=(char)(value&0xFF) ;
+				if (rate==0) {
+					v.bendTarget_=v.bend_ ;
+				} else {
+					Variable *r=FindVariable(MIP_BENDRANGE) ;
+					int range=r?r->GetInt():2 ;
+					if (range<1) range=1 ;
+					int mag=(rate<0)?-rate:rate ;
+					int speed=(mag*16)/range ;
+					if (speed<1) speed=1 ;
+					if (speed>255) speed=255 ;
+					setBendSemitones(v,(rate>0)?range:-range,speed) ;
+				}
+			}
+			break ;
+
 		case I_CMD_LEGA:
 			{
 				// slide to a pitch without retriggering: on MIDI that

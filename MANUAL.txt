@@ -383,6 +383,8 @@ parameter as aabb, meaning the first two digits and the last two are
 read separately, or as aaaa when all four are one number.
 
   ARPG  cycle through pitches relative to the note
+  BEND  bend the pitch at a speed: bb sixteenths of a semitone a
+        tick, 81-FF down, 00 holds it where it got to
   CHRD  a chord: like ARPG but always at tick rate; a real chord on hive
   CRSH  drive and bit crush
   DLAY  delay the step by bb ticks
@@ -441,6 +443,12 @@ downbeat wherever it was switched on.
 
 PTCH and VOLM take a rate in the first two digits. A rate of 00 jumps
 straight to the target instead of sliding.
+
+BEND is the other way to move a pitch: no target, only a speed, the
+way P works in LSDJ. bb is signed sixteenths of a semitone per tick,
+01-7F up and 81-FF down, and the bend runs until the next note or a
+BEND 00, which holds the pitch where it got to. A kick is a note with
+BEND E0 under it; a tom, BEND F4.
 
 
 10. TABLES

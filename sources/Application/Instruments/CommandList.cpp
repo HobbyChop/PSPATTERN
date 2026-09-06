@@ -5,6 +5,7 @@ static FourCC _all[]= {
 	I_CMD_NONE,
 	I_CMD_ARPG,
 	I_CMD_ARPS,
+	I_CMD_BEND,
 	I_CMD_CHRD,
 	I_CMD_RTGR,
 	I_CMD_RAND,
@@ -72,7 +73,7 @@ int CommandList::AppliesTo(FourCC command) {
 		// the shared musical ones -- MIDI sends them as bend and CCs
 		case I_CMD_TRSP: case I_CMD_VIBR:
 		case I_CMD_PTCH: case I_CMD_ARPG: case I_CMD_ARPS: case I_CMD_CHRD:
-		case I_CMD_LEGA:
+		case I_CMD_LEGA: case I_CMD_BEND:
 		case I_CMD_PAN_: case I_CMD_FCUT: case I_CMD_FRES:
 		case I_CMD_FLTR:
 			return CMD_ON_ALL ;

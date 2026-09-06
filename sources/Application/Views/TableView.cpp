@@ -321,14 +321,25 @@ void TableView::pasteClipboard() {
 
 void TableView::updateCursor(int dx, int dy) {
 
-    col_ += dx;
+    /* The transpose column is DRAWN on the left of the grid but is
+       column 6 in the data, so that everything keyed off "0, 2 and 4
+       are command columns" keeps working. The cursor used to follow
+       the data: the only way onto transpose was RIGHT past the third
+       parameter, and LEFT from the first command did nothing -- the
+       opposite of what the screen shows. The walk now follows the
+       picture: LEFT from the first command lands on transpose, RIGHT
+       from transpose comes back, and the third parameter is the
+       right-hand end. */
+    if (dx != 0) {
+        if (col_ == 6) {
+            if (dx > 0) col_ = 0;
+        } else {
+            col_ += dx;
+            if (col_ < 0) col_ = 6;
+            if (col_ > 5) col_ = 5;
+        }
+    }
     row_ += dy;
-    // 6 is the transpose column: on the right, so that everything
-    // keyed off "0, 2 and 4 are command columns" keeps working
-    if (col_ > 6)
-        col_ = 6;
-    if (col_ < 0)
-        col_ = 0;
     if (row_ > 15)
         row_ = 15;
     if (row_ < 0)

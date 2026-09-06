@@ -350,6 +350,10 @@ static inline int tickLength() {
 	return t ;
 }
 
+/* BEND's sub-semitone ratios: 2^(k/192) in Q16 for k = 0..15, the
+   sixteenths of a semitone between two entries of the note table. */
+static unsigned int bendSubQ16_[16] ;
+
 
 SynthInstrument::SynthInstrument() {
 
@@ -541,6 +545,9 @@ bool SynthInstrument::Init() {
 		for (int i=0;i<128;i++) {
 			double f=440.0*pow(2.0,(i-69)/12.0) ;
 			noteInc_[i]=(unsigned int)(f*4294967296.0/SYNTH_RATE) ;
+		}
+		for (int i=0;i<16;i++) {
+			bendSubQ16_[i]=(unsigned int)(pow(2.0,i/192.0)*65536.0+0.5) ;
 		}
 		for (int i=0;i<256;i++) {
 			sineTable_[i]=(short)(32000.0*sin(i*2.0*3.14159265358979/256.0)) ;
@@ -734,6 +741,8 @@ bool SynthInstrument::Start(int channel,unsigned char note,bool retrigger) {
 	v.vibDepth_=0 ;
 	v.vibPhase_=0 ;
 	v.vibMul_=65536u ;
+	v.bendRate_=0 ;
+	v.bendQ4_=0 ;
 	v.arpOn_=false ;
 	v.arpStep_=0 ;
 	v.arpData_=0 ;
@@ -880,9 +889,22 @@ void SynthInstrument::setVoicePitch(SynthVoice &v,int note) {
 	v.pitchNote_=(signed short)note ;
 	// the transpose rides on top of whatever asked for this pitch
 	note+=v.transpose_ ;
+	// and so does the bend: whole semitones into the note, the
+	// sixteenths as a ratio on the increment below
+	int bendSub=0 ;
+	if (v.bendQ4_) {
+		int b=v.bendQ4_ ;
+		int semi=(b>=0)?(b>>4):-((-b+15)>>4) ;
+		bendSub=b-semi*16 ;
+		note+=semi ;
+	}
 	if (note<0) note=0 ;
 	if (note>127) note=127 ;
 	v.phaseInc_=noteInc_[note] ;
+	if (bendSub) {
+		v.phaseInc_=(unsigned int)
+		    (((unsigned long long)v.phaseInc_*bendSubQ16_[bendSub])>>16) ;
+	}
 	if (v.vibMul_!=65536u) {
 		// Q16 multiply in 64 bits: at eight semitones of depth the
 		// ratio reaches 1.59, which would overflow a 32 bit product
@@ -918,6 +940,15 @@ void SynthInstrument::serviceTicks(SynthVoice &v,int channel,int samples) {
 		if (v.vibSpeed_ && v.vibDepth_) {
 			float semis=VibratoSemitones(v.vibPhase_,v.vibSpeed_,v.vibDepth_) ;
 			v.vibMul_=(unsigned int)(pow(2.0,semis/12.0)*65536.0+0.5) ;
+			setVoicePitch(v,v.pitchNote_) ;
+		}
+
+		if (v.bendRate_) {
+			// BEND: the offset grows by the speed every tick, four
+			// octaves each way at most
+			v.bendQ4_+=v.bendRate_ ;
+			if (v.bendQ4_>48*16) v.bendQ4_=48*16 ;
+			if (v.bendQ4_<-48*16) v.bendQ4_=-48*16 ;
 			setVoicePitch(v,v.pitchNote_) ;
 		}
 
@@ -2827,6 +2858,14 @@ void SynthInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 			lastNote_[channel]=(unsigned char)(v.baseNote_+pitch) ;
 			break ;
 		}
+
+		case I_CMD_BEND:
+			// LSDJ's P: bb is a speed, signed sixteenths of a semitone
+			// per tick, and there is no target -- it runs until the
+			// next note or a BEND 00, which holds the pitch where it
+			// got to. The tick hook does the walking.
+			v.bendRate_=(signed char)(value&0xFF) ;
+			break ;
 
 		case I_CMD_ARPS:
 			// bb ticks per arp position. 0 and 1 both mean every tick.
