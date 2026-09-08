@@ -185,6 +185,26 @@ to a tape.
 
   X then < or >      switch between song and live mode
 
+In song mode START is the transport: it starts every channel from the
+cursor's row, and pressing it again stops. R with START stops as well,
+and O with START retriggers the row where it stands.
+
+In live mode START queues instead, and the same press means different
+things: it queues the cursor's column, or the columns of a selection
+if one is up. Hold L and press START to queue the whole row. That is
+the one to reach for when playing live, since booking eight channels
+a column at a time takes eight presses inside the same chain, and R
+with < and START takes the row back out again.
+
+  START                  the cursor's column, or the selection
+  L then START           the whole row
+  R then START           stop the column, or the selection
+  R then < then START    stop the whole row
+
+L with START used to switch the machine into live mode as it played.
+It no longer does, because a start button should not decide what kind
+of start the next one will be. X with < or > changes the mode.
+
 In live mode, O on a cell queues that chain rather than starting it,
 so parts arrive on a musical boundary instead of wherever your thumb
 landed. Press O on the same cell again and it comes in sooner: the

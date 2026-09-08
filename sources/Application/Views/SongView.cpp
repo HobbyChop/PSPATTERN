@@ -686,7 +686,7 @@ void SongView::switchSoloMode() {
     isDirty_ = true;
 };
 
-void SongView::onStart() {
+void SongView::onStart(bool wholeRow) {
     // Always play with zero offset in chains when in SongView
     viewData_->chainRow_ = 0;
     Player *player = Player::GetInstance();
@@ -696,6 +696,19 @@ void SongView::onStart() {
         GUIRect r = getSelectionRect();
         from = r.Left();
         to = r.Right();
+    }
+    /* The whole row, and it outranks a selection: LEFT with START is
+       somebody saying "all of it", and the selection they left up is
+       not what they meant this time.
+
+       In SONG mode the range is ignored anyway -- the player starts
+       every channel -- so this changes nothing there. It is LIVE mode
+       that needed it: a start there reaches only the cursor's column,
+       one channel at a time, where the trackers these players come
+       from queue the row. */
+    if (wholeRow) {
+        from = 0;
+        to = SONG_CHANNEL_COUNT - 1;
     }
     // The render control on the project screen sets a project variable, but
     // nothing ever carried it to the mixer -- so "render Stereo" persisted
@@ -715,12 +728,6 @@ void SongView::onStart() {
     player->OnSongStartButton(from, to, false, false);
 };
 
-void SongView::startCurrentRow() {
-    Player *player = Player::GetInstance();
-    player->SetSequencerMode(SM_LIVE);
-    player->OnSongStartButton(0, 7, false, false);
-}
-
 void SongView::startImmediate() {
     Player *player = Player::GetInstance();
 
@@ -729,16 +736,31 @@ void SongView::startImmediate() {
     player->OnSongStartButton(from, to, false, true);
 }
 
-void SongView::onStop() {
+void SongView::onStop(bool wholeRow) {
     // Always play with zero offset in chains when in SongView
     viewData_->chainRow_ = 0;
     Player *player = Player::GetInstance();
+    /* Stop means stop. The player ignores a stop request when nothing
+       is running -- it reads the press as a start and queues the range
+       instead -- so the stop chord on a silent machine started the very
+       channels it was asked to stop, eight of them at once with the row
+       version. Nothing to stop, nothing happens. */
+    if (!player->IsRunning())
+        return;
     unsigned char from = viewData_->songX_;
     unsigned char to = from;
     if (clipboard_.active_) {
         GUIRect r = getSelectionRect();
         from = r.Left();
         to = r.Right();
+    }
+    /* ...and the whole row, so a row cued in can be cued out by the
+       mirror of the gesture that cued it. Queueing eight channels
+       with one press and then unqueueing them one at a time is half
+       a gesture, and it is the half you need in a hurry. */
+    if (wholeRow) {
+        from = 0;
+        to = SONG_CHANNEL_COUNT - 1;
     }
 
     player->OnSongStartButton(from, to, true, false);
@@ -1041,8 +1063,19 @@ void SongView::processNormalButtonMask(unsigned int mask) {
                     NotifyObservers(&ve);
                 }
 
+                /* R with START stops the cursor's column, or a
+                   selection if one is up. Add LEFT and it stops the
+                   whole row, the mirror of L with START starting it.
+
+                   LEFT is free under R here -- this is the leftmost
+                   screen, so there is nowhere to its left to go --
+                   and under R it does not move the cursor the way a
+                   bare LEFT does. The shoulder pair would have read
+                   better and is not available: L and R together
+                   unmutes every channel, and it fires on the way to
+                   the third button. */
                 if (mask & EPBM_START) {
-                    onStop();
+                    onStop((mask & EPBM_LEFT) != 0);
                 }
 
             } else {
@@ -1054,8 +1087,19 @@ void SongView::processNormalButtonMask(unsigned int mask) {
                         jumpToNextSection(1);
                     if (mask & EPBM_UP)
                         jumpToNextSection(-1);
+                    /* L with START starts the whole row.
+
+                       It used to force live mode on the way through,
+                       which let one button decide what kind of start
+                       the NEXT one would be: press it once in song
+                       mode and the transport was gone. The mode is
+                       left alone now, and X with < or > is what
+                       changes it. This is the gesture to reach for
+                       when playing live, since booking eight channels
+                       a column at a time is eight presses inside the
+                       same chain. */
                     if (mask & EPBM_START)
-                        startCurrentRow();
+                        onStart(true);
                     if (mask & EPBM_LEFT)
                         nudgeTempo(-1);
                     if (mask & EPBM_RIGHT)
@@ -1064,17 +1108,27 @@ void SongView::processNormalButtonMask(unsigned int mask) {
 
                     // No modifier
 
-                    if (mask & EPBM_DOWN)
-                        updateCursor(0, 1);
-                    if (mask & EPBM_UP)
-                        updateCursor(0, -1);
-                    if (mask & EPBM_LEFT)
-                        updateCursor(-1, 0);
-                    if (mask & EPBM_RIGHT)
-                        updateCursor(1, 0);
+                    /* LEFT with START starts every channel on the
+                       cursor's row. The sequencer mode is left exactly
+                       as it was: a start button should not decide what
+                       kind of start the next one will be, which is
+                       what L with START does and why that one is a
+                       different gesture rather than this one. */
+                    if ((mask & EPBM_START) && (mask & EPBM_LEFT)) {
+                        onStart(true);
+                    } else {
+                        if (mask & EPBM_DOWN)
+                            updateCursor(0, 1);
+                        if (mask & EPBM_UP)
+                            updateCursor(0, -1);
+                        if (mask & EPBM_LEFT)
+                            updateCursor(-1, 0);
+                        if (mask & EPBM_RIGHT)
+                            updateCursor(1, 0);
 
-                    if (mask & EPBM_START) {
-                        onStart();
+                        if (mask & EPBM_START) {
+                            onStart();
+                        }
                     }
                 }
             }
@@ -1159,24 +1213,42 @@ void SongView::processSelectionButtonMask(unsigned int mask) {
                     NotifyObservers(&ve);
                 }
 
+                /* R with START stops the cursor's column, or a
+                   selection if one is up. Add LEFT and it stops the
+                   whole row, the mirror of L with START starting it.
+
+                   LEFT is free under R here -- this is the leftmost
+                   screen, so there is nowhere to its left to go --
+                   and under R it does not move the cursor the way a
+                   bare LEFT does. The shoulder pair would have read
+                   better and is not available: L and R together
+                   unmutes every channel, and it fires on the way to
+                   the third button. */
                 if (mask & EPBM_START) {
-                    onStop();
+                    onStop((mask & EPBM_LEFT) != 0);
                 }
 
             } else {
 
                 // No modifier
 
-                if (mask & EPBM_DOWN)
-                    updateCursor(0, 1);
-                if (mask & EPBM_UP)
-                    updateCursor(0, -1);
-                if (mask & EPBM_LEFT)
-                    updateCursor(-1, 0);
-                if (mask & EPBM_RIGHT)
-                    updateCursor(1, 0);
-                if (mask & EPBM_START) {
-                    onStart();
+                /* The whole row here too, and it outranks the
+                   selection that is up: a shoulder held down and
+                   START pressed is somebody saying all of it. */
+                if ((mask & EPBM_L) && (mask & EPBM_START)) {
+                    onStart(true);
+                } else {
+                    if (mask & EPBM_DOWN)
+                        updateCursor(0, 1);
+                    if (mask & EPBM_UP)
+                        updateCursor(0, -1);
+                    if (mask & EPBM_LEFT)
+                        updateCursor(-1, 0);
+                    if (mask & EPBM_RIGHT)
+                        updateCursor(1, 0);
+                    if (mask & EPBM_START) {
+                        onStart();
+                    }
                 }
             }
         }

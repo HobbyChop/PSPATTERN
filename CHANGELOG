@@ -1,3 +1,25 @@
+PSPATTERN 0.40.5a
+
+    The whole row starts with one press. Hold L and press START on the
+        song screen and every channel on the cursor's row goes, in
+        whatever mode the machine is already in. It used to force live
+        mode on the way through, which let one start button decide
+        what kind of start the next one would be; X with left or right
+        is still how the mode changes. In live mode this is the press
+        to reach for, since booking eight channels a column at a time
+        is eight presses inside the same chain.
+
+    And it stops the same way. R with START still stops the cursor's
+        column, or a selection if one is up; add left and it stops the
+        row. Queueing eight channels with one press and unqueueing
+        them one at a time was half a gesture.
+
+    A stop press on a silent machine now does nothing. The player
+        reads a stop request as a start when nothing is running, so
+        the stop chord started the very channels it was asked to stop
+        -- harmless enough with one column, eight at once with the
+        row.
+
 PSPATTERN 0.40.4a
 
     Following a MIDI clock holds through a heavy pattern now. The loop

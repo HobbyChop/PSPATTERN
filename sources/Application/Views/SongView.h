@@ -62,10 +62,9 @@ class SongView : public View {
     void toggleMute();
     void switchSoloMode();
 
-    void onStart();
-    void startCurrentRow();
+    void onStart(bool wholeRow = false);
     void startImmediate();
-    void onStop();
+    void onStop(bool wholeRow = false);
 
     void jumpToNextSection(int dir);
 
