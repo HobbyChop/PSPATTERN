@@ -109,22 +109,31 @@ void TableView::fillClipboardData() {
 
 void TableView::extendSelection() {
     GUIRect rect = getSelectionRect();
-    if (rect.Left() > 0 || rect.Right() < 6) {
-        if (col_ < clipboard_.col_) {
-            col_ = 0;
-            clipboard_.col_ = 6;
-        } else {
-            col_ = 6;
-            clipboard_.col_ = 0;
-        }
-        isDirty_ = true;
-    } else {
+    /* THE COLUMN FIRST, the width second.
+
+       It used to take all the columns on the first press and the rows
+       on the second. That order suits copying a row, and copying a
+       row is the rarer job: what a selection is mostly FOR is running
+       O and a direction down one column to transpose a run of notes
+       or walk a parameter, and that wants the column on the first
+       press. It is also the order LSDJ and M8 both use, which is
+       where the people using this arrive from. */
+    if (rect.Top() > 0 || rect.Bottom() < 15) {
         if (row_ < clipboard_.row_) {
             row_ = 0;
             clipboard_.row_ = 15;
         } else {
             clipboard_.row_ = 0;
             row_ = 15;
+        }
+        isDirty_ = true;
+    } else {
+        if (col_ < clipboard_.col_) {
+            col_ = 0;
+            clipboard_.col_ = 6;
+        } else {
+            col_ = 6;
+            clipboard_.col_ = 0;
         }
         isDirty_ = true;
     }

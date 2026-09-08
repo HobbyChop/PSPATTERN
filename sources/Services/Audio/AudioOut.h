@@ -24,6 +24,10 @@ public:
 
    virtual int GetPlayedBufferPercentage()=0 ;
 
+   /* Rendered audio not yet heard, in bytes. Zero from anything with
+      no queue of its own, which is the honest answer for those. */
+   virtual int QueuedBytes() { return 0 ; }
+
 	virtual std::string GetAudioAPI()=0 ;
 	virtual std::string GetAudioDevice()=0 ;
 	virtual int GetAudioBufferSize()=0 ;

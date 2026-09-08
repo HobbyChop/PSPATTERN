@@ -49,6 +49,26 @@ public:
 		acqTick0_ = 0 ;
 		acqDone_ = false ;
 		grossRun_ = 0 ;
+		outLag_ = 0.0f ;
+		baseGood_ = bpm ;
+	}
+
+	/* How much of what the player has already ticked is still sitting
+	   in the audio queue, in ticks.
+
+	   The player counts a tick when it RENDERS one, and the render
+	   runs ahead of the speaker by whatever is queued. That depth is
+	   not a constant: it is deep while the machine is coasting and
+	   shallow when a dense pattern makes it work for its slices. Left
+	   in the comparison it reads as the song falling behind, and the
+	   loop's answer to falling behind is to run faster, which is more
+	   work again -- a pattern heavy enough to drain the queue could
+	   push itself out of sync and stay there. Taken out, the two
+	   counts are compared where the music actually comes out. */
+	void SetOutputLag(float ticks) {
+		if (ticks < 0.0f) ticks = 0.0f ;
+		if (ticks > 64.0f) ticks = 64.0f ;
+		outLag_ = ticks ;
 	}
 
 	/* nowMs: the machine clock at the byte's arrival, 0 if unknown.
@@ -104,7 +124,8 @@ public:
 	/* Ticks the leader is ahead of where we ought to be.
 	   Positive means we are late and have to hurry. */
 	float PhaseError() const {
-		return (float)leaderTicks_ - (float)playerTicks_ + leadTicks() ;
+		return (float)leaderTicks_ - ((float)playerTicks_ - outLag_)
+		       + leadTicks() ;
 	}
 
 	float Tempo() const { return tempo_ ; }
@@ -133,13 +154,21 @@ private:
 		   carry on at the learned tempo -- wrong phase accepted once
 		   beats a permanently skewed tempo trying to close a beat that
 		   keeps receding. */
-		if (err >= 24.0f || err <= -24.0f) {
+		bool pinned = (err >= 24.0f || err <= -24.0f) ;
+		if (pinned) {
 			if (++grossRun_ > 96) {
-				playerTicks_ = leaderTicks_ ;
+				playerTicks_ = (unsigned int)((float)leaderTicks_ + outLag_) ;
 				fastErr_ = 0.0f ;
 				avgErr_ = 0.0f ;
 				settle_ = 0 ;
 				grossRun_ = 0 ;
+				/* and go back to the tempo the loop believed while it
+				   was still in phase. Keeping whatever the excursion
+				   taught left the song running at a tempo learned from
+				   a stall, and only the slow integral could walk it
+				   back -- a minute of playing at the wrong speed after
+				   an event that lasted two seconds. */
+				base_ = baseGood_ ;
 				tempo_ = base_ ;
 				return ;
 			}
@@ -161,9 +190,18 @@ private:
 		   loop dithers across the two positions, and the mean of
 		   that dither is the true fractional offset. */
 		avgErr_ += (err - avgErr_) * 0.0625f ;
-		base_ += 0.005f * avgErr_ ;
-		if (base_ < 30.0f) base_ = 30.0f ;
-		if (base_ > 400.0f) base_ = 400.0f ;
+		/* ...and it only learns from an error that is actually phase.
+		   While the raw error sits at the clamp the number is not a
+		   phase error any more, it is a stall or a jump, and feeding
+		   it to the integral walks the learned tempo somewhere that
+		   takes far longer to walk back than the event lasted. */
+		if (!pinned) {
+			base_ += 0.005f * avgErr_ ;
+			if (base_ < 30.0f) base_ = 30.0f ;
+			if (base_ > 400.0f) base_ = 400.0f ;
+		}
+		// the tempo believed while the song was genuinely in phase
+		if (err > -2.0f && err < 2.0f) baseGood_ = base_ ;
 
 		/* The proportional term closes the current gap -- fed a FAST
 		   smoothing of the error, not the raw count difference. The
@@ -175,7 +213,17 @@ private:
 		   the response inside a few ticks while the clumps average
 		   away. */
 		fastErr_ += (err - fastErr_) * 0.25f ;
-		tempo_ = base_ * (1.0f + 0.010f * fastErr_) ;
+		/* Bounded, and this is the important part. The correction used
+		   to reach a quarter of the tempo at the clamp, which is not a
+		   nudge, it is a different song -- and on a machine already
+		   short of time it asks for a quarter more work per second.
+		   Six per cent closes an ordinary phase error inside a second
+		   and can never run away; anything bigger than that is not a
+		   phase error and the re-anchor above deals with it. */
+		float corr = 0.010f * fastErr_ ;
+		if (corr > 0.06f) corr = 0.06f ;
+		if (corr < -0.06f) corr = -0.06f ;
+		tempo_ = base_ * (1.0f + corr) ;
 		if (tempo_ < 30.0f) tempo_ = 30.0f ;
 		if (tempo_ > 400.0f) tempo_ = 400.0f ;
 
@@ -221,6 +269,8 @@ private:
 	bool acqDone_ ;
 	unsigned int grossRun_ ;
 	float leadMs_ ;
+	float outLag_ ;      // rendered but not yet heard, in ticks
+	float baseGood_ ;    // the tempo believed while last in phase
 	float tempo_ ;
 	unsigned char settle_ ;
 	bool locked_ ;

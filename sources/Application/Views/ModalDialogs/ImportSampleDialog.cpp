@@ -551,6 +551,17 @@ void ImportSampleDialog::import(Path &element,const SampleImportOptions &opt) {
 			snprintf(line,sizeof(line),"imported %s",shortName) ;
 		}
 		status_=line ;
+		/* And out. The sample is in the project and assigned, and what
+		   anybody does next is play it or shape it, both of which are
+		   on the instrument screen -- which the browser was covering.
+		   Staying open suited importing a kit in one trip, but it left
+		   the common case backing out through however many folders
+		   deep the sample pack was.
+
+		   The failure path below does NOT close: an error the browser
+		   walks away from is an error nobody reads. */
+		endPreview() ;
+		EndModal(1) ;
 	} else {
 		/* the old entry survives a failed write -- the pool only drops
 		   it once the new file is in place -- so put everyone back */

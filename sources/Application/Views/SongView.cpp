@@ -313,22 +313,31 @@ void SongView::deepClonePosition() {
 
 void SongView::extendSelection() {
     GUIRect rect = getSelectionRect();
-    if (rect.Left() > 0 || rect.Right() < 7) {
-        if (viewData_->songX_ < clipboard_.x_) {
-            viewData_->songX_ = 0;
-            clipboard_.x_ = 7;
-        } else {
-            viewData_->songX_ = 7;
-            clipboard_.x_ = 0;
-        }
-        isDirty_ = true;
-    } else {
+    /* THE COLUMN FIRST, the width second.
+
+       It used to take all the columns on the first press and the rows
+       on the second. That order suits copying a row, and copying a
+       row is the rarer job: what a selection is mostly FOR is running
+       O and a direction down one column to transpose a run of notes
+       or walk a parameter, and that wants the column on the first
+       press. It is also the order LSDJ and M8 both use, which is
+       where the people using this arrive from. */
+    if (rect.Top() > 0 || rect.Bottom() < 0x17) {
         if (viewData_->songY_ < clipboard_.y_) {
             viewData_->songY_ = 0;
             clipboard_.y_ = 0x17;
         } else {
             clipboard_.y_ = 0;
             viewData_->songY_ = 0x17;
+        }
+        isDirty_ = true;
+    } else {
+        if (viewData_->songX_ < clipboard_.x_) {
+            viewData_->songX_ = 0;
+            clipboard_.x_ = 7;
+        } else {
+            viewData_->songX_ = 7;
+            clipboard_.x_ = 0;
         }
         isDirty_ = true;
     }
@@ -415,29 +424,46 @@ void SongView::cutSelection() {
     fillClipboardData();
     GUIRect selRect = getSelectionRect();
 
-    /* CLEAR IN PLACE, and nothing moves.
+    /* CUT SPLICES OUT: the rows below the selection come up into the
+       hole, in the cut columns only, and the rows that fall free at
+       the bottom are emptied.
 
-       Cut used to delete the row and pull the whole song up under it.
-       That is a list edit, and the song screen is not a list: it is a
-       grid you arrange, and every tracker its players come from --
-       LSDJ, M8 -- clears the cell and leaves the rest where it was.
-       Pulling everything up rearranges parts of the song nowhere near
-       the cursor, which is a hard edit to undo in your head.
+       This is the other half of the paste, and it has to be, or the
+       pair cannot move a block: a cut that leaves a hole followed by
+       a paste that makes a gap grows the song by the height of what
+       you moved. LSDJ and M8 both splice on each. An earlier comment
+       here claimed the opposite about both trackers and was simply
+       wrong; the player who uses them said so.
 
-       (The old code also had a dead loop -- 'for (j=0; j > height; j++)'
-       from zero, which never runs -- so the rows freed at the bottom
-       by the shift were never blanked and kept a stale duplicate of
-       what had been there. Both go together.) */
+       TRIANGLE with X still deletes a whole row across all eight
+       channels, which is the row-shaped version of the same idea. */
 
-    unsigned char *dst = viewData_->song_->data_ + selRect.Left() +
-                         SONG_CHANNEL_COUNT * (selRect.Top());
-
-    for (int j = 0; j < clipboard_.height_; j++) {
-        for (int i = 0; i < clipboard_.width_; i++) {
-            *dst++ = 0xFF;
+    int top = selRect.Top();
+    int width = clipboard_.width_;
+    int height = clipboard_.height_;
+    if (top + height > SONG_ROW_COUNT) {
+        height = SONG_ROW_COUNT - top;
+    }
+    if (width > 0 && height > 0) {
+        unsigned char *d = viewData_->song_->data_ + selRect.Left() +
+                           SONG_CHANNEL_COUNT * top;
+        unsigned char *s = d + height * SONG_CHANNEL_COUNT;
+        int rowCount = SONG_ROW_COUNT - top - height;
+        for (int j = 0; j < rowCount; j++) {
+            for (int i = 0; i < width; i++) {
+                *d++ = *s++;
+            }
+            d += (SONG_CHANNEL_COUNT - width);
+            s += (SONG_CHANNEL_COUNT - width);
         }
-        dst += (SONG_CHANNEL_COUNT - clipboard_.width_);
-    };
+        // the rows that came free at the end hold nothing
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+                *d++ = 0xFF;
+            }
+            d += (SONG_CHANNEL_COUNT - width);
+        }
+    }
 
     clipboard_.active_ = false;
     viewMode_ = VM_NORMAL;
@@ -570,17 +596,45 @@ void SongView::pasteClipboard() {
     if (viewData_->songX_ + width > SONG_CHANNEL_COUNT) {
         width = SONG_CHANNEL_COUNT - viewData_->songX_;
     }
-    /* Paste OVERWRITES, the mirror of cut clearing in place. It used
-       to push everything below the cursor down to make room, so a
-       paste rearranged the song far from where you were working --
-       the same list-splice model the cut had, and the same surprise.
-       The chain, phrase and table screens have always overwritten;
-       this was the odd one out. */
-    if (viewData_->songY_ + viewData_->songOffset_ + height > SONG_ROW_COUNT) {
-        height = SONG_ROW_COUNT - viewData_->songY_ - viewData_->songOffset_;
+    int top = viewData_->songY_ + viewData_->songOffset_;
+    if (top + height > SONG_ROW_COUNT) {
+        height = SONG_ROW_COUNT - top;
+    }
+    if (width <= 0 || height <= 0) {
+        return;
     }
 
-    // Prepare copy pointer
+    /* Paste SPLICES. What sits at and below the cursor moves down by
+       the height of the block, in the pasted columns only, and the
+       block lands in the gap it made.
+
+       This is what LSDJ and M8 both do, and it is what the players
+       who arrive from them expect: an overwriting paste shipped for
+       one release and the first tester who uses both reported it as
+       wrong. The row gestures on TRIANGLE are the other half of the
+       same idea and are unchanged -- they insert and delete a whole
+       row across all eight channels, where this moves only the
+       columns you copied.
+
+       Rows pushed past the last one are gone; the song is 256 rows
+       and there is nowhere for them to go. Bookmarks stay where they
+       are: they belong to a row, and a paste moves columns. */
+    {
+        // from the bottom up, so nothing is overwritten before it moves
+        unsigned char *d = viewData_->song_->data_ + viewData_->songX_ +
+                           (SONG_ROW_COUNT - 1) * SONG_CHANNEL_COUNT;
+        unsigned char *s = d - height * SONG_CHANNEL_COUNT;
+        int rowCount = SONG_ROW_COUNT - top - height;
+        for (int j = 0; j < rowCount; j++) {
+            for (int i = 0; i < width; i++) {
+                *d++ = *s++;
+            }
+            d -= (SONG_CHANNEL_COUNT + width);
+            s -= (SONG_CHANNEL_COUNT + width);
+        }
+    }
+
+    // and the block into the gap
 
     unsigned char *dst = viewData_->GetCurrentSongPointer();
     unsigned char *src = clipboard_.data_;

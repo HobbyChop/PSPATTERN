@@ -55,6 +55,17 @@ void AudioDriver::Stop() {
      StopDriver() ;
 }
 
+int AudioDriver::QueuedBytes() {
+  // what the consumer still holds of the block it is working through,
+  // plus every whole block behind it
+  int total=bufferSize_-bufferPos_ ;
+  if (total<0) total=0 ;
+  for (int i=0;i<SOUND_BUFFER_COUNT;i++) {
+    if (pool_[i].buffer_) total+=pool_[i].size_ ;
+  }
+  return total ;
+}
+
 void AudioDriver::AddBuffer(short *buffer,int samplecount) {
   
   int len=samplecount*2*sizeof(short) ;

@@ -298,7 +298,7 @@ the D-pad and the selection grows to cover what you pass over.
                     its parameter, a note its instrument and velocity
   O then R          cut the selection
   O then direction  change every value in the selection at once
-  R then X          widen: first to all columns, again to all sixteen rows
+  R then X          widen: first the whole column, again the full width
   L then X          interpolate the selection
 
 With no selection up, hold O and press R to paste at the cursor. The
@@ -493,6 +493,16 @@ project saved before herm existed keeps what it chose.
 
 MIDI sends notes out of the PSP-MIDI adapter. It has a channel, volume,
 note length, pitch bend range and four CC slots.
+
+A whole patch copies from one slot to another. X and R takes it, L
+and the arrows walk to the slot you want, and O and R drops it there,
+over whatever was in it. The copy is by value and it outlives the
+project, so a sound built for one song can start the next without
+going through a preset file. It only pastes onto a slot of its own
+type; the type row is the first one on the screen.
+
+There are one hundred and twenty eight sample slots, sixteen MIDI and
+thirty two synth.
 
 SYNTH generates sound on the PSP. Pick one of six engines on the
 second row.
@@ -848,6 +858,7 @@ channel: nothing musical lives below it, and eight channels of
 subsonics stacking on the bus is where a mix turns muddy before a
 fader has been touched. The 90Hz setting is the one to reach for on
 anything that is not the kick or the bass.
+
 
 Up and down move through the rows of a strip. The four settings of the
 send effects themselves sit on one line below the strips, and left and

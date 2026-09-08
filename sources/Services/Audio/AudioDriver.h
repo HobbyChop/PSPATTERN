@@ -53,6 +53,13 @@ public:
 
 	void AddBuffer(short *buffer,int size) ; // size in samples
 
+	/* Bytes of rendered audio queued but not yet handed to the
+	   hardware: how far ahead of the speaker the render currently is.
+	   Not a constant -- it is large while the machine is coasting and
+	   small when a dense pattern makes it work -- which is why the
+	   clock follower has to measure it rather than assume it. */
+	int QueuedBytes() ;
+
 	AudioSettings GetAudioSettings() ;
 
 	void OnNewBufferNeeded() ;

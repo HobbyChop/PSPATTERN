@@ -25,6 +25,7 @@ class AudioOutDriver: public AudioOut,protected I_Observer {
     virtual void SetMasterVolume(int volume);
 
     virtual int GetPlayedBufferPercentage() ;
+    virtual int QueuedBytes() ;
 
     AudioDriver *GetDriver() ;
 

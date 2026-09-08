@@ -269,22 +269,31 @@ void ChainView::fillClipboardData() {
 
 void ChainView::extendSelection() {
     GUIRect rect = getSelectionRect();
-    if (rect.Left() > 0 || rect.Right() < 1) {
-        if (viewData_->chainCol_ < clipboard_.col_) {
-            viewData_->chainCol_ = 0;
-            clipboard_.col_ = 1;
-        } else {
-            viewData_->chainCol_ = 1;
-            clipboard_.col_ = 0;
-        }
-        isDirty_ = true;
-    } else {
+    /* THE COLUMN FIRST, the width second.
+
+       It used to take all the columns on the first press and the rows
+       on the second. That order suits copying a row, and copying a
+       row is the rarer job: what a selection is mostly FOR is running
+       O and a direction down one column to transpose a run of notes
+       or walk a parameter, and that wants the column on the first
+       press. It is also the order LSDJ and M8 both use, which is
+       where the people using this arrive from. */
+    if (rect.Top() > 0 || rect.Bottom() < 15) {
         if (viewData_->chainRow_ < clipboard_.row_) {
             viewData_->chainRow_ = 0;
             clipboard_.row_ = 15;
         } else {
             clipboard_.row_ = 0;
             viewData_->chainRow_ = 15;
+        }
+        isDirty_ = true;
+    } else {
+        if (viewData_->chainCol_ < clipboard_.col_) {
+            viewData_->chainCol_ = 0;
+            clipboard_.col_ = 1;
+        } else {
+            viewData_->chainCol_ = 1;
+            clipboard_.col_ = 0;
         }
         isDirty_ = true;
     }

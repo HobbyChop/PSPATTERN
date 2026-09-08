@@ -1,3 +1,48 @@
+PSPATTERN 0.40.4a
+
+    Following a MIDI clock holds through a heavy pattern now. The loop
+        was comparing the leader against the moment a tick was
+        RENDERED, and rendering runs ahead of the speaker by whatever
+        audio is queued -- a depth that shrinks exactly when a dense
+        pattern makes the machine work. That read as the song falling
+        behind, and the loop's answer to falling behind was to speed
+        up, which is more work again. It now measures at the output,
+        stops learning a tempo from an error it cannot close, and
+        cannot correct by more than six per cent.
+
+    Cut and paste on the song screen splice, the way LSDJ and M8 do:
+        paste pushes what is under the cursor down and drops the block
+        in the gap, cut takes it out and closes the gap behind it. The
+        two together move a block without changing the length of the
+        song. TRIANGLE with the arrows still inserts and deletes a
+        whole row across every channel.
+
+    Widening a selection takes the whole column first and the full
+        width second, on all four grid screens. It was the other way
+        round, which suits copying a row; running a value change down
+        a column is the commoner job and the trackers these players
+        come from put the column first.
+
+    A whole instrument copies from one slot to another: X and R takes
+        the patch, O and R drops it on the slot you are looking at.
+        The copy is by value and it outlives the project, so a sound
+        built for one song can start the next.
+
+    Thirty two synth slots, up from sixteen. Songs written before this
+        open unchanged -- the new slots are added after the existing
+        ones, so every instrument keeps its number. A song that uses
+        the new slots will not play correctly on an older build.
+
+    The sample browser closes when an import succeeds and leaves you
+        on the instrument screen with the new sample selected. It
+        stays open when an import fails, because an error nobody reads
+        is not a message.
+
+    The instrument screen's file line names the pool slot in hex
+        before the sample's name, which is clipped in both places it
+        appears. An instrument element in a save file with no ID no
+        longer reads through a null pointer.
+
 PSPATTERN 0.40.3a
 
     The last of the stability pass, and the deepest of it: the sampler.

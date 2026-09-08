@@ -624,11 +624,15 @@ float Player::syncLeadMs() {
 	Audio *audio=Audio::GetInstance() ;
 	if (audio) {
 		int rate=audio->GetSampleRate() ;
-		/* +1 fragment: the SDL backend double-buffers into the audio
-		   hardware past the prebuffer it reports. Measured once with a
-		   scope against the headphone jack would be better; counted at
-		   all beats leaving it to the trim. */
-		int frames=audio->GetAudioBufferSize()*(audio->GetAudioPreBufferCount()+1) ;
+		/* ONE fragment, not the whole prebuffer. What we have queued
+		   ourselves is measured now and taken out of the phase error
+		   directly (ClockSync::SetOutputLag), so counting it here as
+		   well would be counting it twice. What is left is the piece
+		   nobody can see from in here: the fragment the backend has
+		   handed to the hardware. Measured once with a scope against
+		   the headphone jack would be better; counted at all beats
+		   leaving it to the trim. */
+		int frames=audio->GetAudioBufferSize() ;
 		if (rate>0 && frames>0) {
 			lead=1000.0f*float(frames)/float(rate) ;
 		}
@@ -767,6 +771,18 @@ void Player::Update(Observable &o,I_ObservableData *d) {
            a phase with. Otherwise the project's own tempo stands. */
         bool following = GetSyncMode() == SYNC_FOLLOW;
         if (following) {
+            /* Tell the loop how far the render is ahead of the
+               speaker right now, so its comparison happens at the
+               output. Four bytes a frame, stereo sixteen bit. */
+            float lag = 0.0f;
+            AudioOut *aout = mixer_->GetAudioOut();
+            if (aout) {
+                float spt = sync->GetPlaySampleCount();
+                if (spt > 1.0f) {
+                    lag = float(aout->QueuedBytes()) * 0.25f / spt;
+                }
+            }
+            clockSync_.SetOutputLag(lag);
             sync->SetTempoFine(clockSync_.Tempo());
             // The screen should say what is actually being played, but
             // only settle on a whole number -- writing every wobble of

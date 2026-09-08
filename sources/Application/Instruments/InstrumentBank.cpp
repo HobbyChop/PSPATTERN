@@ -137,6 +137,12 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
 			// Get the instrument ID
 			
 			const char* hexid=current->Attribute("ID") ;
+			// an INSTRUMENT element with no ID is not one; the two
+			// characters below were read from wherever null pointed
+			if ((!hexid)||(!hexid[0])||(!hexid[1])) {
+				current=current->NextSiblingElement() ;
+				continue ;
+			}
 			unsigned char b1=(c2h__(hexid[0]))<<4 ;
 			unsigned char b2=c2h__(hexid[1]) ;
 			unsigned char id=b1+b2 ;			

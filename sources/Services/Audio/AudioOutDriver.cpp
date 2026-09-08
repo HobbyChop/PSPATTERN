@@ -122,7 +122,12 @@ void AudioOutDriver::clipToMix() {
 
 int AudioOutDriver::GetPlayedBufferPercentage() {
 	return driver_->GetPlayedBufferPercentage() ;
-} ;
+}
+
+int AudioOutDriver::QueuedBytes() {
+    return driver_?driver_->QueuedBytes():0 ;
+}
+ ;
 
 AudioDriver *AudioOutDriver::GetDriver() { return driver_; };
 

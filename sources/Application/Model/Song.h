@@ -17,7 +17,14 @@
 
 #define MAX_SAMPLEINSTRUMENT_COUNT 0x80
 #define MAX_MIDIINSTRUMENT_COUNT 0x10
-#define MAX_SYNTHINSTRUMENT_COUNT 0x10
+/* Thirty two synths, up from sixteen. The bank lays its slots out
+   samples, then MIDI, then synths, so widening the LAST range leaves
+   every existing instrument number meaning exactly what it did: a
+   song saved with synth 90 still finds it at 90, and no save needs
+   converting. The cost is the other direction -- a song that uses
+   A0 and above will not open properly on a build older than this
+   one, which is the price of any format that grows. */
+#define MAX_SYNTHINSTRUMENT_COUNT 0x20
 
 #define MAX_INSTRUMENT_COUNT (MAX_SAMPLEINSTRUMENT_COUNT+MAX_MIDIINSTRUMENT_COUNT+MAX_SYNTHINSTRUMENT_COUNT)
 

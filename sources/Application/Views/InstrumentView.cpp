@@ -1,3 +1,5 @@
+#include <string>
+#include <vector>
 #include "InstrumentView.h"
 #include "Application/Model/Table.h"
 #include "Application/AppWindow.h"
@@ -1041,6 +1043,75 @@ static void PurgeCallback(View &v,ModalView &dialog) {
 	}
 }
 
+/* THE INSTRUMENT CLIPBOARD.
+
+   Every value of a patch, kept by name rather than by slot: the
+   source can be edited, purged or a whole project away by the time it
+   is pasted, and what was copied is still what lands. Static, so it
+   survives a project load -- a sound built for one song can start the
+   next, which is what presets do the long way round.
+
+   A sample instrument names its sample rather than numbering it, so
+   pasting into a project that has no such file leaves the name in
+   place and the slot silent until the file turns up, exactly as
+   opening that project would. */
+struct InstrClipEntry { FourCC id ; std::string value ; } ;
+static std::vector<InstrClipEntry> instrClip_ ;
+static InstrumentType instrClipType_=IT_LAST ;
+static char instrClipName_[24]="" ;
+
+void InstrumentView::copyInstrument() {
+	int i=viewData_->currentInstrument_ ;
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	I_Instrument *src=bank->GetInstrument(i) ;
+	if (!src) return ;
+	instrClip_.clear() ;
+	instrClipType_=src->GetType() ;
+	IteratorPtr<Variable> it(src->GetIterator()) ;
+	for (it->Begin();!it->IsDone();it->Next()) {
+		Variable &v=it->CurrentItem() ;
+		InstrClipEntry e ;
+		e.id=v.GetID() ;
+		e.value=v.GetString() ;
+		instrClip_.push_back(e) ;
+	}
+	snprintf(instrClipName_,sizeof(instrClipName_),"%s",src->GetName()) ;
+	char msg[40] ;
+	snprintf(msg,sizeof(msg),"copied %02X %s",i,instrClipName_) ;
+	View::SetNotification(msg) ;
+	isDirty_=true ;
+}
+
+void InstrumentView::pasteInstrument() {
+	if (instrClip_.empty()) {
+		View::SetNotification("nothing copied yet") ;
+		return ;
+	}
+	int i=viewData_->currentInstrument_ ;
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	I_Instrument *dst=bank->GetInstrument(i) ;
+	if (!dst) return ;
+	/* Only onto its own kind. The bank keeps each type in its own
+	   range of slots and a patch's values mean nothing to another
+	   engine; half of them would not even be found. The type row is
+	   the first one on this screen, so saying so is enough. */
+	if (dst->GetType()!=instrClipType_) {
+		View::SetNotification("different type - change it first") ;
+		return ;
+	}
+	Player::GetInstance()->CutInstrument(dst) ;   // nothing sounding through it
+	for (unsigned int k=0;k<instrClip_.size();k++) {
+		Variable *v=dst->FindVariable(instrClip_[k].id) ;
+		if (v) v->SetString(instrClip_[k].value.c_str()) ;
+	}
+	dst->Init() ;
+	char msg[40] ;
+	snprintf(msg,sizeof(msg),"pasted %s onto %02X",instrClipName_,i) ;
+	View::SetNotification(msg) ;
+	OnFocus() ;          // the fields re-read what the patch now holds
+	isDirty_=true ;
+}
+
 void InstrumentView::doPurge() {
 	int i=viewData_->currentInstrument_ ;
 	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
@@ -1326,6 +1397,10 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
         if (mask&EPBM_L) {
             viewMode_=VM_CLONE ;
         } ;
+        // X+R takes the whole patch; O+R below drops it on another slot
+        if (mask&EPBM_R) {
+            copyInstrument() ;
+        } ;
     } else {
 
         // A modifier
@@ -1347,6 +1422,11 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
             // R Modifier
 
             if (mask & EPBM_R) {
+                if (mask & EPBM_A) {
+                    // O+R, the paste chord everywhere else
+                    pasteInstrument() ;
+                    return ;
+                }
                 if (mask & EPBM_LEFT) {
                     ViewType vt = VT_PHRASE;
                     ViewEvent ve(VET_SWITCH_VIEW, &vt);
@@ -1599,7 +1679,13 @@ void InstrumentView::drawSampleChrome() {
 				snprintf(info,sizeof(info),"%s %dk %s %lXf %s",(ch==1)?"mo":"st",
 				         (rate+500)/1000,secs,(unsigned long)frames,ram) ;
 			}
-			snprintf(line,38,"%-12.12s %s%s",name?name:"",src->IsBaked()?"kit ":"",info) ;
+			/* The slot number first. The name is the only thing
+			   identifying a sample anywhere on this screen and it is
+			   clipped in both places it appears, so two sample packs
+			   with long names look identical; the index is short,
+			   unique and never truncates. */
+			snprintf(line,38,"%02X %-9.9s %s%s",index,name?name:"",
+			         src->IsBaked()?"kit ":"",info) ;
 			DrawString(2,25,line,props) ;
 		}
 	}

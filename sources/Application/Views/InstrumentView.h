@@ -15,6 +15,10 @@ class InstrumentView: public FieldView, public I_Observer {
 public:
 	void OnSavePreset(const char *name) ;   // modal save-dialog callback
 	void doPurge() ;                        // after the yes
+	// the whole patch, to and from a clipboard that outlives the
+	// project: a sound dialled in for one song can start the next
+	void copyInstrument() ;
+	void pasteInstrument() ;
 	virtual void ApplyDeferred() ;
 	InstrumentView(GUIWindow &w,ViewData *data) ;
 	virtual ~InstrumentView() ;
