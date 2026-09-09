@@ -1,3 +1,23 @@
+PSPATTERN 0.41.0b
+
+    Beta. The b on the end of the version is the whole announcement:
+        the shape of the thing is settled, what is left is what the
+        people using it find.
+
+    The drum kit is baked into the program instead of being worked
+        out again on every boot. It is synthesised, deterministic and
+        identical every run, so the machine was spending seconds of
+        each start arriving at bytes that could be decided once -- and
+        doing it on the heap, laying two dozen blocks down immediately
+        before the project's samples folder is read. That was the
+        mechanism behind a project opening from the boot screen with
+        its samples missing. Now the kit is decided when the program
+        is built and carried in it, so nothing is synthesised and
+        nothing is allocated: the heap is untouched when the samples
+        are read. The same synthesis still ships, and still runs on
+        every other platform. Same drums, same bytes, a megabyte
+        larger on the memory stick and a megabyte lighter on the heap.
+
 PSPATTERN 0.40.6a
 
     A project that opens straight from the boot screen finds its

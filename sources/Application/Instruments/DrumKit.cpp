@@ -1,5 +1,7 @@
 #include "DrumKit.h"
+#ifndef DRUMKIT_BAKE_HOST
 #include "System/System/System.h"
+#endif
 #include <math.h>
 #include <string.h>
 
@@ -7,9 +9,11 @@
    one place in the audio path where doubles are the sensible tool.
    The output is 16-bit PCM and nothing here runs again. */
 
+#ifndef DRUMKIT_BAKE_HOST
 BakedSource::~BakedSource() {
-	if (buf_) SYS_FREE(buf_) ;
+	if (buf_&&owns_) SYS_FREE(buf_) ;
 }
+#endif
 
 namespace DrumKit {
 
@@ -509,7 +513,7 @@ void ReleaseWork() {
 	workLen_=0 ;
 }
 
-BakedSource *Bake(int i) {
+short *BakePcm(int i,int *outFrames) {
 
 	if ((i<0)||(i>=DRUMKIT_TOTAL)) return 0 ;
 	buildTables() ;
@@ -552,7 +556,50 @@ BakedSource *Bake(int i) {
 		if (v<-32767.0) v=-32767.0 ;
 		pcm[k]=(short)(v<0?v-0.5:v+0.5) ;
 	}
-	return new BakedSource(pcm,n) ;
+	if (outFrames) *outFrames=n ;
+	return pcm ;
 }
+
+#ifndef DRUMKIT_BAKE_HOST
+#ifdef DRUMKIT_EMBEDDED
+
+/* THE KIT, BAKED AT BUILD TIME.
+
+   Nothing above this line runs on the device. The blob is the same
+   synthesis, decided once by Resources/bake_drumkit.cpp and assembled
+   into the executable by DrumKitData.S, and a source points straight
+   into it: no arithmetic at boot, no allocation, and above all no
+   two dozen heap blocks laid down immediately before the samples
+   folder is read.
+
+   The data is const and shared -- every project through a session
+   plays the same bytes, and the sampler only ever reads them. */
+extern "C" const unsigned char drumkitBlob[] ;
+
+#define DK_MAGIC 0x31424B44   /* 'DKB1' */
+
+BakedSource *Bake(int i) {
+	const int *hdr=(const int *)(const void *)drumkitBlob ;
+	if (hdr[0]!=DK_MAGIC) return 0 ;
+	int count=hdr[1] ;
+	if ((i<0)||(i>=count)) return 0 ;
+	const int *frames=hdr+2 ;
+	long off=0 ;
+	for (int k=0;k<i;k++) off+=frames[k] ;
+	const short *base=(const short *)(const void *)(frames+count) ;
+	// not ours to free: it is part of the executable
+	return new BakedSource((short *)(base+off),frames[i],false) ;
+}
+
+#else
+
+BakedSource *Bake(int i) {
+	int n=0 ;
+	short *pcm=BakePcm(i,&n) ;
+	return pcm?new BakedSource(pcm,n):0 ;
+}
+
+#endif
+#endif
 
 }

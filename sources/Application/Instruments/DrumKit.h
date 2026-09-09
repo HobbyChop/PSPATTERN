@@ -1,7 +1,12 @@
 #ifndef _DRUM_KIT_H_
 #define _DRUM_KIT_H_
 
+/* DRUMKIT_BAKE_HOST is the build-time baker (Resources/bake_drumkit.cpp)
+   including this synthesis on a desktop, with none of the app around
+   it. It wants the drum roster and the maths and nothing else. */
+#ifndef DRUMKIT_BAKE_HOST
 #include "SoundSource.h"
+#endif
 
 /* Drums with no files.
 
@@ -31,6 +36,7 @@
 // place to save memory.
 #define DRUMKIT_RATE 44100
 
+#ifndef DRUMKIT_BAKE_HOST
 class BakedSource : public SoundSource {
 public:
 	virtual bool IsBaked() { return true ; }
@@ -38,7 +44,8 @@ private:
 	friend class BakedSourceInit_ ;
 public:
   public:
-	BakedSource(short *buf,int frames) : buf_(buf),frames_(frames) {} ;
+	BakedSource(short *buf,int frames,bool owns=true)
+	  : buf_(buf),frames_(frames),owns_(owns) {} ;
 	virtual ~BakedSource() ;
 	virtual int GetSize(int note) { return frames_ ; } ;
 	virtual int GetSampleRate(int note) { return DRUMKIT_RATE ; } ;
@@ -51,7 +58,12 @@ public:
   private:
 	short *buf_ ;
 	int frames_ ;
+	/* Whether the buffer is ours to free. An embedded kit is read
+	   straight out of the executable's own data, so the source
+	   points at it and owns nothing. */
+	bool owns_ ;
 } ;
+#endif
 
 namespace DrumKit {
 
@@ -59,10 +71,20 @@ namespace DrumKit {
 	// projects reference these, so they are not free to change.
 	const char *Name(int i) ;
 
-	// Synthesises drum i. Caller owns the BakedSource. Returns 0 if
-	// the allocation failed -- a kit that will not fit is not a
-	// reason to refuse to boot.
+	/* The synthesis itself: a fresh mono 16 bit buffer for drum i and
+	   its length in frames, or 0 if it would not fit. Shared with the
+	   build-time baker, which is the only reason it is separate from
+	   Bake below. */
+	short *BakePcm(int i,int *frames) ;
+
+#ifndef DRUMKIT_BAKE_HOST
+	// Drum i as a source. Caller owns it. Returns 0 if the kit will
+	// not fit -- that is not a reason to refuse to boot.
+	//
+	// Where DRUMKIT_EMBEDDED is defined this reads a kit baked into
+	// the executable and nothing is synthesised or allocated at all.
 	BakedSource *Bake(int i) ;
+#endif
 	/* Give back the shared working buffer. Call once the kit is
 	   baked: holding it costs half a megabyte and nothing reads it
 	   between one boot's bake and the next, which there isn't. */

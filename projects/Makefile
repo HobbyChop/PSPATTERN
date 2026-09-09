@@ -427,6 +427,7 @@ NDSFILES := \
 	NDSGUIWindowImp.o
 
 PSPFILES := \
+	DrumKitData.o \
 	PSPmain.o \
 	me_bright_stub.o \
 	PSPMediaEngine.o \
@@ -499,6 +500,10 @@ ifneq ($(BUILD),$(notdir $(CURDIR)))
 
 export OUTPUT	:=	$(CURDIR)/$(TARGET)
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+# the compiler that runs on the machine doing the building, as
+# opposed to the one that emits code for the console
+HOSTCXX ?= g++
+
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 #---------------------------------------------------------------------------------
@@ -521,6 +526,16 @@ export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 $(BUILD):
 	python3 ../sources/Resources/mkfont.py ../sources/Resources/$(FONT) ../sources/Resources/font.h
 	@[ -d $@ ] || mkdir -p $@
+ifeq ($(PLATFORM),PSP)
+# The kit, baked here instead of on the device. Built with the HOST
+# compiler from the app's own synthesis, so the two cannot drift: it
+# includes DrumKit.cpp rather than copying anything out of it. The
+# blob lands in the build directory, which is where the assembler
+# runs, and DrumKitData.S pulls it in.
+	@echo "baking the drum kit"
+	@$(HOSTCXX) -O2 -I../sources -o $(BUILD)/bakedrums ../sources/Resources/bake_drumkit.cpp
+	@$(BUILD)/bakedrums $(BUILD)/drumkit.bin
+endif
 	@make --no-print-directory -C $(BUILD) -f $(PWD)/Makefile
 
 #---------------------------------------------------------------------------------

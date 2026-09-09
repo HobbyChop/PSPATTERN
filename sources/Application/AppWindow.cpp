@@ -1808,7 +1808,12 @@ void AppWindow::LoadProject(const Path &p) {
     bootWindow_ = this;
     GUIWindow::Clear(backgroundColor_, true);
     Clear(true);
+#ifdef DRUMKIT_EMBEDDED
+    // baked into the executable at build time; this is a blink now
+    bootPhase_ = "loading the kit";
+#else
     bootPhase_ = "synthesising drums";
+#endif
     SamplePool::SetProgressCallback(bootProgressCb);
     DrawBootProgress(bootPhase_, "", 0, DRUMKIT_TOTAL);
 
