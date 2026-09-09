@@ -63,6 +63,7 @@ class SongView : public View {
     void switchSoloMode();
 
     void onStart(bool wholeRow = false);
+    void toggleSequencerMode();
     void startImmediate();
     void onStop(bool wholeRow = false);
 

@@ -1,3 +1,37 @@
+PSPATTERN 0.40.6a
+
+    A project that opens straight from the boot screen finds its
+        samples. Reported as an autoload that came up with every
+        instrument silent and the sample list holding nothing but the
+        synthesised kit, where opening the same project again a moment
+        later was fine. The cause was the kit itself: each drum took a
+        working buffer four times the size of the sound it makes, half
+        a megabyte for a crash, allocated its result while still
+        holding that buffer and then gave the big one back. Twenty
+        four times, immediately before the samples folder is read --
+        two dozen blocks that are kept, dropped into the hole left by
+        one that is repeatedly taken and returned, until the free
+        space is in pieces and a wav has nowhere contiguous to land.
+        One buffer now serves the whole kit and is released before the
+        folder is read. Same drums, same bytes.
+
+    And if a sample still does not resolve, the load looks again.
+        Instruments name their samples rather than numbering them, so
+        a name the pool does not hold left an instrument silent and
+        nothing ever tried that name a second time. Anything
+        unresolved now costs one more read of the folder, and whatever
+        is still missing after that is said out loud instead of
+        arriving as quiet channels.
+
+    SELECT with left or right switches between song and live mode,
+        which is the chord LSDJ and M8 both use. X with left or right
+        still does it too.
+
+    A SoundFont preset name is read as the fixed twenty byte field it
+        is. A name using all twenty ran on into the preset and bank
+        numbers behind it, so the pool held a name with rubbish on the
+        end and the project that saved it never matched it again.
+
 PSPATTERN 0.40.5a
 
     The whole row starts with one press. Hold L and press START on the

@@ -1833,6 +1833,35 @@ void AppWindow::LoadProject(const Path &p) {
 
     project->GetInstrumentBank()->Init();
 
+    /* LOOK AGAIN BEFORE GIVING UP.
+
+       Instruments bind to samples by NAME. A name the pool does not
+       hold leaves the instrument silent, and until now that was the
+       end of it -- nothing ever tried the name a second time. The
+       report that made this necessary: on the autoload at boot, and
+       only then, a project came up with every instrument pointing at
+       nothing and the sample list holding only the synthesised kit.
+       Opening the same project again from the picker was fine.
+
+       Whatever the card is doing in that first second -- a folder
+       that does not open, a listing that comes back empty -- it is
+       not worth diagnosing from in here. If names went unresolved,
+       read the folder once more and try them again. It costs nothing
+       in the normal case: nothing unresolved means no retry. */
+    int missing = project->GetInstrumentBank()->CountUnmatchedSamples();
+    if (missing > 0) {
+        Trace::Error("%d sample names did not resolve; reloading the pool",
+                     missing);
+        // Nothing is rendering yet -- the player is initialised below --
+        // so it is safe to drop and re-read every source here.
+        pool->Reset();
+        pool->Load();
+        project->GetInstrumentBank()->ReResolveSamples();
+        project->GetInstrumentBank()->Init();
+        missing = project->GetInstrumentBank()->CountUnmatchedSamples();
+        Trace::Log("LoadProject", "after retry, %d still unresolved", missing);
+    }
+
     WatchedVariable::Enable();
 
     bootPhase_ = "starting up";
@@ -1919,6 +1948,14 @@ void AppWindow::LoadProject(const Path &p) {
                 *_songView, "Recover unsaved changes?", MBBF_YES | MBBF_NO);
             _songView->DoModal(mb, RecoverCallback);
         }
+    }
+
+    /* A binding that could not be resolved used to be silent in both
+       senses: no sound, and no word about it. */
+    if (missing > 0) {
+        char msg[48];
+        snprintf(msg, sizeof(msg), "%d samples not found", missing);
+        _currentView->SetNotification(msg);
     }
 
     // Report on sample & SoundFont load fails

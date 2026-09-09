@@ -48,12 +48,13 @@ void SamplePool::report(const char *what, int done, int total) {
 
 void SamplePool::bakeDrums() {
 	for (int i=0;i<DRUMKIT_TOTAL;i++) {
-		if (count_>=MAX_PIG_SAMPLES) return ;
+		if (count_>=MAX_PIG_SAMPLES) { DrumKit::ReleaseWork() ; return ; }
 		report(DrumKit::Name(i),i,DRUMKIT_TOTAL) ;
 		BakedSource *src=DrumKit::Bake(i) ;
 		if (!src) {
 			// out of memory part way through a kit: keep what baked
 			Trace::Error("[DRUMKIT] could not bake %s",DrumKit::Name(i)) ;
+			DrumKit::ReleaseWork() ;
 			return ;
 		}
 		wav_[count_]=src ;
@@ -62,6 +63,8 @@ void SamplePool::bakeDrums() {
 		strcpy(names_[count_],name) ;
 		count_++ ;
 	}
+	// the samples folder is read next and wants the room
+	DrumKit::ReleaseWork() ;
 }
 
 void SamplePool::Reset() {
@@ -185,6 +188,15 @@ unsigned int SamplePool::Load() {
 
     // now sort the samples
     Sort();
+
+    /* And say so. Anything holding a name list -- every instrument's
+       sample field -- re-reads it here, so a load that happens after
+       the variables exist is not invisible to them. */
+    SetChanged();
+    SamplePoolEvent ev ;
+    ev.index_=0 ;
+    ev.type_=SPET_RELOAD ;
+    NotifyObservers(&ev);
 
     return result;
 };
@@ -640,7 +652,15 @@ int SamplePool::loadSoundFont(const char *path) {
 		if (count_<MAX_PIG_SAMPLES) {
 			sfPresetHdr current=pHeaders[i] ;
 			wav_[count_]=new SoundFontPreset(id,i) ;
-			const char *name=pHeaders[i].achPresetName ;
+			/* achPresetName is a FIXED twenty byte field and the file
+			   decides whether a terminator fits in it. Read as a C
+			   string, a name that uses all twenty runs on into the
+			   preset and bank numbers that follow it in the header --
+			   so the pool held a name with junk on the end, and the
+			   project that saved that name never matched it again. */
+			char name[PRESETNAMESIZE+1] ;
+			memcpy(name,pHeaders[i].achPresetName,PRESETNAMESIZE) ;
+			name[PRESETNAMESIZE]=0 ;
             Trace::Log("loadSoundFont", "%s", name);
             names_[count_] = (char *)SYS_MALLOC(strlen(name) + 1);
             strcpy(names_[count_], name);

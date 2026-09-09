@@ -12,7 +12,13 @@
 
 enum SamplePoolEventType {
 	SPET_INSERT,
-	SPET_DELETE
+	SPET_DELETE,
+	/* The whole pool has just been (re)loaded. Observers hold a
+	   POINTER to the name array and a COPY of its size, and a load
+	   changes both without touching any single entry -- so without
+	   this event a variable that outlived a load compared names
+	   against a stale size. */
+	SPET_RELOAD
 } ;
 
 struct SamplePoolEvent: public I_ObservableData {

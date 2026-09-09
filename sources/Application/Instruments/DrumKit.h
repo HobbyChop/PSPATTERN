@@ -63,5 +63,9 @@ namespace DrumKit {
 	// the allocation failed -- a kit that will not fit is not a
 	// reason to refuse to boot.
 	BakedSource *Bake(int i) ;
+	/* Give back the shared working buffer. Call once the kit is
+	   baked: holding it costs half a megabyte and nothing reads it
+	   between one boot's bake and the next, which there isn't. */
+	void ReleaseWork() ;
 }
 #endif

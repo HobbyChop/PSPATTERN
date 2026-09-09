@@ -728,6 +728,25 @@ void SongView::onStart(bool wholeRow) {
     player->OnSongStartButton(from, to, false, false);
 };
 
+/* Song mode plays the arrangement from the top; live mode launches
+   each channel by hand. LSDJ and M8 both put this on SELECT with a
+   direction and that is where the people using this arrive from, so
+   that is the gesture. X with a direction is the one LGPT shipped and
+   it still works -- there is nothing else on it, and taking it away
+   would only cost the people who already have it in their thumbs. */
+void SongView::toggleSequencerMode() {
+    Player *player = Player::GetInstance();
+    switch (player->GetSequencerMode()) {
+    case SM_SONG:
+        player->SetSequencerMode(SM_LIVE);
+        break;
+    case SM_LIVE:
+        player->SetSequencerMode(SM_SONG);
+        break;
+    }
+    isDirty_ = true;
+}
+
 void SongView::startImmediate() {
     Player *player = Player::GetInstance();
 
@@ -961,6 +980,8 @@ void SongView::processNormalButtonMask(unsigned int mask) {
         if (mask & EPBM_B) toggleBookmark(false);
         if (mask & EPBM_DOWN) jumpToBookmark(1);
         if (mask & EPBM_UP) jumpToBookmark(-1);
+        // the LSDJ and M8 chord for song and live
+        if (mask & (EPBM_RIGHT | EPBM_LEFT)) toggleSequencerMode();
         return;
     }
 
@@ -973,16 +994,7 @@ void SongView::processNormalButtonMask(unsigned int mask) {
         if (mask & EPBM_UP)
             updateSongOffset(-SongView::jumpLength_);
         if (mask & (EPBM_RIGHT | EPBM_LEFT)) {
-            Player *player = Player::GetInstance();
-            switch (player->GetSequencerMode()) {
-            case SM_SONG:
-                player->SetSequencerMode(SM_LIVE);
-                break;
-            case SM_LIVE:
-                player->SetSequencerMode(SM_SONG);
-                break;
-            }
-            isDirty_ = true;
+            toggleSequencerMode();
         }
         if ((mask & EPBM_A) && (!(mask & EPBM_L)))
             cutPosition();

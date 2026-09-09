@@ -1,5 +1,6 @@
 #include "SampleVariable.h"
 #include "SamplePool.h"
+#include <string>
 
 SampleVariable::SampleVariable(const char *name,FourCC id):WatchedVariable(name,id,0,0,-1) {
 	SamplePool *pool=SamplePool::GetInstance() ;
@@ -30,3 +31,15 @@ void SampleVariable::Update(Observable &o,I_ObservableData *d) {
 	list_.char_=pool->GetNameList() ;
 	listSize_=pool->GetNameListSize() ;
 } ;
+
+void SampleVariable::ReResolve() {
+	SamplePool *pool=SamplePool::GetInstance() ;
+	list_.char_=pool->GetNameList() ;
+	listSize_=pool->GetNameListSize() ;
+	if (!HasUnmatched()) return ;
+	/* GetString hands back the unresolved name while one is held, so
+	   this feeds the variable its own name and lets the match run
+	   again against the list as it now stands. */
+	std::string name=GetString() ;
+	SetString(name.c_str()) ;
+}

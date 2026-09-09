@@ -20,6 +20,12 @@ public:
 	virtual void SaveContent(TiXmlNode *node);
 	virtual void RestoreContent(TiXmlElement *element);
 	void Init() ;
+	/* How many sample instruments name a sample the pool does not
+	   hold, and a second attempt at resolving them. A project whose
+	   samples were not readable when it opened restores with every
+	   binding dangling and no sound, and nothing ever tried again. */
+	int CountUnmatchedSamples() ;
+	int ReResolveSamples() ;
 	void OnStart() ;
 	unsigned short GetNext() ;
 	unsigned short Clone(unsigned short i) ;

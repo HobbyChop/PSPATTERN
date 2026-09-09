@@ -470,6 +470,45 @@ static double lengthOf(int drum,bool hard) {
 	return 0.25 ;
 }
 
+/* ONE working buffer for the whole kit.
+
+   Each drum used to take a double buffer of its own -- four times the
+   size of the PCM it produces, half a megabyte for a crash -- allocate
+   its PCM while still holding it, and then free the big one. Twenty
+   four times, at boot, immediately before the project's samples are
+   read.
+
+   That is a fragmentation engine, and it is the one thing that makes
+   the first load of a session different from every later one: two
+   dozen small blocks that are kept, dropped into the holes left by a
+   large block that is repeatedly taken and given back. The report that
+   found it: a project opened by the autoload at boot came up with its
+   samples missing and its instruments silent, and the same project
+   opened again a moment later was fine. The only difference between
+   the two was that the boot had synthesised the kit.
+
+   Sized once to the longest drum, held across the whole bake, freed
+   after it. The kit's own blocks then sit packed together above it,
+   and letting it go leaves a single clean hole rather than two dozen
+   ragged ones. */
+static double *work_=0 ;
+static int workLen_=0 ;
+
+static int longestDrum() {
+	int m=64 ;
+	for (int i=0;i<DRUMKIT_TOTAL;i++) {
+		int n=(int)(lengthOf(i%DRUMKIT_DRUMS,i>=DRUMKIT_DRUMS)*DRUMKIT_RATE) ;
+		if (n>m) m=n ;
+	}
+	return m ;
+}
+
+void ReleaseWork() {
+	if (work_) SYS_FREE(work_) ;
+	work_=0 ;
+	workLen_=0 ;
+}
+
 BakedSource *Bake(int i) {
 
 	if ((i<0)||(i>=DRUMKIT_TOTAL)) return 0 ;
@@ -480,8 +519,14 @@ BakedSource *Bake(int i) {
 	int n=(int)(lengthOf(drum,hard)*DRUMKIT_RATE) ;
 	if (n<64) n=64 ;
 
-	double *work=(double *)SYS_MALLOC(sizeof(double)*n) ;
-	if (!work) return 0 ;
+	if (!work_) {
+		workLen_=longestDrum() ;
+		work_=(double *)SYS_MALLOC(sizeof(double)*workLen_) ;
+		if (!work_) { workLen_=0 ; return 0 ; }
+	}
+	// the buffer is the longest drum, so this cannot be short
+	if (n>workLen_) return 0 ;
+	double *work=work_ ;
 	memset(work,0,sizeof(double)*n) ;
 
 	switch (drum) {
@@ -500,14 +545,13 @@ BakedSource *Bake(int i) {
 	}
 
 	short *pcm=(short *)SYS_MALLOC(sizeof(short)*n) ;
-	if (!pcm) { SYS_FREE(work) ; return 0 ; }
+	if (!pcm) return 0 ;      // the shared buffer outlives this call
 	for (int k=0;k<n;k++) {
 		double v=work[k]*32767.0 ;
 		if (v>32767.0) v=32767.0 ;
 		if (v<-32767.0) v=-32767.0 ;
 		pcm[k]=(short)(v<0?v-0.5:v+0.5) ;
 	}
-	SYS_FREE(work) ;
 	return new BakedSource(pcm,n) ;
 }
 

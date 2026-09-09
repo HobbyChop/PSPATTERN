@@ -183,7 +183,8 @@ from the top. In live mode each channel is launched by hand and keeps
 looping until you say otherwise, which is closer to a groovebox than
 to a tape.
 
-  X then < or >      switch between song and live mode
+  SELECT then < or > switch between song and live mode
+  X then < or >      the same thing, the way LGPT had it
 
 In song mode START is the transport: it starts every channel from the
 cursor's row, and pressing it again stops. R with START stops as well,

@@ -1,5 +1,8 @@
 
 #include "InstrumentBank.h"
+#include <string.h>
+#include "SampleInstrument.h"
+#include "SampleVariable.h"
 #include "Application/Persistency/Checksum.h"
 
 #include "Application/Instruments/SampleInstrument.h"
@@ -312,6 +315,33 @@ void InstrumentBank::SetType(int i,InstrumentType it) {
 		}
 	}
 } ;
+
+/* A sample instrument whose name did not resolve holds the name and
+   an index of -1, which is silence. That is the right answer when the
+   file really is missing from this card, and the wrong one when the
+   pool simply had not read the folder yet -- which is what an autoload
+   at boot, before the card is warm, looks like from in here. Counting
+   them is how the caller knows to look again. */
+int InstrumentBank::CountUnmatchedSamples() {
+	int missing=0 ;
+	for (int i=0;i<MAX_SAMPLEINSTRUMENT_COUNT;i++) {
+		SampleInstrument *si=(SampleInstrument *)instrument_[i] ;
+		Variable *v=si->FindVariable(SIP_SAMPLE) ;
+		if (!v) continue ;
+		// "none" is the name of no sample, not of a missing one
+		if (v->HasUnmatched()&&strcasecmp(v->GetString(),"none")) missing++ ;
+	}
+	return missing ;
+}
+
+int InstrumentBank::ReResolveSamples() {
+	for (int i=0;i<MAX_SAMPLEINSTRUMENT_COUNT;i++) {
+		SampleInstrument *si=(SampleInstrument *)instrument_[i] ;
+		Variable *v=si->FindVariable(SIP_SAMPLE) ;
+		if (v) ((SampleVariable *)v)->ReResolve() ;
+	}
+	return CountUnmatchedSamples() ;
+}
 
 void InstrumentBank::Init() {
 	for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {
