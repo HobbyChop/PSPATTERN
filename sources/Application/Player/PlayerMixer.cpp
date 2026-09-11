@@ -135,6 +135,10 @@ void PlayerMixer::Update(Observable &o,I_ObservableData *d) {
                               mixer->GetChannelPhaserDepth(i),
                               mixer->GetChannelChorusRate(i),
                               mixer->GetChannelChorusDepth(i));
+      channel_[i]->SetDist(mixer->GetChannelDist(i),
+                           mixer->GetChannelDistEdge(i),
+                           mixer->GetChannelDistTone(i),
+                           mixer->GetChannelDistGate(i));
   }
 
   /* The audition lane. A preview asked for by name must be heard as
@@ -150,6 +154,7 @@ void PlayerMixer::Update(Observable &o,I_ObservableData *d) {
   audition->SetLPFFreq(0);
   audition->SetSends(0,0);
   audition->SetInserts(0,0,0,0);
+  audition->SetDist(0,0,0,0);
   MixerService *ms=MixerService::GetInstance();
   // the two effects themselves, and the tempo the delay locks to
   ms->SetSendFxParams(mixer->GetDelayDivision(),mixer->GetDelayFeedback(),

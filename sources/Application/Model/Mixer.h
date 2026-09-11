@@ -47,6 +47,22 @@ public:
     inline void SetChannelChorusRate(int i, int v) { channelChorusRate_[i] = (unsigned char)v; };
     inline int GetChannelChorusDepth(int i) { return channelChorusDepth_[i]; };
     inline void SetChannelChorusDepth(int i, int v) { channelChorusDepth_[i] = (unsigned char)v; };
+    // Per-channel distortion, 0 = off. The one insert that sits BEFORE
+    // the fader: the fader then sets how loud the crunch is, not how
+    // much of it there is, which is what a mix wants from it.
+    inline int GetChannelDist(int i) { return channelDist_[i]; };
+    inline void SetChannelDist(int i, int v) { channelDist_[i] = (unsigned char)v; };
+    // its character: edge is the knee, soft at 0 to a hard clip at
+    // 255; tone is a low pass after the clipper, open at 0
+    inline int GetChannelDistEdge(int i) { return channelDistEdge_[i]; };
+    inline void SetChannelDistEdge(int i, int v) { channelDistEdge_[i] = (unsigned char)v; };
+    inline int GetChannelDistTone(int i) { return channelDistTone_[i]; };
+    inline void SetChannelDistTone(int i, int v) { channelDistTone_[i] = (unsigned char)v; };
+    // gate: how readily the drive lets go of a note that is dying
+    // away. 0 is the pedal, which never does; up, a decaying tail
+    // decays instead of hanging at the rail and falling off a cliff.
+    inline int GetChannelDistGate(int i) { return channelDistGate_[i]; };
+    inline void SetChannelDistGate(int i, int v) { channelDistGate_[i] = (unsigned char)v; };
 
     // The two effects themselves. One of each, shared by every
     // channel -- which is the point of a send.
@@ -103,6 +119,10 @@ private:
     unsigned char channelPhaserDepth_[SONG_CHANNEL_COUNT];
     unsigned char channelChorusRate_[SONG_CHANNEL_COUNT];
     unsigned char channelChorusDepth_[SONG_CHANNEL_COUNT];
+    unsigned char channelDist_[SONG_CHANNEL_COUNT];
+    unsigned char channelDistEdge_[SONG_CHANNEL_COUNT];
+    unsigned char channelDistTone_[SONG_CHANNEL_COUNT];
+    unsigned char channelDistGate_[SONG_CHANNEL_COUNT];
     unsigned char fx_[4];   // division, feedback, size, damp
     // freeze, drive, duck, gate, comp, phaserDepth, phaserRate,
     // chorusDepth, chorusRate, + 3 spare for growth

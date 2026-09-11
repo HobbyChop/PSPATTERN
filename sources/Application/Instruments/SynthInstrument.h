@@ -345,6 +345,7 @@ public:
 	virtual void Stop(int channel) ;
 	virtual void NoteFollowsNote(int channel) ;
 	virtual bool IsReleasing(int channel) ;
+	virtual int ReleaseSamples(int channel) ;
 	virtual void OnStart() ;
 	virtual void OnStop() ;
 	virtual bool Render(int channel,fixed *buffer,int size,bool updateTick) ;

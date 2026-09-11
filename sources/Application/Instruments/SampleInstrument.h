@@ -66,6 +66,7 @@ public:
        virtual bool Start(int channel,unsigned char note,bool trigger=true) ;
        virtual void Stop(int channel) ;
       virtual bool IsReleasing(int channel) ;
+      virtual int ReleaseSamples(int channel) ;
        virtual bool Render(int channel,fixed *buffer,int size,bool updateTick) ;
        virtual bool IsInitialized() ;
 	   virtual bool IsEmpty() ;

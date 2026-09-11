@@ -17,6 +17,9 @@ PlayerChannel::PlayerChannel(int index) {
     velocity_=i2fp(1) ;
     delaySend_=0 ;
     reverbSend_=0 ;
+    distAmt_=0 ; distEdge_=0 ; distTone_=0 ; distGate_=0 ;
+    distToneZ_[0]=distToneZ_[1]=0 ; distEnv_=0 ;
+    endFade_=0 ; endFadeLen_=0 ; endFadeHold_=false ;
 	mixBus_=0 ;
 	busIndex_=-1 ;
     volume_ = i2fp(1);
@@ -41,6 +44,10 @@ PlayerChannel::PlayerChannel(int index) {
 
 // a tail can never exceed the full swing of the converter
 #define CHANNEL_CLICK_MAX (i2fp(32000))
+// the end fade of a distorted note (PlayerChannel::StopInstrument):
+// never shorter than this, and only for releases up to this
+#define END_FADE_MIN 256
+#define END_FADE_MAX 2048
 
 PlayerChannel::~PlayerChannel() {
 	if (chBuf_) { free(chBuf_) ; chBuf_=0 ; }
@@ -79,6 +86,9 @@ void PlayerChannel::StartInstrument(I_Instrument *instr,unsigned char note,bool 
    declickPending_=true ;
    // A new note takes its velocity immediately. See curGain23_.
    gainSnap_=true ;
+   // whatever end fade the outgoing note armed was its own; the new
+   // note starts whole
+   endFade_=0 ; endFadeHold_=false ;
    if (followsOwnNote) {
       instr->NoteFollowsNote(index_) ;
    }
@@ -104,6 +114,7 @@ void PlayerChannel::CutIfPlaying(I_Instrument *instr) {
 	instr_->Stop(index_) ;
 	instr_=0 ;
 	releasing_=false ;
+	endFade_=0 ; endFadeHold_=false ;
 	declickPending_=true ;
 } ;
 
@@ -114,6 +125,27 @@ void PlayerChannel::StopInstrument() {
        // on to it and keep rendering until its envelope runs out.
        // Render lets go once IsReleasing goes false.
        if (instr_->IsReleasing(index_)) {
+         /* THE END OF A DISTORTED NOTE.
+
+            Every release, even release zero, is a fade inside the
+            instrument, and that was fine while the strip was linear.
+            A distortion is not: sixty times gain holds a dying fade at
+            the rail until its last few samples and then drops it off a
+            cliff, and a 128-sample fade through it is a click. So when
+            the release is short and the channel is driven, the same
+            fade is applied a second time AFTER the strip, over at
+            least 256 samples, and the output goes to nothing the way
+            the input does. A long release is left alone: the gate is
+            what shapes those, and the cliff at the very end of a long
+            fade is a few milliseconds wide and lost in the tail. */
+         if (distAmt_>0&&!releasing_) {
+           int rel=instr_->ReleaseSamples(index_) ;
+           if (rel>=0&&rel<=END_FADE_MAX) {
+             endFadeLen_=(rel<END_FADE_MIN)?END_FADE_MIN:rel ;
+             endFade_=endFadeLen_ ;
+             endFadeHold_=false ;
+           }
+         }
          releasing_=true ;
          return ;
        }
@@ -123,6 +155,7 @@ void PlayerChannel::StopInstrument() {
      }
      instr_=0 ;
      releasing_=false ;
+     endFade_=0 ; endFadeHold_=false ;
 } ;
 
 
@@ -293,6 +326,7 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
          // No declick: the envelope reached zero, there is no step.
          instr_=0 ;
          releasing_=false ;
+         endFade_=0 ; endFadeHold_=false ;
      }
      if (status) {
          // One pass, not three.
@@ -350,7 +384,71 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
                              (targetGain23 != gainUnity);
          int g23 = curGain23_;
 
-         if (doHpf || doLpf || doGain) {
+         /* DISTORTION, before the fader.
+
+            A sample instrument's "drive" turned out to be an attenuator
+            into the bit crusher, and the synth engines' DRIV is theirs
+            alone -- so on a sample there was no way to make anything
+            crunch, and the tester who asked for one said the drive felt
+            pointless without mixing around it. This is that: the same
+            gain-into-a-soft-knee the synths use, on any channel.
+
+            It runs BEFORE the fader on purpose. Post-fader it would be an
+            amp: pull the fader down and the sound cleans up. Here the
+            fader stays a fader -- it sets how loud the crunch is, not
+            how much crunch there is -- which is what a mix wants and
+            what "mixing around it" complained about. The other inserts
+            stay post-fader where they were; a phaser does not care.
+
+            The amount is gain, up to sixty-odd times, squared so the
+            bottom of the range is fine and the top is a fuzz. Edge is
+            the knee: at zero everything past three quarters of full
+            scale is scaled by a quarter, the synths' curve; at full it
+            is a wall, and the wall is what a square wave is made of.
+            Tone is a one-pole low pass after the clipper, because a
+            clipper makes harmonics all the way up and the top octave of
+            them is fizz nobody asked for. A makeup takes the top down as
+            the drive comes up so the fader keeps meaning roughly what it
+            meant. Compares, shifts and one multiply-add for the tone; no
+            divide on the audio thread. Costs nothing at zero. The tone
+            coefficient is the one float here, once a block, which is
+            the same allowance the phaser and chorus rates have. */
+         const bool doDist = (distAmt_ > 0);
+         const int distGain = 256 + ((distAmt_ * distAmt_) >> 2);   // Q8, 1..64x
+         const int distSlope = (255 - distEdge_) >> 2;              // Q8, 1/4..0
+         const int distMake = 256 - (distAmt_ * 96) / 255;           // Q8, 1..0.625
+         /* THE GATE. A pedal's gain is fixed, and on a guitar that is
+            sustain. On a sample it is a decay held at the rail for
+            most of its length and then dropped in an instant, because
+            sixty times gain hides the first thirty-six decibels of any
+            decay. So the drive follows the input: a peak follower,
+            fast on the way up and a few milliseconds on the way down,
+            and below a level set by gate the gain blends from the full
+            amount back to unity across a 24dB zone. Loud material sits
+            above the zone and is untouched; a tail passes through it
+            and decays like the tail it is. At gate 0 none of this runs
+            and the drive is a pedal. The zone's top is the input level
+            that just reaches the knee, times one to four with gate, so
+            a high gate lets go while the note is still fairly loud --
+            which is the gated-distortion sound, and is for drums. */
+         const bool doGate = doDist && (distGate_ > 0);
+         int gateHi = 0, gateLo = 0, gateInv = 0;
+         if (doGate) {
+             gateHi = (int)(((long long)(24576 * 256 / distGain) * (256 + 3 * distGate_)) >> 8);
+             if (gateHi > 32767) gateHi = 32767;
+             gateLo = gateHi >> 4;
+             gateInv = (gateHi > gateLo) ? (256 << 16) / (gateHi - gateLo) : 0;
+         }
+         int distToneA = 0;                                          // Q15, 0 = open
+         if (doDist && distTone_ > 0) {
+             // 12kHz down to 500Hz, a curve that spends its travel
+             // where the ear can hear it move
+             float fc = 12000.0f * powf(0.0417f, distTone_ / 255.0f);
+             distToneA = (int)((1.0f - expf(-6.2831853f * fc / 44100.0f)) * 32768.0f);
+             if (distToneA > 32767) distToneA = 32767;
+         }
+
+         if (doHpf || doLpf || doGain || doDist) {
              const fixed one_minus_alpha = fp_sub(i2fp(1), lpfAlpha_);
              for (int n = 0; n < samplecount; n++) {
                  const int idx = n * 2;
@@ -378,6 +476,39 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
                      lpfPrevOutput_[1] = r;
                  }
 
+                 if (doDist) {
+                     int gain = distGain;
+                     if (doGate) {
+                         int il = fp2i(l), ir = fp2i(r);
+                         if (il < 0) il = -il;
+                         if (ir < 0) ir = -ir;
+                         int e = (il > ir) ? il : ir;
+                         // attack in a handful of samples, release in ~8ms
+                         distEnv_ += ((e - distEnv_) * ((e > distEnv_) ? 8192 : 96)) >> 15;
+                         int s8 = (int)(((long long)(distEnv_ - gateLo) * gateInv) >> 16);
+                         if (s8 < 0) s8 = 0; else if (s8 > 256) s8 = 256;
+                         gain = 256 + (((distGain - 256) * s8) >> 8);
+                     }
+                     // the gain can take a full-scale sample to two
+                     // million; the knee arithmetic stays inside an int
+                     int xl = (int)(((long long)fp2i(l) * gain) >> 8);
+                     int xr = (int)(((long long)fp2i(r) * gain) >> 8);
+                     if (xl > 24576) xl = 24576 + (((xl - 24576) * distSlope) >> 8);
+                     else if (xl < -24576) xl = -24576 + (((xl + 24576) * distSlope) >> 8);
+                     if (xr > 24576) xr = 24576 + (((xr - 24576) * distSlope) >> 8);
+                     else if (xr < -24576) xr = -24576 + (((xr + 24576) * distSlope) >> 8);
+                     if (xl > 32700) xl = 32700; else if (xl < -32700) xl = -32700;
+                     if (xr > 32700) xr = 32700; else if (xr < -32700) xr = -32700;
+                     if (distToneA) {
+                         distToneZ_[0] += ((xl - distToneZ_[0]) * distToneA) >> 15;
+                         distToneZ_[1] += ((xr - distToneZ_[1]) * distToneA) >> 15;
+                         xl = distToneZ_[0];
+                         xr = distToneZ_[1];
+                     }
+                     l = i2fp((xl * distMake) >> 8);
+                     r = i2fp((xr * distMake) >> 8);
+                 }
+
                  if (doGain) {
                      l = (fixed)(((long long)l * g23) >> 23);
                      r = (fixed)(((long long)r * g23) >> 23);
@@ -393,6 +524,24 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
             than trusting the accumulator also absorbs the truncation
             in gainStep, so the gain cannot drift away over time. */
          curGain23_ = targetGain23;
+
+         if (endFade_ > 0 || endFadeHold_) {
+             // the end of a distorted note, after the strip -- see
+             // StopInstrument. Across slices, and to nothing once the
+             // fade is spent, until the instrument is let go.
+             int gQ16 = endFadeHold_ ? 0
+                        : (int)(((long long)endFade_ << 16) / endFadeLen_);
+             const int stepQ16 = endFadeHold_ ? 0 : (65536 / endFadeLen_);
+             for (int n = 0; n < samplecount; n++) {
+                 buffer[n * 2]     = (fixed)(((long long)buffer[n * 2] * gQ16) >> 16);
+                 buffer[n * 2 + 1] = (fixed)(((long long)buffer[n * 2 + 1] * gQ16) >> 16);
+                 if (!endFadeHold_) {
+                     gQ16 -= stepQ16;
+                     if (gQ16 < 0) gQ16 = 0;
+                     if (--endFade_ <= 0) { endFade_ = 0; endFadeHold_ = true; gQ16 = 0; }
+                 }
+             }
+         }
 
          applyDeclick(buffer, samplecount);
 

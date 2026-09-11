@@ -28,6 +28,10 @@ void Mixer::Clear() {
         channelPhaserDepth_[i] = 0;
         channelChorusRate_[i] = 96;
         channelChorusDepth_[i] = 0;
+        channelDist_[i] = 0;
+        channelDistEdge_[i] = 96;       // a little soft; 0 = off is dist's job
+        channelDistTone_[i] = 64;       // takes the fizz off without dulling it
+        channelDistGate_[i] = 128;      // tails decay; the pedal way is 0
     }
     // Defaults that are audible without being a wash: a dotted eighth
     // ping-pong at moderate feedback, and a medium room with the top
@@ -75,6 +79,10 @@ void Mixer::SaveContent(TiXmlNode *node) {
     saveHexBuffer(node, "PHD", channelPhaserDepth_, SONG_CHANNEL_COUNT);
     saveHexBuffer(node, "CHR", channelChorusRate_, SONG_CHANNEL_COUNT);
     saveHexBuffer(node, "CHD", channelChorusDepth_, SONG_CHANNEL_COUNT);
+    saveHexBuffer(node, "DST", channelDist_, SONG_CHANNEL_COUNT);
+    saveHexBuffer(node, "DSE", channelDistEdge_, SONG_CHANNEL_COUNT);
+    saveHexBuffer(node, "DSO", channelDistTone_, SONG_CHANNEL_COUNT);
+    saveHexBuffer(node, "DSG", channelDistGate_, SONG_CHANNEL_COUNT);
     saveHexBuffer(node, "SFX", fx_, 4);
     saveHexBuffer(node, "SFX2", fx2_, sizeof(fx2_));
 } ;
@@ -103,6 +111,16 @@ void Mixer::RestoreContent(TiXmlElement *element) {
             restoreHexBuffer(current, channelChorusRate_, sizeof(channelChorusRate_));
         } else if (!strcmp("CHD", value)) {
             restoreHexBuffer(current, channelChorusDepth_, sizeof(channelChorusDepth_));
+        } else if (!strcmp("DST", value)) {
+            // absent from every project saved before it existed: Clear
+            // has already set the channels to 0, which is off
+            restoreHexBuffer(current, channelDist_, sizeof(channelDist_));
+        } else if (!strcmp("DSE", value)) {
+            restoreHexBuffer(current, channelDistEdge_, sizeof(channelDistEdge_));
+        } else if (!strcmp("DSO", value)) {
+            restoreHexBuffer(current, channelDistTone_, sizeof(channelDistTone_));
+        } else if (!strcmp("DSG", value)) {
+            restoreHexBuffer(current, channelDistGate_, sizeof(channelDistGate_));
         } else if (!strcmp("SFX", value)) {
             restoreHexBuffer(current, fx_, sizeof(fx_));
         } else if (!strcmp("SFX2", value)) {

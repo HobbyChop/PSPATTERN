@@ -1,3 +1,37 @@
+PSPATTERN 0.42.0b
+
+    Distortion on every channel. A sample instrument's drive turned
+        out to be an attenuator into the bit crusher, and the synth
+        engines' DRIV was theirs alone, so a sample had no way to
+        crunch. Now it does: dist, on the FX screen under the phaser
+        and the chorus, per channel. It goes a long way -- the top of
+        the range is a fuzz -- and it has a character. edge is the
+        knee, the synths' soft curve at zero and a wall at full, which
+        is what a square wave is made of. tone is a low pass after the
+        clipper, because a clipper makes harmonics all the way up and
+        the top octave of them is fizz. gate is how readily the drive
+        lets go of a note that is dying away: a pedal never does, which
+        on a guitar is sustain and on a sample is a decay held at full
+        crunch and then dropped; turn it up and a tail decays like a
+        tail, turn it right up and only the loud part of each hit gets
+        the crunch. It is the one insert that runs before the fader,
+        so the fader sets how loud the crunch is, not how much of it
+        there is. At zero it costs nothing.
+
+    The end of a driven note is finished after the distortion. Every
+        release, even release zero, is a fade inside the instrument,
+        and sixty times gain held that fade at the rail until its
+        last few samples and then dropped it off a cliff. A short
+        release on a driven channel is now faded a second time after
+        the strip, so the rail goes to nothing the way the input does.
+
+    A late Media Engine job no longer punches a hole in the reverb
+        tail. When the bank's previous job was still running as the
+        next block was collected, the block was dropped and the wet
+        ring filled the gap with zeros. It happened at STOP, when the
+        render thread catches up two blocks back to back. The collect
+        now waits for the job, briefly, before giving a block up.
+
 PSPATTERN 0.41.0b
 
     Beta. The b on the end of the version is the whole announcement:

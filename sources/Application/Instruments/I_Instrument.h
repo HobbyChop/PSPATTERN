@@ -78,6 +78,11 @@ public:
 	  // waveform dead. Non-pure: everything without a release is cut,
 	  // which is what all of these did before.
 	  virtual bool IsReleasing(int channel) { return false ; } ;
+	  /* How long the release that Stop just began will take, in
+	     samples, or -1 for no idea. The channel strip uses it to decide
+	     whether the end of a note needs finishing AFTER the strip: a
+	     distortion turns a short release into a rail and a cliff. */
+	  virtual int ReleaseSamples(int channel) { return -1 ; } ;
 
 	  // Engine playback  start callback
 

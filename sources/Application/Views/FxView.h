@@ -39,7 +39,7 @@ private:
 	// phaser and chorus (rate+depth). Editing the selector reloads the
 	// insert fields from that channel.
 	Variable *vChan_ ;
-	Variable *vPhR_,*vPhD_,*vChR_,*vChD_ ;
+	Variable *vPhR_,*vPhD_,*vChR_,*vChD_,*vDist_,*vEdge_,*vDistTone_,*vDistGate_ ;
 	int curCh_ ;
 	void loadInserts() ;      // Mixer[curCh_] -> the four insert fields
 

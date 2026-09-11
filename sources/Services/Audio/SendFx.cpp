@@ -1081,7 +1081,19 @@ static void processBankMe(fixed *buffer, int samplecount) {
 	// the ME's next job races the read
 	fixed *wetSrc = 0 ;
 	int produced = PSPME_Collect(&wetSrc) ;
-	if (produced < 0) return ;              // still busy: drop this bank block
+	/* Still busy: the last job has not finished. Dropping this bank
+	   block left the wet ring a block short, and wetEmit fills a
+	   shortfall with zeros -- a hole punched in the reverb tail. It
+	   showed at STOP: the transport holds the mixer lock for a moment,
+	   the render thread catches up with two blocks back to back, and
+	   the second finds the job from the first still going. A job is a
+	   fraction of a block, so wait for it, bounded well inside the
+	   block, and only then give the block up. */
+	for (int spin = 0 ; produced < 0 && spin < 24 ; spin++) {
+		sceKernelDelayThread(50) ;
+		produced = PSPME_Collect(&wetSrc) ;
+	}
+	if (produced < 0) return ;              // still busy after 1.2ms: drop it
 	if (produced > 0) wetAppend(wetSrc, produced) ;
 	PSPME_Post(BK.dlyAcc_, BK.revAcc_, n,
 	           BK.fb_, BK.dlyLenS_, BK.runDly_ ? 1 : 0) ;

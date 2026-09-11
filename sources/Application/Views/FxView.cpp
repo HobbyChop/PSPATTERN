@@ -57,6 +57,12 @@ FxView::FxView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	SLIDER(vPhD_, mx->GetChannelPhaserDepth(0), 255, 21,16, "ph.dp")
 	SLIDER(vChR_, mx->GetChannelChorusRate(0),  255, 21,17, "ch.rt")
 	SLIDER(vChD_, mx->GetChannelChorusDepth(0), 255, 21,18, "ch.dp")
+	// the distortion, under the modulation: the one insert that runs
+	// before the fader (PlayerChannel::Render says why)
+	SLIDER(vDist_, mx->GetChannelDist(0),       255, 21,19, "dist ")
+	SLIDER(vEdge_, mx->GetChannelDistEdge(0),   255, 21,20, "edge ")
+	SLIDER(vDistTone_, mx->GetChannelDistTone(0), 255, 21,21, "tone ")
+	SLIDER(vDistGate_, mx->GetChannelDistGate(0), 255, 21,22, "gate ")
 }
 
 FxView::~FxView() {
@@ -65,7 +71,7 @@ FxView::~FxView() {
 	delete vTime_ ; delete vFdbk_ ;
 	delete vDrive_ ; delete vComp_ ;
 	delete vChan_ ;
-	delete vPhD_ ; delete vPhR_ ; delete vChD_ ; delete vChR_ ;
+	delete vPhD_ ; delete vPhR_ ; delete vChD_ ; delete vChR_ ; delete vDist_ ; delete vEdge_ ; delete vDistTone_ ; delete vDistGate_ ;
 }
 
 void FxView::loadInserts() {
@@ -74,6 +80,10 @@ void FxView::loadInserts() {
 	vPhD_->SetInt(mx->GetChannelPhaserDepth(curCh_)) ;
 	vChR_->SetInt(mx->GetChannelChorusRate(curCh_)) ;
 	vChD_->SetInt(mx->GetChannelChorusDepth(curCh_)) ;
+	vDist_->SetInt(mx->GetChannelDist(curCh_)) ;
+	vEdge_->SetInt(mx->GetChannelDistEdge(curCh_)) ;
+	vDistTone_->SetInt(mx->GetChannelDistTone(curCh_)) ;
+	vDistGate_->SetInt(mx->GetChannelDistGate(curCh_)) ;
 }
 
 // Push every control into the Mixer model. The model is fanned out to
@@ -98,6 +108,10 @@ void FxView::syncToModel() {
 	mx->SetChannelPhaserDepth(ch,vPhD_->GetInt()) ;
 	mx->SetChannelChorusRate(ch,vChR_->GetInt()) ;
 	mx->SetChannelChorusDepth(ch,vChD_->GetInt()) ;
+	mx->SetChannelDist(ch,vDist_->GetInt()) ;
+	mx->SetChannelDistEdge(ch,vEdge_->GetInt()) ;
+	mx->SetChannelDistTone(ch,vDistTone_->GetInt()) ;
+	mx->SetChannelDistGate(ch,vDistGate_->GetInt()) ;
 }
 
 void FxView::syncFromModel() {
@@ -169,8 +183,9 @@ void FxView::DrawView() {
 	DrawPanel(1,13,18,4, mx->GetDelayTone()?"DELAY *":"DELAY") ;
 	DrawPanel(21,5,17,3,  mx->GetDrive()?"DRIVE *":"DRIVE") ;
 	DrawPanel(21,9,17,3,  mx->GetComp()?"COMP *":"COMP") ;
-	bool ins=mx->GetChannelPhaserDepth(curCh_)||mx->GetChannelChorusDepth(curCh_) ;
-	DrawPanel(21,13,17,6, ins?"INSERTS *":"INSERTS") ;
+	bool ins=mx->GetChannelPhaserDepth(curCh_)||mx->GetChannelChorusDepth(curCh_)
+	        ||mx->GetChannelDist(curCh_) ;
+	DrawPanel(21,13,17,10, ins?"INSERTS *":"INSERTS") ;
 
 	FieldView::Redraw() ;
 	DrawHintBar("O change  R> mixer  R^ song") ;

@@ -31,6 +31,11 @@ public:
 		// left in the line from last time
 		if (chDepth>0&&chorusDepth_==0) chClear_=true ;
 		chorusDepth_=chDepth ; }
+	void SetDist(int amt,int edge,int tone,int gate) {
+		// coming on from off: the tone filter and the gate's follower
+		// must not replay whatever they held from last time
+		if (amt>0&&distAmt_==0) { distToneZ_[0]=0 ; distToneZ_[1]=0 ; distEnv_=0 ; }
+		distAmt_=amt ; distEdge_=edge ; distTone_=tone ; distGate_=gate ; }
 	// The velocity of the note currently sounding, as a Q15 gain.
 	// Separate from volume_, which is the channel fader: one is set
 	// per note by the pattern, the other by the mixer, and they
@@ -76,6 +81,18 @@ public:
     // allocated LAZILY on first use -- inline float arrays were 64KB
     // resident across 8 channels whether anyone chorused or not.
     int phaserRate_, phaserDepth_, chorusRate_, chorusDepth_;
+    // distortion: amount 0..255 (0 = bypass), edge 0..255 (soft knee
+    // to hard clip), tone 0..255 (a low pass after the clipper, open
+    // at 0). Applied in the strip loop BEFORE the fader, see Render.
+    int distAmt_, distEdge_, distTone_, distGate_;
+    int distToneZ_[2];           // the tone filter's state, per side
+    int distEnv_;                // the gate's follower on the input, pcm units
+    /* The end of a distorted note, finished AFTER the strip. Armed by
+       StopInstrument when the instrument's own release is short; runs
+       across however many slices it takes, because a slice can be a
+       handful of samples and the fade must not depend on that. */
+    int endFade_, endFadeLen_;
+    bool endFadeHold_;
     int phZ_[4][2];              // 4 all-pass stages, per output channel
     unsigned int phLfoPh_, chLfoPh_;      // Q32 LFO phase accumulators
     static const int CHORUS_LEN = 1024;   // ~23ms line; power of two

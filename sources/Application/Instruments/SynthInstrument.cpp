@@ -861,6 +861,12 @@ bool SynthInstrument::IsReleasing(int channel) {
 	return v.active_&&v.releasing_ ;
 } ;
 
+int SynthInstrument::ReleaseSamples(int channel) {
+	// the same arithmetic releaseRamp uses
+	int r=pv(SYP_RELEASE)->GetInt() ;
+	return (r==0)?DECLICK_FADE_SAMPLES:(1+r*r*8) ;
+}
+
 // The player calls this immediately before Start when this same
 // instrument already had a note sounding on the channel.
 void SynthInstrument::NoteFollowsNote(int channel) {

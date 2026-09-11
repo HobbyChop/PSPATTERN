@@ -487,6 +487,12 @@ bool SampleInstrument::IsReleasing(int channel) {
 	return rp->envReleasing_&&(rp->envLevel_>0)&&(!rp->finished_) ;
 }
 
+int SampleInstrument::ReleaseSamples(int channel) {
+	// the same arithmetic releaseAmpEnv uses
+	int r=release_->GetInt() ;
+	return (r==0)?DECLICK_FADE_SAMPLES:(1+r*r*8) ;
+}
+
 void SampleInstrument::doTickUpdate(int channel) {
 
   // Process updaters

@@ -973,6 +973,22 @@ evening. Below them, pick a channel and give it its own phaser or
 chorus -- a rate and a depth each, per channel, on top of whatever
 the sends are doing.
 
+dist, under those, is distortion on that channel: gain into a
+clipper, so a sample can crunch too. It goes a long way -- the top of
+the range is a fuzz. edge is the knee: at zero it is the soft curve
+the synth engines carry, at full it is a wall, which is what a square
+wave is made of. tone is a low pass after the clipper, because a
+clipper makes harmonics all the way up and the top octave of them is
+fizz; turn it up to take that off. gate is how readily the drive
+lets go of a note that is dying away: a pedal never does, which on a
+guitar is sustain and on a sample is a decay held at full crunch and
+then dropped in an instant. Turn gate up and a tail decays like the
+tail it is; turn it right up and only the loud part of each hit gets
+the crunch, which is the gated sound, and is for drums. dist is the
+one insert that runs before the fader: turn it up and the sound gets
+dirtier, turn the fader down and it gets quieter, not cleaner. At
+zero it costs nothing.
+
 
 17. THE PROJECT SCREEN
 
