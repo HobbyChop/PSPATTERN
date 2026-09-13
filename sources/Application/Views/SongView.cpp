@@ -3,6 +3,7 @@
 
 #ifdef PSP_ME_OFFLOAD
 extern "C" int PSPME_LoadPercent(void);   // the ME's own busy share
+extern "C" int pspOnVita(void);           // no ME at all on that machine
 #endif
 #include "Application/AppWindow.h"
 #include "Application/Commands/ApplicationCommandDispatcher.h"
@@ -1481,6 +1482,12 @@ void SongView::DrawSidePanel() {
             if (me > 999) me = 999;
             snprintf(vbuf, sizeof(vbuf), "%3d%%", me);
             SetColor((me > 100) ? CD_MUTE : CD_HILITE2);
+#ifdef PLATFORM_PSP
+        } else if (pspOnVita()) {
+            // a Vita has no second core; say so rather than "--"
+            snprintf(vbuf, sizeof(vbuf), "vita");
+            SetColor(CD_ROW);
+#endif
         } else {
             snprintf(vbuf, sizeof(vbuf), "  --");
             SetColor(CD_ROW);

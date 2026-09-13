@@ -27,6 +27,7 @@ extern "C" unsigned int PSPME_WakeCount(void);
 #include <psppower.h>
 #include <pspaudio.h>
 #include <pspimpose_driver.h>
+#include <pspmodulemgr.h>
 #include "Adapters/PSP/Midi/PSPUsbMidiLink.h"
 #include "Adapters/PSP/Audio/embedded_kcall_v2.inc"  // kcall.prx v5 (backlight)
 
@@ -68,6 +69,56 @@ extern "C" void SDLGUI_MarkGuLost(void) ;
 
 static volatile int g_resumePending = 0;
 
+/* THE VITA.
+
+   A PS Vita runs this through its PSP emulator, and that emulator has
+   no Media Engine. The ME library is not told: at boot it loads its
+   kernel side, installs sleep and wake handlers in the kernel's
+   sysevent chain, waits for a core that never answers, and parks --
+   which is fine, the sends run scalar and the app works. Until the
+   first sleep. The Vita's power button is a system sleep our
+   scePowerLock cannot refuse, and on the way back the wake handler
+   pulses the ME's reset register from inside the kernel, interrupts
+   masked, on hardware that is not there; then the resume path parks
+   the core through another kernel call. A Vita coming back from
+   standby froze. No diag file to say which of the two, and none
+   needed: neither exists if the ME is never started.
+
+   So the device is detected once at boot and a Vita never starts the
+   ME, never takes the power lock (its own sleep is the right one),
+   and never enters our rest -- there is no slide switch to ask for
+   it and no backlight bridge loaded to drive it.
+
+   Detection needs no new import. The module manager the app already
+   links can list modules and name them from user mode; the Vita's
+   emulator is bridged to the host by the Kermit modules, sceKermit*,
+   which exist on no real PSP. If the list cannot be read -- a
+   firmware that hides kernel modules from user mode -- the answer is
+   "PSP" and nothing changes, which is the failure mode to have. For
+   that case config.xml's DEVICE row forces either answer. */
+static int g_onVita = 0;
+extern "C" int pspOnVita(void) { return g_onVita; }
+
+static int pspDetectVita(void) {
+	const char *cfg = Config::GetInstance()->GetValue("DEVICE");
+	if (cfg) {
+		if (cfg[0] == 'V' || cfg[0] == 'v') return 1;
+		if (cfg[0] == 'P' || cfg[0] == 'p') return 0;
+	}
+	static SceUID ids[256];
+	int count = 0;
+	if (sceKernelGetModuleIdList(ids, sizeof(ids), &count) < 0) return 0;
+	if (count > 256) count = 256;
+	for (int i = 0; i < count; i++) {
+		SceKernelModuleInfo info;
+		memset(&info, 0, sizeof(info));
+		info.size = sizeof(info);
+		if (sceKernelQueryModuleInfo(ids[i], &info) < 0) continue;
+		if (strncmp(info.name, "sceKermit", 9) == 0) return 1;
+	}
+	return 0;
+}
+
 /* QUASI-STANDBY. Real standby is off the table while our code runs on
    the Media Engine (Sony's suspend can't re-init it safely), so the
    power switch is repurposed: instead of a true suspend it drops the
@@ -88,6 +139,7 @@ extern "C" void pspQuasiClearWake(void)    { g_quasiToggleReq = 0; }
    countdown, since nobody is there to read it. */
 static volatile int g_quasiIdle = 0;
 extern "C" void pspRequestIdleRest(void) {
+	if (g_onVita) return;      // the Vita sleeps itself; see THE VITA
 	g_quasiIdle = 1;
 	g_quasiToggleReq = 1;
 	SDL_Event event;
@@ -199,6 +251,11 @@ extern "C" int meGetBrightness(void);
 void PSPHandleQuasiStandby(void) {
 	AppWindow *w = (AppWindow *)Application::GetInstance()->GetWindow();
 	if (!w) return;
+	if (g_onVita) {            // see THE VITA: no rest, no bridge to drive it
+		g_quasiIdle = 0;
+		pspQuasiClearWake();
+		return;
+	}
 
 	// 1. protect the work: rest is not true standby and can drain flat
 	// only with a project open: at the picker the project alias
@@ -498,19 +555,27 @@ int main(int argc,char *argv[])
 	// Capture our own priority before any worker thread starts.
 	g_pspMainThreadPriority = sceKernelGetThreadCurrentPriority() ;
 
+	PSPSystem::Boot(argc,argv) ;
+
+	/* Which machine this is decides two things below. Detected after
+	   Boot so config.xml has been read and DEVICE can force it. */
+	g_onVita = pspDetectVita();
+	Trace::Log("BOOT", g_onVita ? "device: PS Vita (PSP emulator): no ME, no rest, no power lock"
+	                            : "device: PSP");
+
 	/* Repurpose the power switch for quasi-standby: scePowerLock(0)
 	   stops the real (ME-unsafe) suspend from ever firing, while the
 	   switch still notifies powerCallback so we can drop into our own
 	   low-power rest instead. Hold-to-power-off still works (syscon
-	   handles it below the lock). */
-	scePowerLock(0);
+	   handles it below the lock). Not on a Vita: its sleep is the
+	   system's, the lock cannot refuse it, and with no ME there is
+	   nothing the real suspend could break. */
+	if (!g_onVita) scePowerLock(0);
 
 	/* The PSP boots at 222MHz. Eight voices of unison saws through an SVF
 	   is the most expensive thing this app does, so take the full clock --
 	   the sibling synths in this family do the same. */
 	scePowerSetClockFrequency(333,333,166) ;
-
-	PSPSystem::Boot(argc,argv) ;
 
 #ifdef PSP_ME_OFFLOAD
 	// ME send-FX offload, runtime-toggleable (config ME_OFFLOAD, default
@@ -520,7 +585,9 @@ int main(int argc,char *argv[])
 	// is the standby-safe way to disable it.
 	const char *meCfg=Config::GetInstance()->GetValue("ME_OFFLOAD") ;
 	bool meOn=!(meCfg && meCfg[0]=='N') ;
-	if (meOn) PSPME_Init() ;
+	// never on a Vita: there is no ME, and starting the library is what
+	// installs the wake handler that froze it -- see THE VITA
+	if (meOn && !g_onVita) PSPME_Init() ;
 #endif
 
 	SDLCreateWindowParams params ;

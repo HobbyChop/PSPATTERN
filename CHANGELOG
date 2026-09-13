@@ -1,3 +1,21 @@
+PSPATTERN 0.42.1b
+
+    A PS Vita no longer freezes coming back from sleep. Its PSP
+        emulator has no Media Engine, and the second-core library was
+        never told: it installed a wake handler in the kernel that
+        pulsed the core's reset register on hardware that is not
+        there, and the resume path parked the core through another
+        kernel call. The machine is now detected once at boot -- the
+        Vita's emulator carries its Kermit bridge modules, which no
+        real PSP has -- and a Vita never starts the Media Engine,
+        never takes the power lock, and never enters the app's own
+        rest, because its sleep is the system's. The song panel's me
+        figure reads vita there. Nothing else changes on a Vita: the
+        delay and reverb run on the main CPU, which they were always
+        built to do, and the spectrum bars stay empty. A new DEVICE
+        row in config.xml (AUTO, VITA, PSP) forces the answer if the
+        detection cannot see the modules on a given firmware.
+
 PSPATTERN 0.42.0b
 
     Distortion on every channel. A sample instrument's drive turned

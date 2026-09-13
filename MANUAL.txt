@@ -1112,6 +1112,12 @@ the tracker runs, because its wake handling could leave every button
 dead until the power state changed, so this rest is the only
 screen-off an idle machine gets.
 
+On a PS Vita none of this applies. Its PSP emulator has no Media
+Engine and the Vita puts itself to sleep, so the app detects the
+machine at boot (DEVICE in config.xml: AUTO, or force VITA or PSP),
+leaves the Media Engine and the rest alone, and the panel's me figure
+reads vita.
+
 
 18. SAVING AND RENDERING
 
