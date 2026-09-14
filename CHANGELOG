@@ -1,3 +1,27 @@
+PSPATTERN 0.42.2b
+
+    MIDI out to a hardware synth works. At the MIDI instrument's
+        default volume of 255 every note-on left the machine with a
+        velocity of 128 -- not a velocity, a status byte -- so the
+        synth on the far end read it as a note-off followed by rubbish,
+        played nothing, and flashed nonsense on its display. Only that
+        one value did it, and it was the default. Clamped at the
+        source, and the output now masks every data byte to seven
+        bits so nothing upstream can ever put a status byte where a
+        value belongs again.
+
+    The MIDI clock stops with the transport. It was sent from the
+        audio callback whether the song played or not, and the flag
+        that armed it was set at play and never cleared at stop, so
+        from the first press of play onwards the clock ran forever.
+
+    An audition is not a start. Previewing a note from the phrase
+        screen used to send a MIDI Start and arm the clock, which could
+        set off the far end's sequencer. And the MIDI device only came
+        up on the first press of play, so a MIDI instrument auditioned
+        with SELECT on a fresh boot went nowhere; it comes up on the
+        audition now.
+
 PSPATTERN 0.42.1b
 
     A PS Vita no longer freezes coming back from sleep. Its PSP

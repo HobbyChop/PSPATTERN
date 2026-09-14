@@ -158,7 +158,8 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
     mixer_->OnPlayerStart();
 
     MidiService *ms = MidiService::GetInstance();
-    ms->OnPlayerStart();
+    // an audition is not the transport: no MIDI Start, no clock
+    ms->OnPlayerStart(viewData_->playMode_ != PM_AUDITION);
 
     switch (viewData_->playMode_) {
     case PM_SONG: {
@@ -395,6 +396,9 @@ void Player::MidiNoteOn(unsigned char note,unsigned char velocity) {
 	if (!bank) return ;
 	I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
 	if (!instr) return ;
+	// a MIDI instrument previewed before the first play needs the
+	// device up; this brings it up with no transport attached
+	if (instr->GetType()==IT_MIDI) MidiService::GetInstance()->EnsureDevice() ;
 
 	/* The preview has a lane of its own past the song's eight, wired
 	   straight to the master sum -- no strip fader, mute, filter or

@@ -100,7 +100,12 @@ void MidiService::QueueMessage(MidiMessage &m) {
 
 void MidiService::Trigger() {
     AdvancePlayQueue();
-    if (device_ && sendSyncNow_) {
+    /* Clock only while the transport runs. This is called on every
+       audio block whether the song plays or not, and sendSyncNow_ used
+       to survive a stop -- so from the first press of play onwards the
+       clock streamed forever, through every silence, and a synth on the
+       far end saw a machine that never stopped. */
+    if (device_ && sendSyncNow_ && Player::GetInstance()->IsRunning()) {
         SyncMaster *sm = SyncMaster::GetInstance();
         if (sm->MidiSlice()) {
             PostRealtime(0xF8);
@@ -319,7 +324,7 @@ void MidiService::stopDevice() {
 /*
  * starts midi device when playback starts
  */
-void MidiService::OnPlayerStart() {
+void MidiService::EnsureDevice() {
     if (deviceName_.size() != 0) {
         stopDevice();
         startDevice();
@@ -327,6 +332,11 @@ void MidiService::OnPlayerStart() {
     } else {
         startDevice();
     }
+}
+
+void MidiService::OnPlayerStart(bool transport) {
+    EnsureDevice();
+    if (!transport) return;        // an audition: no Start, no clock
 
     /* the rig decides: clock goes out only when this machine is the
        LEADER (config screen, SYNC panel). MIDISENDSYNC=NO from the
@@ -344,4 +354,6 @@ void MidiService::OnPlayerStop() {
     if (sendSyncNow_) {
         PostRealtime(0xFC);
     }
+    // and the clock stops with the transport -- see Trigger
+    sendSyncNow_ = false;
 };

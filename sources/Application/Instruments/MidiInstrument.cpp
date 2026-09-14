@@ -197,9 +197,15 @@ bool MidiInstrument::Start(int c,unsigned char note,bool retrigger) {
 	v.arpTick_=0 ;
 	v.retrig_=false ;
 
-	// channel volume, then whatever the patch's controllers say
+	// channel volume, then whatever the patch's controllers say.
+	// Clamped: at the default volume of 255 this came out as 128,
+	// which is not a velocity, it is a status byte -- every note-on
+	// left the machine as a note-off followed by garbage, and a synth
+	// on the other end played nothing and flashed nonsense on its
+	// display. Only the one value did it, and it was the default.
 	Variable *vol=FindVariable(MIP_VOLUME) ;
 	int level=(vol->GetInt()+1)/2 ;
+	if (level>127) level=127 ;
 	sendCC(MIDI_CC_VOLUME,level) ;
 	v.velocity_=level ;
 	sendPatchControllers() ;

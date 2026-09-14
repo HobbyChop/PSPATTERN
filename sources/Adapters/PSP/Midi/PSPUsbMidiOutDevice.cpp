@@ -48,7 +48,11 @@ void PSPUsbMidiOutDevice::SendMessage(MidiMessage &msg) {
 	unsigned char pkt[4] ;
 	pkt[0]=cin ;
 	pkt[1]=status ;
-	pkt[2]=(msg.data1_!=MidiMessage::UNUSED_BYTE)?msg.data1_:0 ;
-	pkt[3]=(msg.data2_!=MidiMessage::UNUSED_BYTE)?msg.data2_:0 ;
+	// Data bytes never carry the high bit: one that does is read by
+	// the receiver as a new status and desynchronises everything after
+	// it. The last line of defence, so no upstream arithmetic can put
+	// a status byte where a value belongs again.
+	pkt[2]=(msg.data1_!=MidiMessage::UNUSED_BYTE)?(msg.data1_&0x7F):0 ;
+	pkt[3]=(msg.data2_!=MidiMessage::UNUSED_BYTE)?(msg.data2_&0x7F):0 ;
 	pspUsbMidiWrite(pkt) ;
 } ;

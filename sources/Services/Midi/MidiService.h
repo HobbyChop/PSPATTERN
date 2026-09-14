@@ -54,8 +54,15 @@ class MidiService : public T_Factory<MidiService>,
 
     //! player notification
 
-    void OnPlayerStart();
+    /* transport=false is an audition: the device is made ready but no
+       MIDI Start goes out and the clock stays off. Nothing on the far
+       end should start its sequencer because a note was previewed. */
+    void OnPlayerStart(bool transport = true);
     void OnPlayerStop();
+    /* Bring the selected device up if it is not, without any transport.
+       The device used to come up only on the first press of play, so a
+       MIDI instrument auditioned on a fresh boot went nowhere. */
+    void EnsureDevice();
 
     //! Queues a MidiMessage to the current time chunk
 
