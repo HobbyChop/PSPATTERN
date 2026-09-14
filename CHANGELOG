@@ -1,3 +1,15 @@
+PSPATTERN 0.42.3b
+
+    Sample pan 00 is left, as the screen says. The sampler looked
+        its pan law up the other way round, so pan 00 silenced the
+        left side and the sound came out of the right, under a field
+        reading L99. The synth engines had it right, so a sample and a
+        synth given the same pan sat on opposite sides. PAN on samples
+        is corrected with it. A project saved with panned samples now
+        plays them where the screen always said they were, which is
+        the other side from where they were: anyone who compensated
+        by ear will want to flip those back.
+
 PSPATTERN 0.42.2b
 
     MIDI out to a hardware synth works. At the MIDI instrument's

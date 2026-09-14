@@ -1154,7 +1154,6 @@ below full scale and are known to be too quiet.
 
 20. KNOWN ISSUES
 
-  The PAN command on sample instruments is unverified and may not work.
 
   Sync and ring cannot be sequenced from a command, only set on the
   patch.

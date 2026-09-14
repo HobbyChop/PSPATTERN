@@ -796,8 +796,13 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 
 	  int pan=fp2i(rp->pan_) ;
 		if (pan>254) pan=254 ;   // 0xFF from a file indexed past the law
-		fixed fixedpanl=panlaw[pan] ;
-		fixed fixedpanr=panlaw[254-pan] ;
+		/* 00 is LEFT, as the screen says (L99) and as the synth engines
+		   have it. This looked the table up the other way round, so the
+		   left gain rose as the value did: pan 00 silenced the left side
+		   and the sound came out of the right, under a field reading L.
+		   A tester with a week on the machine found it in a day. */
+		fixed fixedpanl=panlaw[254-pan] ;
+		fixed fixedpanr=panlaw[pan] ;
 
 		// filter constants
 
@@ -1034,8 +1039,8 @@ bool SampleInstrument::Render(int channel,fixed *buffer,int size,bool updateTick
 						// saying so: "unused variable fixedpanl".
 						pan=fp2i(rp->pan_) ;
 						if (pan>254) pan=254 ;
-						fixedpanl=panlaw[pan] ;
-						fixedpanr=panlaw[254-pan] ;
+						fixedpanl=panlaw[254-pan] ;   // 00 is left; see above
+						fixedpanr=panlaw[pan] ;
 
 						if (rpReverse) {
 							fpSpeed=-rp->speed_ ;
