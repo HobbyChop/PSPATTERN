@@ -82,6 +82,7 @@ public:
 	  // Start & stop the instument
       virtual bool Start(int channel,unsigned char note,bool retrigger=true) ;
       virtual void Stop(int channel) ;
+      virtual void SetVelocity(int channel,int velocity) ;
 
       // size refers to the number of samples
       // should always fill interleaved stereo / 16bit

@@ -62,6 +62,12 @@ public:
 	  // Start & stop the instument
       virtual bool Start(int channel,unsigned char note,bool retrigger=true)=0 ;
       virtual void Stop(int channel)=0 ;
+	  /* The velocity of the note about to start, 1..127, set just
+	     before Start. The sampler and the synths take theirs as a gain
+	     on the channel strip and ignore this; a MIDI instrument makes
+	     no sound of its own, so this is the only way the phrase's
+	     velocity column can reach the synth on the far end. */
+	  virtual void SetVelocity(int channel,int velocity) {} ;
 
 	  // Called immediately before Start when this same instrument
 	  // already had a note sounding on this channel -- i.e. this note

@@ -410,6 +410,8 @@ void Player::MidiNoteOn(unsigned char note,unsigned char velocity) {
 	if (!mixer_->IsChannelPlaying(channel)) {
 		mixer_->StartChannel(channel) ;
 	}
+	// a keyboard's own velocity, straight through to a MIDI instrument
+	instr->SetVelocity(channel,velocity) ;
 	mixer_->StartInstrument(channel,instr,note,true) ;
 	midiHeld_[note]=(unsigned char)(channel+1) ;
 } ;
@@ -1215,10 +1217,15 @@ void Player::playCursorPosition(int channel) {
                         phrase->velocity_[16 * currentPhrase + pos];
                     if (vel == VELOCITY_EMPTY) {
                         mixer_->SetVelocity(channel, i2fp(1));
+                        instrument->SetVelocity(channel, 127);
                     } else {
                         if (vel > VELOCITY_FULL) vel = VELOCITY_FULL;
                         mixer_->SetVelocity(
                             channel, fl2fp(float(vel) / float(VELOCITY_FULL)));
+                        // the same column, as a MIDI velocity, for the
+                        // instrument that makes no sound of its own
+                        instrument->SetVelocity(channel,
+                                                (vel * 127 + VELOCITY_FULL / 2) / VELOCITY_FULL);
                     }
                     mixer_->StartInstrument(channel, instrument, note,
                                             newInstrument);

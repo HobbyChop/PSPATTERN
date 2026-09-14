@@ -291,6 +291,11 @@ phrase written before this column existed sounds the same as it always
 did. Holding O and pressing up or down moves by ten, left or right by
 one. One step below 00 clears it back to two dashes.
 
+On a MIDI instrument the column is the note's MIDI velocity, sent to
+the synth on the far end: two dashes send 127, 50 sends about 64.
+MVEL on the step sets it by hand instead. The instrument's volume is
+sent separately, as channel volume.
+
 The command columns hold four letter effect names. Stand on one and the
 panel at the bottom explains it. Hold O and press up or down to pick a
 command from the list.

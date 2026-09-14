@@ -197,20 +197,31 @@ bool MidiInstrument::Start(int c,unsigned char note,bool retrigger) {
 	v.arpTick_=0 ;
 	v.retrig_=false ;
 
-	// channel volume, then whatever the patch's controllers say.
-	// Clamped: at the default volume of 255 this came out as 128,
-	// which is not a velocity, it is a status byte -- every note-on
-	// left the machine as a note-off followed by garbage, and a synth
-	// on the other end played nothing and flashed nonsense on its
-	// display. Only the one value did it, and it was the default.
+	/* Channel volume as CC7, then whatever the patch's controllers
+	   say. The volume used to double as the note's velocity, which is
+	   why the phrase's velocity column never reached an external synth:
+	   the column is a gain on the channel strip, and a MIDI instrument
+	   has no audio for it to act on. The velocity now comes from the
+	   note (SetVelocity, set by the player just before Start, 127 when
+	   the column is empty), and the volume is the volume. MVEL still
+	   sets it by hand.
+	   Clamped: at the default volume of 255 the old arithmetic came out
+	   as 128, which is not a velocity, it is a status byte. */
 	Variable *vol=FindVariable(MIP_VOLUME) ;
 	int level=(vol->GetInt()+1)/2 ;
 	if (level>127) level=127 ;
 	sendCC(MIDI_CC_VOLUME,level) ;
-	v.velocity_=level ;
 	sendPatchControllers() ;
 
 	return true ;
+} ;
+
+void MidiInstrument::SetVelocity(int channel,int velocity) {
+	// 1..127: zero is a note-off in disguise, and a data byte never
+	// carries the high bit
+	if (velocity<1) velocity=1 ;
+	if (velocity>127) velocity=127 ;
+	voice_[channel].velocity_=velocity ;
 } ;
 
 void MidiInstrument::SetChannel(int channel) {

@@ -1,3 +1,15 @@
+PSPATTERN 0.42.4b
+
+    The velocity column reaches the synth on the far end. On a MIDI
+        instrument the column is now the note's MIDI velocity: two
+        dashes send 127, 00 to 99 scale to 1 to 127, and a keyboard's
+        own velocity passes straight through on an audition. It never
+        did before -- the column is a gain on the channel strip, and a
+        MIDI instrument has no sound for it to act on -- so the
+        velocity that went out was the instrument's volume in disguise.
+        The volume is now sent as channel volume and nothing else; MVEL
+        on a step still sets the velocity by hand.
+
 PSPATTERN 0.42.3b
 
     Sample pan 00 is left, as the screen says. The sampler looked
