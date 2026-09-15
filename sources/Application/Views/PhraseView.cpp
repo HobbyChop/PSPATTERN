@@ -388,7 +388,15 @@ void PhraseView::pasteLast() {
         } else {
             lastNote_ = *c;
             c = phrase_->instr_ + (16 * viewData_->currentPhrase_ + row_);
-            lastInstr_ = *c;
+            /* Only a REAL instrument becomes the last one. A note whose
+               instrument cell is blank is the ordinary "same as before"
+               note, and remembering that blank poisoned everything after
+               it: every new note took --, O on the blank cell wrote --
+               back, and the arrows refuse an empty cell by design -- so
+               the column read -- and could not be changed, and a --
+               keeps playing whatever the channel played last, which
+               was the external synth. */
+            if (*c != 0xFF) lastInstr_ = *c;
         }
         break;
     case 2:
@@ -403,7 +411,9 @@ void PhraseView::pasteLast() {
     case 1:
         c = phrase_->instr_ + (16 * viewData_->currentPhrase_ + row_);
         if ((*c == 0xFF)) {
-            *c = lastInstr_;
+            // never a blank: O on an empty instrument cell must produce
+            // a number the arrows can then change
+            *c = (lastInstr_ == 0xFF) ? 0 : lastInstr_;
             tapFilled_ = true;
             doubleTap(c);
             isDirty_ = true;

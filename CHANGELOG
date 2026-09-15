@@ -1,3 +1,18 @@
+PSPATTERN 0.42.5b
+
+    The phrase screen's instrument column can no longer get stuck at
+        --. Pressing O on an existing note remembered it as the last
+        note and its instrument as the last instrument, even when that
+        cell was blank, the ordinary "same as before" note. From then
+        on every new note took --, O on the blank cell wrote -- back,
+        and the arrows refuse an empty cell by design, so the column
+        read -- and could not be changed; and since -- keeps playing
+        whatever the channel played last, every note went to whatever
+        that was -- for the tester who found it, an external synth.
+        Only a real instrument is remembered now, and O on an empty
+        instrument cell always produces a number the arrows can
+        change.
+
 PSPATTERN 0.42.4b
 
     The velocity column reaches the synth on the far end. On a MIDI
