@@ -1,3 +1,17 @@
+PSPATTERN 0.42.6b
+
+    Two rows drawn over their frames. The sample instrument's
+        interpolation row showed all three names at once, herm lin
+        none, and the last one sat on the SAMPLE frame and ran into
+        the DSP one. It is one name now, stepped with O and left or
+        right like the loop mode under it. On the FX screen the REVERB
+        and DELAY panels were a column narrower than the instrument
+        screen's, which put their frame exactly where a slider's 100%
+        readout ends, so every per-cent sign in that column was drawn
+        through the line. The panels are the instrument screen's
+        widths now, and a readout on that screen stops a column short
+        of the frame whatever the label.
+
 PSPATTERN 0.42.5b
 
     The phrase screen's instrument column can no longer get stuck at

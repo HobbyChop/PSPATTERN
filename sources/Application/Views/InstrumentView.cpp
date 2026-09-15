@@ -218,8 +218,12 @@ void InstrumentView::fillSampleParameters() {
 
 	pos=GUIPoint(2,11) ;
 	v=instrument->FindVariable(SIP_INTERPOLATION) ;
-	UIPillField *pf=new UIPillField(pos,*v,"intp   ",3) ;
-	T_SimpleList<UIField>::Insert(pf) ;
+	/* One name, stepped with O and left/right like the loop mode under
+	   it. As a row of pills -- herm lin none, all three at once -- it
+	   was twenty cells from column 2: the last name sat on the SAMPLE
+	   frame and ran into the DSP one (tester). */
+	st=new UIStepperField(pos,*v,"intp   ","%s",0,2) ;
+	T_SimpleList<UIField>::Insert(st) ;
 
 	// ---- left column: LOOP (content rows 14-18) ----
 	pos=GUIPoint(2,14) ;
@@ -328,7 +332,7 @@ void InstrumentView::fillSampleParameters() {
 	// ---- table strip (content row 22) ----
 	pos=GUIPoint(2,22) ;
 	v=instrument->FindVariable(SIP_TABLEAUTO) ;
-	pf=new UIPillField(pos,*v,"auto  ",2) ;
+	UIPillField *pf=new UIPillField(pos,*v,"auto  ",2) ;
 	T_SimpleList<UIField>::Insert(pf) ;
 	pos=GUIPoint(16,22) ;
 	v=instrument->FindVariable(SIP_TABLE) ;

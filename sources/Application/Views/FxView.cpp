@@ -7,10 +7,13 @@
 #include "BaseClasses/UIStepperField.h"
 #include "Foundation/Variables/Variable.h"
 
-// One slider row bound to a 0..hi Mixer param.
+// One slider row bound to a 0..hi Mixer param. The readout has to end
+// a column short of the panel frame (UISliderField.h), and the frames
+// sit in columns 20 and 39 -- see DrawView.
 #define SLIDER(V,INIT,HI,COL,ROW,LABEL) \
 	{ pos=GUIPoint(COL,ROW) ; V=new Variable(#V,(FourCC)0,INIT,HI) ; \
-	  UISliderField *f=new UISliderField(pos,*V,LABEL,0,HI,1,16,7) ; \
+	  UISliderField *f=new UISliderField(pos,*V,LABEL,0,HI,1,16,7,SD_AUTO, \
+	                                     ((COL)<20)?19:38) ; \
 	  T_SimpleList<UIField>::Insert(f) ; }
 
 FxView::FxView(GUIWindow &w,ViewData *data):FieldView(w,data) {
@@ -179,13 +182,17 @@ void FxView::DrawView() {
 	Mixer *mx=Mixer::GetInstance() ;
 	bool revFx=mx->GetReverbFreeze()||mx->GetReverbDuck()||mx->GetReverbGate()
 	          ||mx->GetReverbLowcut()||mx->GetReverbWidth() ;
-	DrawPanel(1,5,18,7,  revFx?"REVERB *":"REVERB") ;
-	DrawPanel(1,13,18,4, mx->GetDelayTone()?"DELAY *":"DELAY") ;
-	DrawPanel(21,5,17,3,  mx->GetDrive()?"DRIVE *":"DRIVE") ;
-	DrawPanel(21,9,17,3,  mx->GetComp()?"COMP *":"COMP") ;
+	/* 19 and 18 wide, the instrument screen's widths. At 18 the left
+	   frame sat in column 19, which is where a slider's "100%" readout
+	   ends: every per-cent sign in the left column was drawn through
+	   the line (tester). */
+	DrawPanel(1,5,19,7,  revFx?"REVERB *":"REVERB") ;
+	DrawPanel(1,13,19,4, mx->GetDelayTone()?"DELAY *":"DELAY") ;
+	DrawPanel(21,5,18,3,  mx->GetDrive()?"DRIVE *":"DRIVE") ;
+	DrawPanel(21,9,18,3,  mx->GetComp()?"COMP *":"COMP") ;
 	bool ins=mx->GetChannelPhaserDepth(curCh_)||mx->GetChannelChorusDepth(curCh_)
 	        ||mx->GetChannelDist(curCh_) ;
-	DrawPanel(21,13,17,10, ins?"INSERTS *":"INSERTS") ;
+	DrawPanel(21,13,18,10, ins?"INSERTS *":"INSERTS") ;
 
 	FieldView::Redraw() ;
 	DrawHintBar("O change  R> mixer  R^ song") ;
