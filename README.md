@@ -3,9 +3,10 @@
 A music tracker for the Sony PSP.
 
 You build a song from patterns of notes and the PSP generates the sound.
-Eight channels, a sampler, a four engine synthesiser, a drum kit that is
-generated at load time, a shared delay and reverb, and MIDI in and out
-through the PSP-MIDI adapter. No sample files are required.
+Eight channels, a sampler, a six engine synthesiser, a drum kit built
+into the program, a delay and a reverb shared by all channels, a phaser,
+a chorus and a distortion on every channel, and MIDI in and out through
+the PSP-MIDI adapter. No sample files are required.
 
 PSPATTERN is a fork of [LittleGPTracker](https://github.com/Mdashdotdashn/LittleGPTracker)
 by Marc Nostromo, released under the GNU General Public License version 3.
@@ -16,25 +17,41 @@ by Marc Nostromo, released under the GNU General Public License version 3.
 
 ## Features
 
-* Eight channels, each running a sampler, a synth or MIDI out
-* Four synth engines: a single oscillator, phase distortion, a virtual
-  analogue stack with hard sync and ring modulation, and four operator FM
-* A drum kit synthesised at load time, so it costs no disk space and can
-  be redistributed freely
-* Soundfont support: drop an sf2 in a project and every preset in it
-  becomes a playable instrument, with its key splits and loop points
-* Per step velocity, written in decimal rather than hexadecimal
-* Tables: sixteen rows of automation running under a note at tick rate
-* A tempo synced delay and a reverb, on sends shared by all channels
-* Arpeggios with a speed control, so the classic every tick trill is one
-  setting rather than the only option
-* MIDI notes, controllers, pitch bend, program change and clock out;
-  controller mapping and external clock follow in
-* Stereo and per channel rendering to wav
+* Eight channels, each playing a sampler, a synth or MIDI out. 128
+  sampler, 32 synth and 16 MIDI instruments.
+* Six synth engines: TONE, one oscillator with a sub and noise; PDX,
+  phase distortion; VAX, up to seven detuned oscillators with hard sync
+  and ring modulation; FM, four operators and eight algorithms; VOX, a
+  formant engine; HIVE, up to five wavetable voices from one note, so a
+  chord is one step.
+* A drum kit built into the program, a soft and a hard variant of each
+  drum, so a new project has drums with nothing on the card.
+* The sampler plays wav files of any common format, soundfont presets
+  with their key splits and loop points, or the kit. Loop modes, slicing,
+  drive and bit crush, a filter, a feedback stage and an amplitude
+  envelope. Importing can fold a file to mono or halve its rate on the
+  way in to save memory.
+* Two command columns and a velocity column on every step, tables of
+  automation running under a note at tick rate, grooves, per step
+  probability and vibrato, and arpeggios with a speed control.
+* Live mode with chains queued per channel, and bookmarked song rows.
+* A tempo synced delay and a reverb on shared sends, with freeze, duck,
+  gate, low cut, width, a tone in the delay's feedback, and a drive and
+  compressor on the wet bus.
+* A ten band master EQ, a clipper with several modes, metering, a scope
+  and a live spectrum.
+* MIDI out: notes, controllers, pitch bend, program change, channel
+  pressure and clock. MIDI in: a keyboard or a pad plays the instruments
+  on four voices, while the song runs too, with a kit mode that puts one
+  instrument on each key. Controller mapping and clock follow as well.
+* Renders the mix to a wav file while the song plays, tails included.
+* Autosave, backups with recovery, a low power rest on the power switch,
+  and a settings screen that edits the configuration on the device.
 
 ## Requirements
 
-A PSP running custom firmware. Tested on 6.61 PRO-C.
+A PSP running custom firmware. Tested on 6.61 PRO-C. It also runs on a
+PS Vita through its PSP emulator, without the second processor.
 
 The PSP-MIDI adapter is needed only for MIDI. Everything else works
 without it.
@@ -46,16 +63,18 @@ memory stick and launch it from the PSP game menu.
 
 ## Building
 
-Building for the PSP needs the [PSPDEV toolchain](https://pspdev.github.io/).
-With that installed:
+Building for the PSP needs the [PSPDEV toolchain](https://pspdev.github.io/)
+and a host C++ compiler, `g++` by default. With those installed:
 
 ```
 ./build_psp.sh
 ```
 
-The result is `dist/PSP/EBOOT.PBP`. `usbmidi.prx` is not built by this
-tree; it belongs to the PSP-MIDI adapter and is dropped in before
-packaging.
+The result is `dist/PSP/EBOOT.PBP`. The Makefile first builds a small
+host program that bakes the drum kit into a blob linked into the
+executable, which is why the host compiler is needed. `usbmidi.prx` is
+not built by this tree; it belongs to the PSP-MIDI adapter and is
+dropped in before packaging.
 
 ### The Media Engine library
 
@@ -79,7 +98,7 @@ sixteen of them would only obscure what is.
 ## Documentation
 
 `MANUAL.txt` in the repository root is the full user guide: buttons,
-every screen, all four synth engines, the command reference and the
+every screen, the six synth engines, the command reference and the
 known issues. The same guide is on the web at
 [pspattern.hobbychop.com](https://pspattern.hobbychop.com), with
 screenshots.
@@ -87,7 +106,7 @@ screenshots.
 The PSP-MIDI adapter, and the other PSP instruments it works with, are
 at [hobbychop.com](https://hobbychop.com).
 
-## Licence
+## License
 
 GPLv3. See `LICENSE`.
 
@@ -106,5 +125,4 @@ adapter. It is not part of this program and communicates with it only
 through the system call interface. It is distributed alongside for
 convenience.
 
-The drum kit and the demo songs are original work and may be
-redistributed.
+The drum kit is original work and may be redistributed.

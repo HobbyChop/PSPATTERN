@@ -872,9 +872,8 @@ to see what would go first.
 
 15. THE DRUM KIT
 
-The drum instruments are generated when a project loads, not read from
-sample files. That is what the progress line on the loading screen is
-doing. They cost no disk space and can be redistributed freely.
+The drum instruments are built into the program, not read from sample
+files. They cost no disk space and can be redistributed freely.
 
 Each drum has a soft and a hard variant.
 
@@ -1218,7 +1217,7 @@ below full scale and are known to be too quiet.
   panel underneath the ring slider. It is cosmetic.
 
 
-21. LICENCE
+21. LICENSE
 
 PSPATTERN is free software under the GNU General Public License version
 3. See LICENSE.txt. The complete corresponding source code is included
