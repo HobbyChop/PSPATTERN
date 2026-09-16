@@ -63,6 +63,9 @@ static int    wetRead_ = 0 ;
 static int    wetFill_ = 0 ;
 #ifdef PSP_ME_OFFLOAD
 static bool   mePrimePending_ = false ;   // lay down wet lead on the first ME block
+// the job the ME had in flight when Flush was called belongs to what
+// played before it; its output is dropped when it is collected
+static bool   meDiscardNext_ = false ;
 #endif
 
 static void wetReset() {
@@ -251,6 +254,7 @@ static int lineRound(int shorts, int skewLines) {
 #ifdef PSP_ME_OFFLOAD
 extern "C" void PSPME_SetDelayLines(short *dlyL, short *dlyR, int maxLen) ;
 extern "C" void PSPME_Quiesce(void) ;
+extern "C" void PSPME_RequestFlush(void) ;
 #endif
 void Init(int sampleRate) {
 	if (ready_) return ;
@@ -389,6 +393,14 @@ void Flush() {
 	// it replays stale delay content at the top of every take
 	if (BK.dlyL_) sceKernelDcacheWritebackRange(BK.dlyL_, SENDFX_MAX_DELAY * sizeof(short)) ;
 	if (BK.dlyR_) sceKernelDcacheWritebackRange(BK.dlyR_, SENDFX_MAX_DELAY * sizeof(short)) ;
+	/* The reverb itself lives on the ME while the ME runs, and the
+	   zeroing below only reaches this core's copy. Ask the ME to empty
+	   its own before its next job, and drop the job it has in flight:
+	   collected on the next block, that output is the old tail. Before
+	   this, a stop rang on from the ME and the top of a take could
+	   carry the last one's room. */
+	PSPME_RequestFlush() ;
+	meDiscardNext_ = true ;
 #endif
 	for (int s = 0 ; s < 2 ; s++) {
 		for (int i = 0 ; i < NCOMB ; i++) {
@@ -1094,7 +1106,12 @@ static void processBankMe(fixed *buffer, int samplecount) {
 		produced = PSPME_Collect(&wetSrc) ;
 	}
 	if (produced < 0) return ;              // still busy after 1.2ms: drop it
-	if (produced > 0) wetAppend(wetSrc, produced) ;
+	if (meDiscardNext_) {
+		// the job in flight at the last Flush: what played before
+		meDiscardNext_ = false ;
+	} else if (produced > 0) {
+		wetAppend(wetSrc, produced) ;
+	}
 	PSPME_Post(BK.dlyAcc_, BK.revAcc_, n,
 	           BK.fb_, BK.dlyLenS_, BK.runDly_ ? 1 : 0) ;
 }

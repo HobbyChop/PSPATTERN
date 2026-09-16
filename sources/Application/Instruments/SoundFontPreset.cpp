@@ -1,6 +1,24 @@
 #include "SoundFontPreset.h"
 #include "Externals/Soundfont/ENAB.H"
 #include "System/Console/Trace.h"
+#ifdef SDL2
+#include <SDL2/SDL.h>
+#else
+#include <SDL/SDL.h>
+#endif
+
+/* The zone lookup walks the file's navigator, one object per preset
+   with state of its own, and the note it landed on is cached beside
+   it. Two threads walking it at once would corrupt it, and since the
+   keyboard lanes render on the output thread (PlayerMixer::RenderLate)
+   while the song renders on its own, both can play the same preset at
+   different notes at the same moment. So every accessor holds one lock
+   from the lookup through the read of what it found. Uncontended
+   nearly always; a few microseconds when not; taken a few times per
+   block per voice, outside the sample loops. */
+static SDL_mutex *sfLock_=0 ;
+static inline void sfLock() { if (sfLock_) SDL_LockMutex(sfLock_) ; }
+static inline void sfUnlock() { if (sfLock_) SDL_UnlockMutex(sfLock_) ; }
 
 SoundFontPreset::SoundFontPreset(int sfID,int presetID):
 	sfID_(sfID),
@@ -9,49 +27,54 @@ SoundFontPreset::SoundFontPreset(int sfID,int presetID):
 	lastNote_(-1)
 {
 	navigator_.SetHydraFont(GetHydraPtr(sfID));   // would be bank select
+	// presets are built on the main thread while the pool loads, long
+	// before either render thread can want one
+	if (!sfLock_) sfLock_=SDL_CreateMutex() ;
 } ;
 
 SoundFontPreset::~SoundFontPreset() {
 }
 
 int SoundFontPreset::GetChannelCount(int note) {
-	checkNote(note) ;
 	// Until I merge the L & R samples
 	return 1 ;
 } ;
 
 void *SoundFontPreset::GetSampleBuffer(int note){
+	sfLock() ;
 	checkNote(note) ;
-	if (vect_) {
-		return (void *)vect_->dwStart ;
-	} ;
-	return 0 ;
+	void *r=vect_?(void *)vect_->dwStart:0 ;
+	sfUnlock() ;
+	return r ;
 } ;
 
 int SoundFontPreset::GetSampleRate(int note) {
+	sfLock() ;
 	checkNote(note) ;
-	if (vect_) {
-		return vect_->dwSampleRate ;
-	} ;
-	return 44100 ;
+	int r=vect_?(int)vect_->dwSampleRate:44100 ;
+	sfUnlock() ;
+	return r ;
 } ;
 
 int SoundFontPreset::GetSize(int note) {
+	sfLock() ;
 	checkNote(note) ;
-	if (vect_) {
-		return vect_->dwEnd ;
-	} ;
-	return 0 ;
+	int r=vect_?(int)vect_->dwEnd:0 ;
+	sfUnlock() ;
+	return r ;
 } ;
 
 int SoundFontPreset::GetRootNote(int note) {
+	sfLock() ;
 	checkNote(note) ;
+	int r=60 ;
 	if (vect_) {
 		twoByteUnion tbu ;
 		tbu.wVal=vect_->shOrigKeyAndCorr ;
-		return tbu.byVals.by1;
+		r=tbu.byVals.by1;
 	} ;
-	return 60 ;
+	sfUnlock() ;
+	return r ;
 } ;
 
 bool SoundFontPreset::IsMulti() {
@@ -59,24 +82,32 @@ bool SoundFontPreset::IsMulti() {
 } ;
 
 bool SoundFontPreset::IsLooped(int note) {
+	sfLock() ;
 	checkNote(note) ;
-	return ((vect_->shSampleModes&0x1)!=0) ;
+	// a note with no zone used to dereference null here
+	bool r=vect_?((vect_->shSampleModes&0x1)!=0):false ;
+	sfUnlock() ;
+	return r ;
 } ;
 
 int SoundFontPreset::GetLoopStart(int note) {
+	sfLock() ;
 	checkNote(note) ;
+	int r=-1 ;
 	if (vect_) {
-		return (IsLooped(note))?vect_->dwStartloop:-1 ;
+		bool looped=((vect_->shSampleModes&0x1)!=0) ;
+		r=looped?(int)vect_->dwStartloop:-1 ;
 	}
-	return -1 ;
+	sfUnlock() ;
+	return r ;
 } ;
 
 int SoundFontPreset::GetLoopEnd(int note) {
+	sfLock() ;
 	checkNote(note) ;
-	if (vect_) {
-		return vect_->dwEndloop ;
-	}
-	return -1 ;
+	int r=vect_?(int)vect_->dwEndloop:-1 ;
+	sfUnlock() ;
+	return r ;
 } ;
 
 void SoundFontPreset::checkNote(int note) {

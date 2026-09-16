@@ -216,6 +216,11 @@ bool MidiInstrument::Start(int c,unsigned char note,bool retrigger) {
 	return true ;
 } ;
 
+void MidiInstrument::SetLaneTick(int channel,bool tick) {
+	voice_[channel].laneClocked_=true ;
+	voice_[channel].laneTick_=tick ;
+} ;
+
 void MidiInstrument::SetVelocity(int channel,int velocity) {
 	// 1..127: zero is a note-off in disguise, and a data byte never
 	// carries the high bit
@@ -245,6 +250,15 @@ bool MidiInstrument::Render(int channel,fixed *buffer,int size,bool updateTick) 
 		sendNoteOn(v) ;
 		v.first_=false ;
 	}
+
+	/* Everything below is per tick: the bend step, the vibrato, the
+	   arpeggio, the note length. On the render thread every call is a
+	   tick, because its block is a slice. On a lane rendered per chunk
+	   only the chunk told it carries the tick does it -- six or seven
+	   chunks to a slice, and a note length counted per chunk would
+	   have been six times too short. The note-on above is not per
+	   tick: it goes out on the chunk the key arrives in. */
+	if (v.laneClocked_&&!v.laneTick_) return false ;
 
 	stepBend(v) ;
 

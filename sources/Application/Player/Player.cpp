@@ -15,6 +15,8 @@ extern "C" void PSPME_SpectrumEnable(int on);
 #include "System/System/System.h"
 #include "Application/Instruments/CommandList.h"
 #include "Application/Instruments/I_Instrument.h"
+#include "Application/Instruments/SampleInstrument.h"   // SIP_ROOTNOTE, for the kit
+#include "Application/Mixer/MixerService.h"               // IsRendering, at a stop
 #include "Application/Utils/char.h"
 #include "System/Console/n_assert.h"
 #include "Application/Player/TablePlayback.h"
@@ -33,6 +35,8 @@ Player::Player() {
     isRunning_ = false;
     viewData_=0;
     memset(midiHeld_,0,sizeof(midiHeld_));
+    memset(laneStamp_,0,sizeof(laneStamp_));
+    laneClock_=0;
 	mixer_=new PlayerMixer();
 
     lastSongPos_ = 0;
@@ -130,10 +134,11 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
 
     // Clear all channel based data
 
-    // the transport owns the channels now: forget any held keyboard/
-    // audition notes, or their release would cut a song note later
+    // the transport takes over: end any preview or keyboard note on
+    // the lanes and forget the keys that held them, or a release
+    // arriving later would reach for a lane that plays something else
     for (int i = 0; i < 128; i++) midiHeld_[i] = 0;
-    mixer_->StopChannel(AUDITION_CHANNEL);   // transport takes over: end any preview
+    for (int l = AUDITION_CHANNEL; l < PLAYER_CHANNEL_COUNT; l++) mixer_->StopChannel(l);
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         mixer_->StopChannel(i);
         timeToLive_[i] = 0;
@@ -250,8 +255,18 @@ void Player::Stop() {
 
     mixer_->Lock();
 
-    for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
-        mixer_->StopChannel(i);
+    /* STOP MEANS SILENCE. Every voice is cut where it stands, the
+       keyboard lanes included, and the delay and reverb are emptied
+       with them (MixerService::OnPlayerStop), so the transport stops
+       the sound and not just the sequencer. It used to let releases
+       and tails ring out, and a stop read as the machine still
+       playing. The one exception is a take: a render that is stopped
+       keeps its releases and its tail, because they are part of the
+       take -- the file closes on its own once the sum is silent. */
+    bool take = MixerService::GetInstance()->IsRendering();
+    for (int i = 0; i < PLAYER_CHANNEL_COUNT; i++) {
+        if (take) mixer_->StopChannel(i);
+        else      mixer_->CutChannel(i);
     }
     for (int i = 0; i < 128; i++) midiHeld_[i] = 0;
     MidiService::GetInstance()->OnPlayerStop();
@@ -380,40 +395,107 @@ int Player::GetQueueSteps(int channel) {
 	                      chainBoundary) ;
 }
 
-void Player::MidiNoteOn(unsigned char note,unsigned char velocity) {
+void Player::MidiNoteOn(unsigned char note,unsigned char velocity,bool routed) {
 
 	if (note>127) return ;
 	if (velocity==0) {            // running status note-off
 		MidiNoteOff(note) ;
 		return ;
 	}
-	// The song owns the channels while it plays; a keyboard note here
-	// would be stolen on the next row anyway.
-	if (isRunning_) return ;
 	if ((!viewData_)||(!viewData_->project_)) return ;
-
-	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	Project *project=viewData_->project_ ;
+	InstrumentBank *bank=project->GetInstrumentBank() ;
 	if (!bank) return ;
-	I_Instrument *instr=bank->GetInstrument(viewData_->currentInstrument_) ;
+
+	/* Which instrument, and at what pitch: the MIDI IN rows on the
+	   project screen decide. cursor plays the instrument under the
+	   cursor on the instrument screen at the key's pitch, which is how
+	   a keyboard always worked here. keys plays the chosen instrument
+	   the same way, so the song can be edited while a keyboard plays a
+	   fixed synth. kit makes each key from the root pick the next slot
+	   up the bank -- the root plays the chosen instrument, a semitone
+	   up plays the one after it -- and every slot sounds at its own
+	   root note, so sixteen pads play sixteen samples rather than one
+	   sample sixteen ways. Keys below the root or past the bank play
+	   nothing: GetInstrument would clamp them onto slot 0, which is
+	   not a drum anyone asked for. */
+	int slot=viewData_->currentInstrument_ ;
+	unsigned char playNote=note ;
+	switch (routed?project->GetMidiInMode():(int)MIDI_IN_CURSOR) {
+		case MIDI_IN_KEYS:
+			slot=project->GetMidiInInstrument() ;
+			break ;
+		case MIDI_IN_KIT: {
+			int idx=(int)note-project->GetMidiInRoot() ;
+			if (idx<0) return ;
+			slot=project->GetMidiInInstrument()+idx ;
+			if (slot>=MAX_INSTRUMENT_COUNT) return ;
+			// a sample has a root note of its own; a synth or a MIDI
+			// instrument has none and plays middle C
+			I_Instrument *kitIn=bank->GetInstrument(slot) ;
+			Variable *root=kitIn?kitIn->FindVariable(SIP_ROOTNOTE):0 ;
+			playNote=(unsigned char)(root?root->GetInt():60) ;
+		} break ;
+		default:
+			break ;
+	}
+	I_Instrument *instr=bank->GetInstrument(slot) ;
 	if (!instr) return ;
 	// a MIDI instrument previewed before the first play needs the
 	// device up; this brings it up with no transport attached
 	if (instr->GetType()==IT_MIDI) MidiService::GetInstance()->EnsureDevice() ;
 
-	/* The preview has a lane of its own past the song's eight, wired
-	   straight to the master sum -- no strip fader, mute, filter or
-	   send can silence or colour it. It used to borrow the cursor's
-	   song channel, and "audition is silently broken" turned out to
-	   be the cursor parked on a faded column. */
-	int channel=AUDITION_CHANNEL ;
-
-	if (!mixer_->IsChannelPlaying(channel)) {
-		mixer_->StartChannel(channel) ;
+	/* The lanes past the song's eight, wired straight to the master
+	   sum -- no strip fader, mute, filter or send can silence or
+	   colour them, and the sequencer never touches them, which is why
+	   a keyboard can play over the running song: the gate that used to
+	   stand here dated from when the preview borrowed the cursor's song
+	   channel. Four lanes, so a pad plays a kick over a hat and a
+	   keyboard holds a chord; a fifth key steals the oldest. */
+	int lane=allocLane(note) ;
+	if (!mixer_->IsChannelPlaying(lane)) {
+		mixer_->StartChannel(lane) ;
 	}
-	// a keyboard's own velocity, straight through to a MIDI instrument
-	instr->SetVelocity(channel,velocity) ;
-	mixer_->StartInstrument(channel,instr,note,true) ;
-	midiHeld_[note]=(unsigned char)(channel+1) ;
+	/* The key's velocity. For the sampler and the synths it is a gain
+	   on the lane, through the project's in vel: 100 follows the key,
+	   0 plays every key at full level, and the default sits between,
+	   because a phrase note with an empty velocity column is full
+	   level and a keyboard on a linear curve sat under the song. A
+	   MIDI instrument gets the key's own velocity untouched; the synth
+	   on the far end has a curve of its own. */
+	int sens=project->GetMidiInVelocity() ;
+	float g=1.0f-(sens/100.0f)*(1.0f-velocity/127.0f) ;
+	mixer_->SetVelocity(lane,fl2fp(g)) ;
+	instr->SetVelocity(lane,velocity) ;
+	mixer_->StartInstrument(lane,instr,playNote,true) ;
+	midiHeld_[note]=(unsigned char)(lane+1) ;
+	laneStamp_[lane]=++laneClock_ ;
+} ;
+
+/* A lane for a new key: the key's own lane if it is still held (a pad
+   hit again before its release arrived retriggers in place); else a
+   lane no held key owns, the one idle longest so a release tail is cut
+   as seldom as possible; else the lane with the oldest held note, and
+   the keys that were on it are forgotten, or their release would cut
+   the note that took their place. */
+int Player::allocLane(unsigned char note) {
+	if (midiHeld_[note]) return midiHeld_[note]-1 ;
+	bool held[PLAYER_CHANNEL_COUNT] ;
+	memset(held,0,sizeof(held)) ;
+	for (int i=0;i<128;i++) {
+		if (midiHeld_[i]) held[midiHeld_[i]-1]=true ;
+	}
+	int best=-1 ;
+	for (int pass=0;(pass<2)&&(best<0);pass++) {
+		for (int l=AUDITION_CHANNEL;l<PLAYER_CHANNEL_COUNT;l++) {
+			if ((pass==0)&&held[l]) continue ;
+			if ((best<0)||(laneStamp_[l]<laneStamp_[best])) best=l ;
+		}
+	}
+	for (int i=0;i<128;i++) {
+		if (midiHeld_[i]==best+1) midiHeld_[i]=0 ;
+	}
+	return best ;
 } ;
 
 void Player::MidiNoteOff(unsigned char note) {

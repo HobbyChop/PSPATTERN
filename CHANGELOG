@@ -1,3 +1,33 @@
+PSPATTERN 0.43.3b
+
+    A keyboard or a pad plugged into the adapter plays the instruments
+        properly. Four lanes beside the song's eight, so a chord holds
+        and a kick can land over a hat, and they play while the song
+        runs, so a pad can play along with a song that is driving an
+        external synth. The settings are in the project screen's MIDI
+        box: in chan is the channel it listens on, in inst the
+        instrument it plays, in mode is cursor (the instrument under
+        the cursor, as before), keys (in inst, chromatic) or kit (each
+        key from in root plays the next slot up the bank at its own
+        root note, so a pad plays sixteen samples rather than one
+        sample sixteen ways), and in vel is how much a key's velocity
+        sets its level. Saved with the song; an old song loads as it
+        played before.
+
+    A key sounds a few milliseconds after it is pressed, not a tenth
+        of a second. The lanes are mixed in at the very end of the
+        audio path, past the buffer that keeps the song safe from
+        dropouts, whatever the buffer settings are. They skip the
+        master EQ and clipper for the same reason, and a keyboard
+        played over a render is not in the file.
+
+    A stop is silence. Every voice is cut where it stands and the
+        delay and reverb are emptied, on the Media Engine too, so the
+        transport stops the sound and not just the sequencer. A
+        mixdown being written keeps its releases and its tail, which
+        are part of the take. The top of a take no longer carries the
+        last one's room from the Media Engine either.
+
 PSPATTERN 0.42.6b
 
     Two rows drawn over their frames. The sample instrument's

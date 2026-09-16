@@ -11,6 +11,7 @@
 #include "BaseClasses/UIActionField.h"
 #include "BaseClasses/UIField.h"
 #include "BaseClasses/UIIntVarField.h"
+#include "BaseClasses/UINoteVarField.h"
 #include "Application/AppWindow.h"
 #include "BaseClasses/UISliderField.h"
 #include "BaseClasses/UIPillField.h"
@@ -209,6 +210,42 @@ ProjectView::ProjectView(GUIWindow &w,ViewData *data):FieldView(w,data) {
 	                          MidiService::GetInstance()->Size() - 1, 1, 1);
 	T_SimpleList<UIField>::Insert(field);
 
+	/* MIDI IN: what a keyboard or a pad plugged into the adapter plays.
+	   Rows 21 to 24; the rate readout keeps row 20 (DrawView). */
+	position=GUIPoint(2,21) ;
+	v = project_->FindVariable(VAR_MIDIINCHAN);
+	NAssert(v);
+	field = new UIIntVarField(position, *v, "in chan %s", 0,
+	                          MIDI_IN_CHANNEL_COUNT - 1, 1, 4);
+	T_SimpleList<UIField>::Insert(field);
+
+	position=GUIPoint(2,22) ;
+	v = project_->FindVariable(VAR_MIDIININST);
+	NAssert(v);
+	field = new UIIntVarField(position, *v, "in inst %2.2X", 0,
+	                          MAX_INSTRUMENT_COUNT - 1, 1, 0x10);
+	T_SimpleList<UIField>::Insert(field);
+
+	position=GUIPoint(2,23) ;
+	v = project_->FindVariable(VAR_MIDIINMODE);
+	NAssert(v);
+	field = new UIIntVarField(position, *v, "in mode %s", 0,
+	                          MIDI_IN_MODE_COUNT - 1, 1, 1);
+	T_SimpleList<UIField>::Insert(field);
+
+	position=GUIPoint(2,24) ;
+	v = project_->FindVariable(VAR_MIDIINROOT);
+	NAssert(v);
+	UINoteVarField *nf = new UINoteVarField(position, *v, "in root %s",
+	                                        0, 0x7F, 1, 0x0C);
+	T_SimpleList<UIField>::Insert(nf);
+
+	position=GUIPoint(2,25) ;
+	v = project_->FindVariable(VAR_MIDIINVEL);
+	NAssert(v);
+	field = new UIIntVarField(position, *v, "in vel  %d%%", 0, 100, 5, 25);
+	T_SimpleList<UIField>::Insert(field);
+
 	// right column: FILE actions
 	position=GUIPoint(23,6) ;
 	UIActionField *a1 = new UIActionField("load song", ACTION_LOAD, position);
@@ -313,7 +350,8 @@ void ProjectView::DrawView() {
 	// so it was drawn on the bottom border rather than inside it.
 	DrawPanel(1,5,20,5,"SONG") ;
 	DrawPanel(1,12,20,3,"MIX") ;
-	DrawPanel(1,18,20,3,"MIDI") ;
+	// eight rows: device, rate, then the five MIDI IN rows
+	DrawPanel(1,18,20,8,"MIDI") ;
 
 	// the rate the audio device actually opened at. Everything is
 	// timed from it, so if a song plays at the wrong speed this is

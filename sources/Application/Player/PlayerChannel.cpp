@@ -22,6 +22,7 @@ PlayerChannel::PlayerChannel(int index) {
     endFade_=0 ; endFadeLen_=0 ; endFadeHold_=false ;
 	mixBus_=0 ;
 	busIndex_=-1 ;
+	tickOverride_=-1 ;
     volume_ = i2fp(1);
     curGain23_ = (1<<23);
     gainSnap_ = true;
@@ -111,11 +112,17 @@ void PlayerChannel::StartInstrument(I_Instrument *instr,unsigned char note,bool 
 
 void PlayerChannel::CutIfPlaying(I_Instrument *instr) {
 	if (instr_!=instr) return ;
-	instr_->Stop(index_) ;
-	instr_=0 ;
+	Cut() ;
+} ;
+
+void PlayerChannel::Cut() {
+	if (instr_) {
+		instr_->Stop(index_) ;      // a MIDI instrument's note-off still goes out
+		instr_=0 ;
+	}
 	releasing_=false ;
 	endFade_=0 ; endFadeHold_=false ;
-	declickPending_=true ;
+	declickPending_=true ;          // the corrector absorbs the step
 } ;
 
 void PlayerChannel::StopInstrument() {
@@ -319,7 +326,8 @@ bool PlayerChannel::Render(fixed *buffer,int samplecount) {
    }
 
    if (instr_) {
-     bool tableSlice=SyncMaster::GetInstance()->TableSlice() ;
+     bool tableSlice=(tickOverride_>=0)?(tickOverride_!=0)
+                                       :SyncMaster::GetInstance()->TableSlice() ;
      bool status=instr_->Render(index_,buffer,samplecount,tableSlice) ;
      if (releasing_&&(!instr_->IsReleasing(index_))) {
          // The release ran out on its own, so let the instrument go.

@@ -99,6 +99,20 @@ tempoNudge_(0)
     Variable *midiSync = new Variable("midiSync", VAR_MIDISYNC, midiSyncModes,
                                       MAX_MIDISYNC_MODE, 0);
     this->Insert(midiSync);
+    /* MIDI IN -- see Project.h. The root defaults to 36, the note most
+       pad controllers send from their first pad, so a kit lands on the
+       pads without a setting being touched. */
+    this->Insert(new Variable("midiInChan", VAR_MIDIINCHAN, midiInChannels,
+                              MIDI_IN_CHANNEL_COUNT, 0));
+    this->Insert(new Variable("midiInInst", VAR_MIDIININST, 0));
+    this->Insert(new Variable("midiInMode", VAR_MIDIINMODE, midiInModes,
+                              MIDI_IN_MODE_COUNT, 0));
+    this->Insert(new Variable("midiInRoot", VAR_MIDIINROOT, 36));
+    /* Velocity sensitivity, 0..100. A phrase note with an empty
+       velocity column plays at full level, so a keyboard on a linear
+       curve sat under the song: 50 puts a key struck at 80 within two
+       decibels of a sequenced note and still lets a pad breathe. */
+    this->Insert(new Variable("midiInVel", VAR_MIDIINVEL, 50));
 
 // Reload the midi device list
 
@@ -216,6 +230,44 @@ int Project::GetMidiSync() {
     Variable *v = FindVariable(VAR_MIDISYNC);
     NAssert(v);
 	return v->GetInt();
+}
+
+// MIDI IN. Read on the MIDI pump thread under the mixer lock, and
+// clamped: a hand-edited file can hold anything.
+int Project::GetMidiInChannel() {
+    Variable *v = FindVariable(VAR_MIDIINCHAN);
+    int c = v ? v->GetInt() : 0;
+    return (c < 0 || c >= MIDI_IN_CHANNEL_COUNT) ? 0 : c;
+}
+
+int Project::GetMidiInInstrument() {
+    Variable *v = FindVariable(VAR_MIDIININST);
+    int i = v ? v->GetInt() : 0;
+    if (i < 0) i = 0;
+    if (i >= MAX_INSTRUMENT_COUNT) i = MAX_INSTRUMENT_COUNT - 1;
+    return i;
+}
+
+int Project::GetMidiInMode() {
+    Variable *v = FindVariable(VAR_MIDIINMODE);
+    int m = v ? v->GetInt() : MIDI_IN_CURSOR;
+    return (m < 0 || m >= MIDI_IN_MODE_COUNT) ? MIDI_IN_CURSOR : m;
+}
+
+int Project::GetMidiInRoot() {
+    Variable *v = FindVariable(VAR_MIDIINROOT);
+    int n = v ? v->GetInt() : 36;
+    if (n < 0) n = 0;
+    if (n > 127) n = 127;
+    return n;
+}
+
+int Project::GetMidiInVelocity() {
+    Variable *v = FindVariable(VAR_MIDIINVEL);
+    int s = v ? v->GetInt() : 50;
+    if (s < 0) s = 0;
+    if (s > 100) s = 100;
+    return s;
 }
 
 void Project::NudgeTempo(int value) {

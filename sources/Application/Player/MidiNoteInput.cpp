@@ -105,6 +105,15 @@ void MidiNoteInput::Update(Observable &o,I_ObservableData *d) {
 	}
 
 	int status=msg->status_&0xF0 ;
+	/* The project's MIDI IN channel: omni takes every channel's keys,
+	   a number takes that channel's only. Notes only -- controllers go
+	   on to the mapper and the realtime bytes were handled above -- so
+	   a pad on channel 10 can play the kit while a keyboard on channel
+	   1 is left alone, or the other way round. */
+	if ((status==0x90)||(status==0x80)) {
+		int want=project_->GetMidiInChannel() ;
+		if (want&&((msg->status_&0x0F)!=want-1)) return ;
+	}
 	Player *player=Player::GetInstance() ;
 
 	/* This runs on the MIDI pump thread. Everything below starts or

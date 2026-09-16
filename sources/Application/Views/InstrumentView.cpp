@@ -848,7 +848,9 @@ void InstrumentView::auditionStart() {
 		if (rv&&rv->GetInt()>=0&&rv->GetInt()<128) note=rv->GetInt() ;
 	}
 	auditionNote_=(unsigned char)note ;
-	Player::GetInstance()->MidiNoteOn(auditionNote_,127) ;
+	// unrouted: the instrument under the cursor, whatever the project
+	// screen's MIDI IN rows would make a real key play
+	Player::GetInstance()->MidiNoteOn(auditionNote_,127,false) ;
 	auditionLatch_=true ;
 } ;
 

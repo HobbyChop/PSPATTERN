@@ -213,6 +213,7 @@ meLibSetSharedUncached32(32);
 #define ME_TESTCMD  (meLibSharedMemory[26]) // 1 = run the cached-write test
 #define ME_TESTPTR  (meLibSharedMemory[27]) // buffer, plain cached address
 #define ME_TESTRES  (meLibSharedMemory[28]) // ME: test finished marker
+#define ME_FLUSH    (meLibSharedMemory[29]) // main: empty the reverb before the next job; ME clears
 
 // Interleaved-stereo I/O, all uncached. Two inputs (the delay and reverb
 // send accumulators) and one output (the finished wet).
@@ -348,6 +349,15 @@ void meLibOnProcess(void) {
 		if (ME_BUSY) {
 			int n = (int)ME_N;
 			if (n > ME_MAXN) n = ME_MAXN;
+
+			/* A stop, or a new take, asked for an empty room: the tail
+			   of what played before is not part of what comes next.
+			   Done here on the owning core like every other change to
+			   the instance -- the main core only raises the word. */
+			if (ME_FLUSH) {
+				meRev_.Flush();
+				ME_FLUSH = 0;
+			}
 
 			// apply knob changes here, on the owning core -- never let
 			// the main core mutate the instance the ME is reading
@@ -766,6 +776,7 @@ static int meCanaryRun(const char *tag);
 
 extern "C" int PSPME_Init(void) {
 	ME_EXIT_ = 0; ME_BUSY = 0; ME_N = 0; ME_READY = 0; ME_HB = 0; ME_JOBS = 0;
+	ME_FLUSH = 0;
 	ME_DLYL = 0; ME_DLYR = 0; ME_DLYMAX = 0; ME_SIZE = 160; ME_DAMP = 110;
 
 	meLibAllocUncached32(&meDlyInH_, ME_MAXN * 2);
@@ -1315,6 +1326,17 @@ extern "C" unsigned int PSPME_Busy(void)      { return (unsigned int)ME_BUSY; }
    still busy after that is not running our loop any more, and gets
    parked in reset -- renders take the scalar path, and the next
    resume revives it fresh. */
+/* Empty the reverb before the ME's next job -- SendFx::Flush, at a
+   stop and at the top of a take. Never waits: the word is read when
+   the next job starts, and the block in flight now is the caller's to
+   discard (it belongs to what played before). A parked core leaves
+   the word set and honours it on its first job back. */
+extern "C" void PSPME_RequestFlush(void) {
+	if (!meEverStarted_) return;
+	ME_FLUSH = 1;
+	meLibSync();
+}
+
 extern "C" void PSPME_Quiesce(void) {
 	if (!meEverStarted_) return;
 	int w = 0;

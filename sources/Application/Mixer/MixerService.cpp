@@ -13,7 +13,7 @@
 #include <string.h>
 #include <math.h>
 
-MixerService::MixerService() : out_(0), sync_(0), isRendering_(false) {
+MixerService::MixerService() : out_(0), sync_(0), isRendering_(false), pregain_(FP_ONE) {
     mode_ = MSRM_PLAYBACK;
     renderName_[0] = 0;
 };
@@ -163,6 +163,14 @@ void MixerService::Stop() {
      }
 }
 
+fixed MixerService::GetMasterPreSumGain() {
+    return master_.GetPreSumGain() ;
+}
+
+fixed MixerService::GetPregainGain() {
+    return pregain_ ;
+}
+
 MixBus *MixerService::GetMixBus(int i) {
     // the index is a channel's bus setting, which is saved in the
     // project file and so is whatever the file says
@@ -226,6 +234,7 @@ void MixerService::SetPregain(int vol) {
     // unity skip in AudioMixer -- every bus paid a full gain pass for
     // a -0.018dB "gain" at the default setting.
     fixed masterVolume = i2fp(vol) / 100;
+    pregain_ = masterVolume;      // the late-rendered lanes apply it themselves
 
     for (int i = 0; i < SONG_CHANNEL_COUNT; i++) {
         bus_[i].SetVolume(masterVolume);
@@ -308,7 +317,12 @@ void MixerService::OnPlayerStart() {
 } ;
 
 void MixerService::OnPlayerStop() {
+	// a stopped song is silent at once: the delay and reverb empty
+	// with the voices (Player::Stop). Not during a take, whose tail is
+	// part of the take; its file closes when the sum goes quiet.
+	bool take = IsRendering() ;
 	toggleRendering(false) ;
+	if (!take) SendFx::Flush() ;
 } ;
 
 void MixerService::EndRenderTail() {

@@ -6,13 +6,23 @@
 #include "Application/Persistency/Persistent.h"
 
 #define SONG_CHANNEL_COUNT 8
-/* One extra voice lane beyond the song's eight: the audition preview
-   plays there, wired straight to the master sum -- so no song strip's
-   mute, fader, filter or sends can silence or colour it. Everything
-   holding per-voice state sizes with PLAYER_CHANNEL_COUNT; the song,
-   the project mixer and the views stay eight wide. */
-#define PLAYER_CHANNEL_COUNT (SONG_CHANNEL_COUNT+1)
-#define AUDITION_CHANNEL SONG_CHANNEL_COUNT
+/* Voice lanes beyond the song's eight: the audition preview and a MIDI
+   keyboard play there, wired straight to the master sum -- so no song
+   strip's mute, fader, filter or sends can silence or colour them, and
+   the sequencer never touches them. Four, so a pad can play a kick over
+   a hat and a keyboard can hold a chord; a fifth key steals the oldest
+   (Player::allocLane). One lane used to be enough because a keyboard
+   was ignored while the song ran. Everything holding per-voice state
+   sizes with PLAYER_CHANNEL_COUNT; the song, the project mixer and the
+   views stay eight wide. The cost is memory, not time: an idle lane
+   renders nothing, and the per-voice state of every instrument grows
+   by three lanes, which is under 300KB across a full bank. On the PSP
+   the lanes are rendered at the output callback, past the render-ahead
+   queue, so a key is a chunk or two from the speaker rather than a
+   queue's worth of slices -- PlayerMixer::RenderLate. */
+#define LANE_COUNT 4
+#define PLAYER_CHANNEL_COUNT (SONG_CHANNEL_COUNT+LANE_COUNT)
+#define AUDITION_CHANNEL SONG_CHANNEL_COUNT    // the first lane
 #define SONG_ROW_COUNT 256
 
 #define MAX_SAMPLEINSTRUMENT_COUNT 0x80

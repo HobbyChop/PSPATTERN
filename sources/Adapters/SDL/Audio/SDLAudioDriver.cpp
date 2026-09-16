@@ -303,6 +303,12 @@ void SDLAudioDriver::OnChunkDone(Uint8 *stream, int len) {
     // Now dump audio to the device
 
     SYS_MEMCPY(stream, (short *)(mainBuffer_ + bufferPos_), len);
+    /* The late renderer adds its part now, into the chunk the device
+       is about to take -- past the queue above, so what it renders is
+       heard a chunk or two from now rather than a queue's worth of
+       slices later. See AudioLateRender. Interleaved 16-bit stereo,
+       so len/4 frames. */
+    if (lateRender_) lateRender_->RenderLate((short *)stream, len / 4);
     onAudioBufferTick();
     bufferPos_ += len;
 }

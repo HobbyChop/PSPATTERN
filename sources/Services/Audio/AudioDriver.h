@@ -13,6 +13,22 @@ struct AudioBufferData {
    void *driverData_ ;
 } ;
 
+/* Something rendered at the moment a chunk leaves for the device,
+   PAST the render-ahead queue. The queue is what keeps the song safe
+   from dropouts, and it is deep: as many tempo slices as the prebuffer
+   count, ninety milliseconds at 138 bpm. Everything rendered through
+   it is heard that much later, which nobody notices for a song and
+   everybody notices for a key they just pressed. The keyboard lanes
+   are rendered here instead, on the PSP -- PlayerMixer::RenderLate --
+   so a key is a chunk or two from the speaker. Runs on the device's
+   own thread: whatever it touches needs a lock of its own. */
+class AudioLateRender {
+public:
+	virtual ~AudioLateRender() {} ;
+	// add into `frames` frames of interleaved 16-bit stereo, clipping
+	virtual void RenderLate(short *interleaved,int frames)=0 ;
+} ;
+
 class AudioDriver: public Observable {
 
 public:
@@ -53,6 +69,9 @@ public:
 
 	void AddBuffer(short *buffer,int size) ; // size in samples
 
+	// see AudioLateRender; null is none
+	void SetLateRender(AudioLateRender *r) { lateRender_=r ; }
+
 	/* Bytes of rendered audio queued but not yet handed to the
 	   hardware: how far ahead of the speaker the render currently is.
 	   Not a constant -- it is large while the machine is coasting and
@@ -66,6 +85,7 @@ public:
 
 protected:
 	void eatBuffer(void *buffer,int size) ; // size in bytes
+	AudioLateRender *lateRender_ ;
 	void onAudioBufferTick() ;
 	bool hasData() ;
 

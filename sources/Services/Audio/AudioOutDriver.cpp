@@ -127,6 +127,10 @@ int AudioOutDriver::GetPlayedBufferPercentage() {
 int AudioOutDriver::QueuedBytes() {
     return driver_?driver_->QueuedBytes():0 ;
 }
+
+void AudioOutDriver::SetLateRender(AudioLateRender *r) {
+    if (driver_) driver_->SetLateRender(r) ;
+}
  ;
 
 AudioDriver *AudioOutDriver::GetDriver() { return driver_; };

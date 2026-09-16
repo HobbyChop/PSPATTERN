@@ -6,6 +6,7 @@
 
 AudioDriver::AudioDriver(AudioSettings &settings) {
 	settings_=settings ;
+	lateRender_=0 ;
 }
 
 AudioDriver::~AudioDriver() {

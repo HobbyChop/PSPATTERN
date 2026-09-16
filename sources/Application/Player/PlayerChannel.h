@@ -41,6 +41,11 @@ public:
 	// per note by the pattern, the other by the mixer, and they
 	// multiply the way a desk and a performance do.
 	void SetVelocity(fixed v) { velocity_=v ; }
+	/* Whether the next Render is a table tick. -1 reads it from the
+	   SyncMaster, which is right on the render thread, whose block is
+	   a slice; a lane rendered per chunk on the output thread is told
+	   (PlayerMixer::RenderLate). */
+	void SetTickOverride(int v) { tickOverride_=v ; }
 	bool IsMuted() ;
 	void SetMixBus(int i) ;
     void SetVolume(fixed volume);
@@ -51,6 +56,8 @@ public:
     // dropped immediately (the object is about to be deleted); the
     // declick correction absorbs the cut edge
     void CutIfPlaying(I_Instrument *instr);
+    // the same cut whatever is playing: a stop is silence, not a tail
+    void Cut();
     void applyInserts(fixed *buffer, int samplecount);
     void SetLPFFreq(unsigned short freq);
     void Reset();
@@ -67,6 +74,7 @@ public:
     fixed volume_;
     int busIndex_ ;
 	MixBus *mixBus_ ;
+	int tickOverride_ ;
     fixed hpfPrevInput_[2];
     fixed hpfPrevOutput_[2];
 	fixed hpfAlpha_;

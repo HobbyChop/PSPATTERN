@@ -6,6 +6,7 @@
 #include "Application/Instruments/WavFileWriter.h"
 
 class AudioDriver ;
+class AudioLateRender ;
 
 #define MIX_BUFFER_SIZE 40000
 
@@ -27,6 +28,9 @@ public:
    /* Rendered audio not yet heard, in bytes. Zero from anything with
       no queue of its own, which is the honest answer for those. */
    virtual int QueuedBytes() { return 0 ; }
+   // see AudioLateRender in AudioDriver.h; an output with no device
+   // thread of its own has nowhere to run one
+   virtual void SetLateRender(AudioLateRender *) {}
 
 	virtual std::string GetAudioAPI()=0 ;
 	virtual std::string GetAudioDevice()=0 ;

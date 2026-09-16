@@ -52,6 +52,11 @@ public:
     // tick alongside SetSendFxParams.
     void SetSendFx2(int freeze,int drive,int duck,int gate,int comp,
                     int locut,int width,int dtone);
+    // the fader's taper as the master applies it to every source on
+    // the way into its sum; the late-rendered lanes apply it themselves
+    fixed GetMasterPreSumGain() ;
+    // the MIX panel's drive, as the song's buses carry it into the sum
+    fixed GetPregainGain() ;
     unsigned int GetMasterPeakLevel() const;
     bool TakeMasterClipLatch();
     // What share of the last block the master sum spent pinned at the
@@ -103,5 +108,6 @@ private:
   char renderName_[64];
   SDL_mutex *sync_;
   bool isRendering_;
+  fixed pregain_;
 } ;
 #endif

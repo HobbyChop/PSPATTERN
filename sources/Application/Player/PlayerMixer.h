@@ -10,10 +10,19 @@
 #include "PlayerChannel.h"
 #include "Foundation/Observable.h"
 #include "Services/Audio/AudioOut.h"
+#include "Services/Audio/AudioDriver.h"
 
 #define STREAM_MIX_BUS 8
 
-class PlayerMixer: public T_Singleton<PlayerMixer>,public Observable,public I_Observer {
+/* On the PSP the lanes past the song's eight are not rendered by the
+   render thread at all: they are rendered at the output callback, past
+   the render-ahead queue -- see RenderLate. Elsewhere they stay in the
+   audition bus and render with everything else. */
+#ifdef PLATFORM_PSP
+#define PSP_LATE_LANES 1
+#endif
+
+class PlayerMixer: public T_Singleton<PlayerMixer>,public Observable,public I_Observer,public AudioLateRender {
 public:
 	PlayerMixer() ;
 	virtual ~PlayerMixer() {} ;
@@ -39,6 +48,8 @@ public:
 	
 	void StartChannel(int channel) ;
 	void StopChannel(int channel) ;
+	// StopChannel lets a release ring out; this cuts the voice now
+	void CutChannel(int channel) ;
 
 	bool IsChannelPlaying(int channel) ;
 	
@@ -65,6 +76,17 @@ public:
 	void Lock() ;
 	void Unlock() ;
 
+	// AudioLateRender: the lanes, into the chunk leaving for the device
+	virtual void RenderLate(short *interleaved,int frames) ;
+	/* The lanes' own lock. The output thread holds it while it renders
+	   them; whoever starts, stops, cuts or rewires a lane holds it for
+	   that. Never nested, and never taken by the output thread together
+	   with the mixer lock, which the render thread holds for a whole
+	   slice: the output thread must not wait on that. Order everywhere
+	   else is mixer lock, then this. */
+	void LaneLock() ;
+	void LaneUnlock() ;
+
 private:
 
 	Project *project_ ;
@@ -79,6 +101,11 @@ private:
 	// store trigger notes, 0xFF = none
 	
     unsigned char notes_[PLAYER_CHANNEL_COUNT] ;
+
+	struct SDL_mutex *laneSync_ ;
+	bool lanesWired_ ;
+	// the lanes' tick clock, in frames since the last tick (RenderLate)
+	float laneTickAcc_ ;
 } ;
 
 #endif

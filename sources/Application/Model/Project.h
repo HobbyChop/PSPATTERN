@@ -20,6 +20,18 @@
 #define VAR_SCALE 			MAKE_FOURCC('S', 'C', 'A', 'L')
 #define VAR_RENDER MAKE_FOURCC('R', 'N', 'D', 'R')
 #define VAR_MIDISYNC MAKE_FOURCC('M', 'S', 'Y', 'N')
+/* MIDI IN, on the project screen's MIDI panel: the channel a keyboard
+   is heard on, the instrument it plays, whether it plays keys or a
+   kit, and the kit's root. Saved by name like every other variable, so
+   a song from before these rows loads at omni, cursor, 00, C -- exactly
+   how a keyboard behaved before they existed. */
+#define VAR_MIDIINCHAN MAKE_FOURCC('M', 'I', 'C', 'H')
+#define VAR_MIDIININST MAKE_FOURCC('M', 'I', 'I', 'N')
+#define VAR_MIDIINMODE MAKE_FOURCC('M', 'I', 'M', 'D')
+#define VAR_MIDIINROOT MAKE_FOURCC('M', 'I', 'R', 'T')
+#define VAR_MIDIINVEL  MAKE_FOURCC('M', 'I', 'V', 'L')
+#define MIDI_IN_CHANNEL_COUNT 17     // omni, then 1..16
+enum MidiInMode { MIDI_IN_CURSOR = 0, MIDI_IN_KEYS, MIDI_IN_KIT, MIDI_IN_MODE_COUNT };
 /* The ten master EQ bands, EQ0..EQ9. Saved by name like every other
    project variable, so a song written before the EQ existed simply has
    no entry for them and loads flat. */
@@ -73,6 +85,15 @@ public:
   int GetRenderMode();
   // 0 = ignore an external clock, 1 = follow it
   int GetMidiSync();
+  // MIDI IN: 0 is omni, else the channel 1..16; the instrument slot,
+  // clamped to the bank; a MidiInMode; the kit's root note 0..127
+  int GetMidiInChannel();
+  int GetMidiInInstrument();
+  int GetMidiInMode();
+  int GetMidiInRoot();
+  // 0..100: how much a key's velocity sets its level on the sampler
+  // and the synths (100 follows the key, 0 is full level always)
+  int GetMidiInVelocity();
   void Trigger();
 
   static const unsigned int MAX_RENDER_MODE = 3;

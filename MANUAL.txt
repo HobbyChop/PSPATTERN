@@ -188,7 +188,11 @@ to a tape.
 
 In song mode START is the transport: it starts every channel from the
 cursor's row, and pressing it again stops. R with START stops as well,
-and O with START retriggers the row where it stands.
+and O with START retriggers the row where it stands. A stop is
+silence: every voice is cut where it stands and the delay and reverb
+are emptied, so nothing rings on. The exception is a mixdown being
+written, where the releases and the tail are part of the take
+(section 18).
 
 In live mode START queues instead, and the same press means different
 things: it queues the cursor's column, or the columns of a selection
@@ -1007,9 +1011,53 @@ zero it costs nothing.
   gain     unity or boost
   device   MIDI output device
   rate     audio sample rate
+  in chan  the MIDI channel a keyboard is heard on: omni, or 1 to 16
+  in inst  the instrument it plays, for keys and kit
+  in mode  cursor, keys or kit
+  in root  the key the kit starts on
+  in vel   how much a key's velocity sets its level, 0 to 100
 
 The file column has load, save, save as, two compaction tools, a
 render switch and the samples screen (section 14).
+
+MIDI IN
+
+A keyboard or a pad plugged into the adapter plays on four lanes of
+its own beside the song's eight channels, dry and at full level, so a
+chord holds and a kick can land over a hat; a fifth key steals the
+oldest. It plays while the song runs too, so a pad can play along with
+a song that is driving an external synth. The lanes are mixed in at
+the very end of the audio path, past the buffer that keeps the song
+safe from dropouts, so a key sounds a few milliseconds after it is
+pressed rather than a tenth of a second, whatever the buffer settings
+are. They skip the master EQ and clipper for the same reason, and a
+keyboard played over a render is not in the file.
+
+in vel is how much a key's velocity sets its level. A phrase note with
+an empty velocity column plays at full level, so a keyboard following
+its keys exactly sits under the song: 100 follows the key, 0 plays
+every key at full level whatever the touch, and 50, where it starts,
+puts a firm key within a couple of decibels of a sequenced note. A
+MIDI instrument gets the key's own velocity untouched.
+
+in mode says what a key plays. cursor plays the instrument you are
+looking at on the instrument screen, at the key's pitch, which is how
+it always worked. keys plays the instrument in in inst the same way
+whatever the cursor is on, so you can edit the song while a keyboard
+plays a fixed synth. kit makes each key pick an instrument instead of
+a pitch: the root key plays in inst, the key above it plays the next
+slot up the bank, and so on, each at its own root note. Lay a kit out
+by arranging instruments in the bank, one drum per slot; the copy on
+the instrument screen (section 11) moves them by value. in root starts
+at 36, the note most pad controllers send from their first pad. Keys
+below the root, or past the end of the bank, play nothing.
+
+in chan is omni and takes every channel. Set it to the channel your
+pad sends on when a second device on the same lead should be ignored.
+A soundfont preset needs none of this: its own key map decides which
+sample each key plays, so keys mode with the preset in in inst is a
+drum kit already. The instrument screen's own audition (SELECT) always
+plays the instrument under the cursor, whatever these rows say.
 
 MIDI CLOCK
 

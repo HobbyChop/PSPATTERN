@@ -63,12 +63,13 @@ public:
 
     void SetSequencerMode(SequencerMode mode);
 
-    /* Play the instrument you are looking at from an incoming MIDI
-       keyboard. The adapter could only ever send; without this there is
-       no way to play the synth from a keyboard at all, which is the
-       demo that sells the hardware. Ignored while the sequencer runs,
-       so a keyboard cannot fight the song for a channel. */
-    void MidiNoteOn(unsigned char note,unsigned char velocity);
+    /* Play an instrument from an incoming MIDI keyboard: the one under
+       the cursor, or the one the project screen's MIDI IN rows name, or
+       a kit of them, one per key. On lanes of its own past the song's
+       eight, so it works while the song plays. routed=false is the
+       instrument screen's own audition: always the instrument under
+       the cursor, whatever the MIDI IN rows say. */
+    void MidiNoteOn(unsigned char note,unsigned char velocity,bool routed=true);
     void MidiNoteOff(unsigned char note);
     void MidiAllNotesOff();
     // hard-release any voice rendering this instrument (pre-delete)
@@ -171,9 +172,13 @@ protected:
 
   private:
     PlayerMixer *mixer_ ;
-	// which tracker channel each incoming MIDI note went to, +1 so
-	// that zero means "not held"
+	// which lane each incoming MIDI note went to, +1 so that zero
+	// means "not held"
 	unsigned char midiHeld_[128] ;
+	// when each lane last took a note, for stealing the oldest
+	unsigned int laneStamp_[PLAYER_CHANNEL_COUNT] ;
+	unsigned int laneClock_ ;
+	int allocLane(unsigned char note) ;
 	ViewData *viewData_ ;
 	Project *project_ ;
 	// which channels have reached the end of the song with

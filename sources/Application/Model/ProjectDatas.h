@@ -16,4 +16,9 @@ static const char *renderModes[] = {"Off", "Stereo"};
 // transport away from you.
 static const char *midiSyncModes[] = {"Off", "Follow"};
 #define MAX_MIDISYNC_MODE 2
+// MIDI IN (Project.h has the counts): saved by displayed name like
+// every list variable, so these names are part of the file format
+static const char *midiInChannels[] = {"omni","1","2","3","4","5","6","7","8",
+                                       "9","10","11","12","13","14","15","16"};
+static const char *midiInModes[] = {"cursor","keys","kit"};
 #endif

@@ -68,6 +68,11 @@ public:
 	     no sound of its own, so this is the only way the phrase's
 	     velocity column can reach the synth on the far end. */
 	  virtual void SetVelocity(int channel,int velocity) {} ;
+	  /* A lane rendered at the output callback (PlayerMixer::RenderLate)
+	     is rendered per chunk, not per tick; this says whether the call
+	     about to come carries the tick. Only the MIDI instrument counts
+	     ticks per call, so only it listens. */
+	  virtual void SetLaneTick(int channel,bool tick) {} ;
 
 	  // Called immediately before Start when this same instrument
 	  // already had a note sounding on this channel -- i.e. this note
