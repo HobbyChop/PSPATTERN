@@ -72,6 +72,22 @@ public:
 	// see AudioLateRender; null is none
 	void SetLateRender(AudioLateRender *r) { lateRender_=r ; }
 
+	/* THE QUEUE AT A START AND A STOP -- see SDLAudioDriver::OnChunkDone.
+	   At a start everything queued is pre-start silence and the first
+	   slice of the song would wait behind it: the whole prebuffer,
+	   ninety milliseconds at 138 bpm, which is what a follower heard as
+	   coming in late. The request notes the slot that first slice will
+	   land in and wakes the render thread once to produce it; the
+	   output thread drops what is in front the moment it is in. At a
+	   stop what is queued is the last of the song, and it would play on
+	   after the stop; the output thread drops it and fades the chunk.
+	   Both must be called with the mixer lock held, so the queue
+	   position read here is the slot the next render fills. */
+	void RequestStartDrop() ;
+	void RequestStopDrop() ;
+	// wake the render thread for one block outside the pop cycle
+	virtual void NudgeRender() {}
+
 	/* Bytes of rendered audio queued but not yet handed to the
 	   hardware: how far ahead of the speaker the render currently is.
 	   Not a constant -- it is large while the machine is coasting and
@@ -86,6 +102,15 @@ public:
 protected:
 	void eatBuffer(void *buffer,int size) ; // size in bytes
 	AudioLateRender *lateRender_ ;
+	// the drops above, and their accounting: wakes the pop cycle owes
+	// back (a wake was posted that no dropped block matched), and the
+	// chunks after a drop in which running dry is the refill, not a
+	// dropout
+	bool startDropPending_ ;
+	int  startDropSlot_ ;
+	bool stopDropPending_ ;
+	int  notifyDebt_ ;
+	int  graceChunks_ ;
 	void onAudioBufferTick() ;
 	bool hasData() ;
 

@@ -31,6 +31,9 @@ public:
    // see AudioLateRender in AudioDriver.h; an output with no device
    // thread of its own has nowhere to run one
    virtual void SetLateRender(AudioLateRender *) {}
+   // see AudioDriver::RequestStartDrop / RequestStopDrop
+   virtual void RequestStartDrop() {}
+   virtual void RequestStopDrop() {}
 
 	virtual std::string GetAudioAPI()=0 ;
 	virtual std::string GetAudioDevice()=0 ;

@@ -131,6 +131,14 @@ int AudioOutDriver::QueuedBytes() {
 void AudioOutDriver::SetLateRender(AudioLateRender *r) {
     if (driver_) driver_->SetLateRender(r) ;
 }
+
+void AudioOutDriver::RequestStartDrop() {
+    if (driver_) driver_->RequestStartDrop() ;
+}
+
+void AudioOutDriver::RequestStopDrop() {
+    if (driver_) driver_->RequestStopDrop() ;
+}
  ;
 
 AudioDriver *AudioOutDriver::GetDriver() { return driver_; };

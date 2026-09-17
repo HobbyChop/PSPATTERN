@@ -38,7 +38,8 @@ public:
 	static int GetActualSampleRate() {
 		return (actualSampleRate_>0)?actualSampleRate_:44100 ;
 	} ;
-	virtual bool Interlaced() { return true ; } ;	
+	virtual bool Interlaced() { return true ; } ;
+	virtual void NudgeRender() { if (thread_) thread_->Notify() ; }
 	virtual double GetStreamTime() ;
 	// Additional
 	void OnChunkDone(Uint8 *stream,int len) ;

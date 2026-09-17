@@ -242,6 +242,17 @@ void MidiService::Flush() {
     }
 };
 
+void MidiService::FlushDropped(int n) {
+    SysMutexLocker locker(queueMutex_);
+    for (int i = 0; i < n; i++) {
+        int next = (currentOutQueue_ + 1) % MIDI_MAX_BUFFERS;
+        T_SimpleList<MidiMessage> *q = queues_[next];
+        if (device_) device_->SendQueue(*q);
+        q->Empty();
+        currentOutQueue_ = next;
+    }
+}
+
 void MidiService::flushOutQueue() {
     SysMutexLocker locker(queueMutex_);
     int next = (currentOutQueue_ + 1) % MIDI_MAX_BUFFERS;

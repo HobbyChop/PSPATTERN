@@ -75,6 +75,10 @@ class MidiService : public T_Factory<MidiService>,
     //! Flush current queue to the output
 
     void Flush();
+    /* n audio blocks were dropped unplayed (AudioDriver's start and
+       stop drops): send their queued messages now and step the out
+       ring past them, so it stays aligned with the play ring. */
+    void FlushDropped(int n);
 
   protected:
     T_SimpleList<MidiInDevice> inList_;

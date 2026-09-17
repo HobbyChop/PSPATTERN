@@ -1107,7 +1107,11 @@ heard together. What gets aligned is the moment the tracker decides a
 tick; what you hear is that tick coming out of the audio buffer some
 time later. The tracker measures its own share -- the audio pipe, the
 slice in flight -- and runs early by exactly that, at any tempo and
-any buffer setting.
+any buffer setting. The start itself does not wait for the buffer
+either: the silence queued ahead of the speaker is thrown away the
+moment the first slice of the song is rendered, so the first note is
+a few milliseconds behind the leader's start byte, and a stop lands
+as fast.
 
 What it cannot know is the rest of the chain: how long a clock byte
 takes to reach it, and what your own gear's output latency is. Trim

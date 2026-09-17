@@ -27,6 +27,8 @@ class AudioOutDriver: public AudioOut,protected I_Observer {
     virtual int GetPlayedBufferPercentage() ;
     virtual int QueuedBytes() ;
     virtual void SetLateRender(AudioLateRender *r) ;
+    virtual void RequestStartDrop() ;
+    virtual void RequestStopDrop() ;
 
     AudioDriver *GetDriver() ;
 

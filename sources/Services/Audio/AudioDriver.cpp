@@ -7,6 +7,23 @@
 AudioDriver::AudioDriver(AudioSettings &settings) {
 	settings_=settings ;
 	lateRender_=0 ;
+	startDropPending_=false ;
+	startDropSlot_=0 ;
+	stopDropPending_=false ;
+	notifyDebt_=0 ;
+	graceChunks_=0 ;
+}
+
+void AudioDriver::RequestStartDrop() {
+	if (!isPlaying_) return ;
+	startDropSlot_=poolQueuePosition_ ;   // where the first post-start slice lands
+	startDropPending_=true ;
+	NudgeRender() ;                        // and have it rendered now, not at the next pop
+}
+
+void AudioDriver::RequestStopDrop() {
+	if (!isPlaying_) return ;
+	stopDropPending_=true ;
 }
 
 AudioDriver::~AudioDriver() {

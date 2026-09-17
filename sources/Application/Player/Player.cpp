@@ -235,6 +235,13 @@ void Player::Start(PlayMode mode, bool forceSongMode) {
 
         AudioOut *out = mixer_->GetAudioOut();
         startTime_ = out ? out->GetStreamTime() : 0;   // audio init can have failed
+        /* The queued pre-start silence goes once the first slice of
+           the song is rendered, so the first note is a chunk or two
+           from the speaker rather than a prebuffer's worth of slices
+           -- which is what a follower heard as coming in late, and
+           what the clock loop then spent bars pulling back. Under the
+           lock: the request reads the slot that slice will land in. */
+        if (out) out->RequestStartDrop();
 
         SetChanged();
         PlayerEvent pe(PET_START);
@@ -267,6 +274,12 @@ void Player::Stop() {
     for (int i = 0; i < PLAYER_CHANNEL_COUNT; i++) {
         if (take) mixer_->StopChannel(i);
         else      mixer_->CutChannel(i);
+    }
+    // and the last of the song still queued ahead of the speaker goes
+    // too, so the stop lands now rather than a prebuffer later
+    if (!take) {
+        AudioOut *out = mixer_->GetAudioOut();
+        if (out) out->RequestStopDrop();
     }
     for (int i = 0; i < 128; i++) midiHeld_[i] = 0;
     MidiService::GetInstance()->OnPlayerStop();

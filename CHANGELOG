@@ -1,3 +1,17 @@
+PSPATTERN 0.43.4b
+
+    A start no longer waits for the audio buffer. What is queued ahead
+        of the speaker at a start is silence, and the first slice of
+        the song used to wait behind all of it, a tenth of a second at
+        138 bpm. A follower came in that late and then spent bars
+        catching up, and synco could not touch it. The silence is now
+        thrown away the moment the first slice of the song is
+        rendered, so the first note lands a few milliseconds behind the
+        press or the leader's start byte, and synco trims what is
+        left. A stop drops the last of the song the same way, with a
+        short fade, so it lands at once. The buffer itself and the
+        dropout margin are unchanged.
+
 PSPATTERN 0.43.3b
 
     A keyboard or a pad plugged into the adapter plays the instruments

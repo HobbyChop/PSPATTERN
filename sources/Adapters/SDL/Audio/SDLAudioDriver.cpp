@@ -254,6 +254,54 @@ void SDLAudioDriver::OnChunkDone(Uint8 *stream, int len) {
         return;
     }
 
+    /* A START. The slot the request noted is where the first slice
+       rendered after the start lands; until it is in, the queued
+       silence plays on as before. Once it is, everything in front of
+       it is pre-start silence: dropped, the staging remainder with it,
+       so the first note is a chunk or two from the speaker instead of
+       a prebuffer's worth of slices. The request woke the render
+       thread once for that slice, outside the pop cycle; each further
+       dropped block is matched with a wake here, so the queue refills
+       to its depth and no slice is ever owed or over-asked. Each
+       dropped block also flushes its share of the MIDI out queue, so
+       the two rings stay aligned. */
+    if (startDropPending_ && pool_[startDropSlot_].buffer_ != 0) {
+        int n = 0;
+        while (poolPlayPosition_ != startDropSlot_ &&
+               pool_[poolPlayPosition_].buffer_ != 0) {
+            ReleaseBuffer(poolPlayPosition_);
+            poolPlayPosition_ = (poolPlayPosition_ + 1) % SOUND_BUFFER_COUNT;
+            n++;
+        }
+        bufferPos_ = bufferSize_;                 // the staging remainder too
+        MidiService::GetInstance()->FlushDropped(n);
+        if (n == 0) notifyDebt_++;                // the request's wake matched nothing
+        for (int i = 1; i < n; i++) if (thread_) thread_->Notify();
+        graceChunks_ = 8;
+        startDropPending_ = false;
+    }
+
+    /* A STOP. What is queued is the last of the song, and it would
+       play on for a prebuffer after the stop. Dropped the same way,
+       and what this chunk was going to carry is faded across it, so
+       the stop lands inside this chunk. */
+    bool stopFade = false;
+    if (stopDropPending_) {
+        stopDropPending_ = false;
+        int n = 0;
+        while (pool_[poolPlayPosition_].buffer_ != 0 && n < SOUND_BUFFER_COUNT) {
+            ReleaseBuffer(poolPlayPosition_);
+            poolPlayPosition_ = (poolPlayPosition_ + 1) % SOUND_BUFFER_COUNT;
+            n++;
+        }
+        MidiService::GetInstance()->FlushDropped(n);
+        for (int i = 0; i < n; i++) if (thread_) thread_->Notify();
+        graceChunks_ = 8;
+        stopFade = true;
+        // a start still waiting for its slice is moot now; its wake is owed back
+        if (startDropPending_) { startDropPending_ = false; notifyDebt_++; }
+    }
+
     // Look if we have enough data in main buffer
 
     while (bufferSize_ - bufferPos_ < len) {
@@ -272,14 +320,24 @@ void SDLAudioDriver::OnChunkDone(Uint8 *stream, int len) {
         // then get next queued buffer and copy data from it
 
         if (pool_[poolPlayPosition_].buffer_ == 0) {
-            // starved: the queue is empty and the card gets silence
-            AudioStats::AddUnderrun();
+            // starved: the queue is empty and the card gets silence.
+            // Not counted inside the grace after a deliberate drop:
+            // the render thread is refilling a queue this thread just
+            // emptied on purpose, and that is not a dropout.
+            if (graceChunks_ == 0) AudioStats::AddUnderrun();
             SYS_MEMCPY(mainBuffer_ + bufferSize_ - bufferPos_, miniBlank_, len);
             bufferSize_ = bufferSize_ - bufferPos_ + len;
 
             bufferPos_ = 0;
         } else {
 
+            if (startDropPending_ && poolPlayPosition_ == startDropSlot_) {
+                // the first post-start slice landed behind the check
+                // above and is being taken normally: nothing to drop,
+                // and the request's wake is owed back
+                startDropPending_ = false;
+                notifyDebt_++;
+            }
             memcpy(mainBuffer_ + bufferSize_ - bufferPos_,
                    pool_[poolPlayPosition_].buffer_,
                    pool_[poolPlayPosition_].size_);
@@ -296,13 +354,28 @@ void SDLAudioDriver::OnChunkDone(Uint8 *stream, int len) {
             ReleaseBuffer(poolPlayPosition_);
 
             poolPlayPosition_ = (poolPlayPosition_ + 1) % SOUND_BUFFER_COUNT;
-            if (thread_)
-                thread_->Notify();
+            if (thread_) {
+                if (notifyDebt_ > 0) notifyDebt_--;   // a wake already posted
+                else thread_->Notify();
+            }
         }
     }
     // Now dump audio to the device
 
     SYS_MEMCPY(stream, (short *)(mainBuffer_ + bufferPos_), len);
+    if (stopFade) {
+        // the last of the song goes to nothing across this chunk, and
+        // whatever staging was left behind it is dropped
+        short *o = (short *)stream;
+        int frames = len / 4;
+        for (int i = 0; i < frames; i++) {
+            int g = (frames - i) * 256 / (frames ? frames : 1);
+            o[i * 2]     = (short)((o[i * 2] * g) >> 8);
+            o[i * 2 + 1] = (short)((o[i * 2 + 1] * g) >> 8);
+        }
+        bufferPos_ = bufferSize_ - len;   // consumed below; nothing after it
+    }
+    if (graceChunks_ > 0) graceChunks_--;
     /* The late renderer adds its part now, into the chunk the device
        is about to take -- past the queue above, so what it renders is
        heard a chunk or two from now rather than a queue's worth of
