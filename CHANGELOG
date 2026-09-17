@@ -1,3 +1,14 @@
+PSPATTERN 0.43.5b
+
+    Following a MIDI clock locks within a beat or two, whatever the
+        song's own tempo was. The leader's tempo is now read straight
+        off the first few clock bytes rather than measured once after
+        a whole beat and crawled to, and it keeps being read, so a
+        tempo change on the leader is followed within a beat. A leader
+        that sends clock while stopped starts the song at its tempo
+        with nothing to catch up. The bpm figure turns to the play
+        colour when the ear has the lock, not two beats later.
+
 PSPATTERN 0.43.4b
 
     A start no longer waits for the audio buffer. What is queued ahead

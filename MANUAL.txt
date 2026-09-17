@@ -1093,10 +1093,12 @@ it.
 
 While following, the bpm figure on the song screen is coloured: the
 play colour once the tracker has locked to the leader, the mute colour
-while it is still catching up. It should lock within a bar or two if
-the song's own tempo is near the leader's, and inside about seven bars
-if it is a long way off. If it stays in the mute colour the leader's
-clock is not arriving cleanly.
+while it is still catching up. The leader's tempo is read off the
+first few clock bytes, so it locks within a beat or two whatever the
+song's own tempo was, and it keeps reading it, so a tempo change on
+the leader is followed within a beat. A leader that sends clock while
+stopped is at its tempo before its start byte arrives. If the figure
+stays in the mute colour the leader's clock is not arriving cleanly.
 
 The tempo shown is the leader's, not the one saved with the song.
 

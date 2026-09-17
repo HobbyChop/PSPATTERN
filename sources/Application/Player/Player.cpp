@@ -749,21 +749,25 @@ float Player::syncLeadMs() {
 }
 
 void Player::OnMidiClock() {
-    // Clocks before the song starts have nothing to be compared
-    // against; the count is zeroed at the leader's start anyway.
-    if (!isRunning_) return ;
-    unsigned long clockMs = System::GetInstance()->GetClock() ;
+    /* The byte's arrival, in microseconds. The prx stamps each clock
+       byte at the USB completion in kernel context, upstream of every
+       thread wake this side; deltas are all the loop uses, so the
+       epoch does not matter. Without a stamp the thread's own clock,
+       in milliseconds, is what there is. Microseconds and not
+       milliseconds because the loop now reads a tempo off six bytes,
+       and a millisecond over a sixteenth is nearly a percent. */
+    unsigned long nowUs = System::GetInstance()->GetClock() * 1000ul ;
 #ifdef PLATFORM_PSP
     {
-        /* The prx stamps each clock byte at the USB completion in
-           kernel context -- upstream of every thread wake this side.
-           Prefer that time base when it exists; deltas are all the
-           loop uses, so the different epoch does not matter. */
         unsigned int us = PSPMidi_LastClockStampUs() ;
-        if (us) clockMs = us / 1000u ;
+        if (us) nowUs = us ;
     }
 #endif
-    clockSync_.OnLeaderTick(clockMs) ;
+    // Stopped: nothing to count the byte against, but its timing is
+    // still worth having -- a leader that streams clock while stopped
+    // is at its tempo before its start byte arrives
+    if (!isRunning_) { clockSync_.OnIdleTick(nowUs) ; return ; }
+    clockSync_.OnLeaderTick(nowUs) ;
 }
 
 bool Player::IsClockLocked() { return clockSync_.Locked() ; }

@@ -32,11 +32,23 @@
 class ClockSync {
 public:
 
-	ClockSync() { leadMs_ = 0.0f ; Reset(120.0f) ; }
+	ClockSync() {
+		leadMs_ = 0.0f ;
+		stampCount_ = 0 ; stampHead_ = 0 ;
+		Reset(120.0f) ;
+	}
 
 	/* Called on the leader's start byte: the two clocks are
 	   declared equal here and the loop keeps them that way. */
 	void Reset(float bpm) {
+		/* The seed. The song's own tempo, unless the last beat of
+		   clock bytes has been timed -- a leader that streams clock
+		   while it sits stopped, or one restarting after a stop --
+		   in which case the song starts at the leader's tempo and
+		   there is nothing to catch up. Either way the measurement
+		   in update() overrides it within a few ticks if it is off. */
+		float m = measured(24) ;
+		if (m > 0.0f) bpm = m ;
 		leaderTicks_ = 0 ;
 		playerTicks_ = 0 ;
 		base_ = bpm ;
@@ -45,9 +57,7 @@ public:
 		avgErr_ = 0.0f ;
 		fastErr_ = 0.0f ;
 		locked_ = false ;
-		acqT0_ = 0 ;
-		acqTick0_ = 0 ;
-		acqDone_ = false ;
+		snapRun_ = 0 ;
 		grossRun_ = 0 ;
 		outLag_ = 0.0f ;
 		baseGood_ = bpm ;
@@ -71,34 +81,22 @@ public:
 		outLag_ = ticks ;
 	}
 
-	/* nowMs: the machine clock at the byte's arrival, 0 if unknown.
-	   With it, the first beat's worth of ticks is timed and the base
-	   tempo SNAPPED to the measurement -- a song saved at 120 under a
-	   140 leader used to crawl there through the integral for tens of
-	   seconds, audibly flat the whole way. One beat of listening gets
-	   within a hair and the loop polishes the rest. */
-	void OnLeaderTick(unsigned long nowMs = 0) {
+	/* nowUs: the machine clock at the byte's arrival, microseconds,
+	   0 if unknown. The byte is counted, and timed: the ring of the
+	   last beat's stamps is what update() reads the leader's tempo
+	   off, from the sixth byte on. */
+	void OnLeaderTick(unsigned long nowUs = 0) {
 		leaderTicks_++ ;
-		if (nowMs && !acqDone_) {
-			if (!acqT0_) { acqT0_ = nowMs ; acqTick0_ = leaderTicks_ ; }
-			else if (leaderTicks_ - acqTick0_ >= 24) {
-				unsigned long el = nowMs - acqT0_ ;
-				/* One beat is a few hundred milliseconds and never
-				   ten seconds. A larger figure means the kernel's
-				   microsecond stamp wrapped its 32 bits between the
-				   two reads -- once every 71 minutes of uptime -- and
-				   the tempo it implied was the 30 BPM floor. */
-				if (el > 100 && el < 10000) {
-					float m = 2500.0f * float(leaderTicks_ - acqTick0_)
-					          / float(el) ;
-					if (m < 30.0f) m = 30.0f ;
-					if (m > 400.0f) m = 400.0f ;
-					if (m - base_ > 3.0f || base_ - m > 3.0f) base_ = m ;
-				}
-				acqDone_ = true ;
-			}
-		}
+		if (nowUs) pushStamp(nowUs) ;
 		update() ;
+	}
+
+	/* A clock byte while the song is stopped. Not counted -- there
+	   is nothing to count it against -- but timed, so a leader that
+	   streams clock while stopped has its tempo known before its
+	   start byte arrives, and the song starts at it (Reset). */
+	void OnIdleTick(unsigned long nowUs) {
+		if (nowUs) pushStamp(nowUs) ;
 	}
 	void OnPlayerTick() { playerTicks_++ ; }
 
@@ -138,6 +136,47 @@ public:
 private:
 
 	void update() {
+
+		/* THE LEADER'S TEMPO, READ OFF THE WIRE.
+
+		   The integral below learns a tempo by watching phase drift,
+		   which is right for the last fraction of a percent and
+		   hopeless for the first fifteen: a song saved at 138 under a
+		   120 leader used to crawl there for bars, and the screen
+		   said "catching up" the whole way. So the tempo is measured
+		   directly, n clock bytes over the microseconds between the
+		   first and the last, and the loop's base is SNAPPED to it
+		   whenever the belief falls outside what the measurement can
+		   vouch for. The stamps carry about a millisecond of USB
+		   scheduling jitter each: 1.6% over six bytes, 0.8% over
+		   twelve, 0.4% over a beat, and that is the confidence asked.
+		   So the first snap comes a sixteenth after the start byte,
+		   the second an eighth after, the third a beat after, and
+		   from then on a full beat slides along the wire and follows
+		   a tempo change on the leader within a beat -- six ticks of
+		   agreement, so a single jittered byte cannot move it. The
+		   P term holds the phase throughout; the integral polishes
+		   what is left, which is now small enough for it. */
+		{
+			int n = stampCount_ - 1 ;
+			if (n > 24) n = 24 ;
+			if (n >= 6) {
+				float m = measured(n) ;
+				if (m > 0.0f) {
+					float conf = 0.016f * 6.0f / (float)n ;
+					float rel = (m - base_) / base_ ;
+					if (rel > conf || rel < -conf) {
+						if (++snapRun_ >= ((n >= 24) ? 6 : 1)) {
+							base_ = m ;
+							baseGood_ = m ;
+							snapRun_ = 0 ;
+						}
+					} else {
+						snapRun_ = 0 ;
+					}
+				}
+			}
+		}
 
 		float err = PhaseError() ;
 
@@ -227,12 +266,41 @@ private:
 		if (tempo_ < 30.0f) tempo_ = 30.0f ;
 		if (tempo_ > 400.0f) tempo_ = 400.0f ;
 
-		if (avgErr_ > -1.0f && avgErr_ < 1.0f) {
+		/* Locked, for the screen: the fast-smoothed error inside a
+		   tick and a half for half a beat. It used to watch the slow
+		   average for a whole beat, which trailed the music by two or
+		   three beats -- the ear had the lock long before the colour. */
+		if (fastErr_ > -1.5f && fastErr_ < 1.5f) {
 			if (settle_ < 255) settle_++ ;
 		} else {
 			settle_ = 0 ;
 		}
-		locked_ = (settle_ > 24) ;
+		locked_ = (settle_ > 12) ;
+	}
+
+	/* The last beat of clock bytes by arrival time, and a tempo read
+	   off it: n bytes over the microseconds between the first and
+	   the last. A gap longer than any tick at 30 BPM is a leader that
+	   stopped, and what came before it says nothing about now. */
+	void pushStamp(unsigned long us) {
+		if (stampCount_ > 0) {
+			unsigned long last = stampUs_[(stampHead_ + 31) & 31] ;
+			if (us - last > 400000ul) stampCount_ = 0 ;
+		}
+		stampUs_[stampHead_] = us ;
+		stampHead_ = (stampHead_ + 1) & 31 ;
+		if (stampCount_ < 32) stampCount_++ ;
+	}
+	// BPM over the last n ticks; 0 if the ring cannot say
+	float measured(int n) const {
+		if (n < 1 || stampCount_ < n + 1) return 0.0f ;
+		unsigned long last = stampUs_[(stampHead_ + 31) & 31] ;
+		unsigned long first = stampUs_[(stampHead_ + 31 - n) & 31] ;
+		unsigned long el = last - first ;
+		if (el < 1000ul || el > 10000000ul) return 0.0f ;
+		float m = 2500000.0f * (float)n / (float)el ;
+		if (m < 30.0f || m > 400.0f) return 0.0f ;
+		return m ;
 	}
 
 	/* The gains are written into update() above rather than kept
@@ -264,10 +332,11 @@ private:
 	float base_ ;
 	float avgErr_ ;
 	float fastErr_ ;
-	unsigned long acqT0_ ;
-	unsigned int acqTick0_ ;
-	bool acqDone_ ;
 	unsigned int grossRun_ ;
+	unsigned long stampUs_[32] ;   // arrival times of the last clock bytes
+	int stampCount_ ;
+	int stampHead_ ;
+	int snapRun_ ;                 // ticks the measurement has disagreed
 	float leadMs_ ;
 	float outLag_ ;      // rendered but not yet heard, in ticks
 	float baseGood_ ;    // the tempo believed while last in phase
